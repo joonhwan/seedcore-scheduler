@@ -1,0 +1,162 @@
+// SAM Scheduler — Prisma schema (DESIGN §3.2)
+// SQLite + Prisma. enum 미지원이라 모든 enum 류는 String + 애플리케이션 가드(zod) + 마이그레이션 CHECK 제약으로 표현.
+// ID 는 UUIDv4 문자열을 애플리케이션에서 생성해 전달.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String    @id
+  username           String    @unique
+  displayName        String    @map("display_name")
+  passwordHash       String    @map("password_hash")
+  passwordMustChange Boolean   @default(true) @map("password_must_change")
+  globalRole         String    @default("USER") @map("global_role") // 'ADMIN' | 'USER'
+  isActive           Boolean   @default(true) @map("is_active")
+  preferencesJson    String?   @map("preferences_json")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  lastLoginAt        DateTime? @map("last_login_at")
+
+  createdProjects    Project[]       @relation("ProjectCreatedBy")
+  projectMemberships ProjectMember[] @relation("MembershipUser")
+  membershipsAdded   ProjectMember[] @relation("MembershipAddedBy")
+  nodesCreated       ScheduleNode[]  @relation("NodeCreatedBy")
+  nodesUpdated       ScheduleNode[]  @relation("NodeUpdatedBy")
+  comments           NodeComment[]
+  history            NodeHistory[]
+  auditLogs          AuditLog[]
+  sessions           Session[]
+
+  @@map("users")
+}
+
+model Project {
+  id          String   @id
+  name        String
+  description String?
+  status      String   @default("ACTIVE") // 'ACTIVE' | 'ARCHIVED'
+  createdById String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdBy User            @relation("ProjectCreatedBy", fields: [createdById], references: [id])
+  members   ProjectMember[]
+  nodes     ScheduleNode[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String   @map("project_id")
+  userId    String   @map("user_id")
+  role      String // 'MANAGER' | 'MEMBER'
+  addedById String   @map("added_by")
+  addedAt   DateTime @default(now()) @map("added_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation("MembershipUser", fields: [userId], references: [id])
+  addedBy User    @relation("MembershipAddedBy", fields: [addedById], references: [id])
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+model ScheduleNode {
+  id          String   @id
+  projectId   String   @map("project_id")
+  parentId    String?  @map("parent_id")
+  kind        String // 'GROUP' | 'ITEM'
+  title       String
+  description String?
+  startAt     String?  @map("start_at") // YYYY-MM-DD (ITEM 만 직접 입력)
+  endAt       String?  @map("end_at")
+  sortOrder   Int      @map("sort_order")
+  depth       Int // 0..4 — CHECK 제약은 마이그레이션에서 추가
+  createdById String   @map("created_by")
+  updatedById String   @map("updated_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent    ScheduleNode?  @relation("NodeTree", fields: [parentId], references: [id])
+  children  ScheduleNode[] @relation("NodeTree")
+  createdBy User           @relation("NodeCreatedBy", fields: [createdById], references: [id])
+  updatedBy User           @relation("NodeUpdatedBy", fields: [updatedById], references: [id])
+  comments  NodeComment[]
+  history   NodeHistory[]
+
+  @@index([projectId, parentId, sortOrder])
+  @@map("schedule_nodes")
+}
+
+model NodeComment {
+  id        String    @id
+  nodeId    String    @map("node_id")
+  authorId  String    @map("author_id")
+  body      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  node   ScheduleNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  author User         @relation(fields: [authorId], references: [id])
+
+  @@index([nodeId, createdAt])
+  @@map("node_comments")
+}
+
+model NodeHistory {
+  id         String   @id
+  nodeId     String   @map("node_id")
+  actorId    String   @map("actor_id")
+  action     String // CREATE/UPDATE/MOVE/DELETE/RESTORE
+  diffJson   String   @map("diff_json")
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  node  ScheduleNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  actor User         @relation(fields: [actorId], references: [id])
+
+  @@index([nodeId, occurredAt])
+  @@map("node_history")
+}
+
+model AuditLog {
+  id          String   @id
+  actorId     String?  @map("actor_id")
+  action      String
+  targetType  String?  @map("target_type")
+  targetId    String?  @map("target_id")
+  ip          String?
+  userAgent   String?  @map("user_agent")
+  occurredAt  DateTime @default(now()) @map("occurred_at")
+  payloadJson String?  @map("payload_json")
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([occurredAt])
+  @@map("audit_logs")
+}
+
+model Session {
+  sid        String   @id
+  userId     String   @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  expiresAt  DateTime @map("expires_at")
+  ip         String?
+  userAgent  String?  @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}

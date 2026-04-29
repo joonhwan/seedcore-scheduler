@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+coverage
+.pnpm-store
+*.lock
+*.log
+data
+backup
+apps/api/prisma/migrations

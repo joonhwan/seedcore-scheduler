@@ -1,0 +1,38 @@
+name: sam-scheduler
+
+services:
+  api:
+    image: sam-scheduler-api:0.1.0
+    container_name: sam-api
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: file:/var/sam-scheduler/data/app.db
+      BACKUP_DIR: /var/sam-scheduler/backup/daily
+    volumes:
+      - ./var/data:/var/sam-scheduler/data
+      - ./var/backup:/var/sam-scheduler/backup
+      - ./var/logs:/var/sam-scheduler/logs
+    networks:
+      - sam-net
+
+  nginx:
+    image: sam-scheduler-nginx:0.1.0
+    container_name: sam-nginx
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    depends_on:
+      - api
+    networks:
+      - sam-net
+
+networks:
+  sam-net:
+    driver: bridge
