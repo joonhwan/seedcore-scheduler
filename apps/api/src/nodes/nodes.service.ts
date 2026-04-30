@@ -318,27 +318,27 @@ export class NodesService {
     const oldParentId = target.parentId;
     const oldSortOrder = target.sortOrder;
     const oldDepth = target.depth;
-    const sameParent = oldParentId === (body.newParentId ?? null);
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      // 1) 원래 자리에서 빠진 효과: 같은 부모의 sortOrder > old 인 형제들 -1
-      if (!sameParent) {
-        await tx.scheduleNode.updateMany({
-          where: {
-            projectId: target.projectId,
-            parentId: oldParentId,
-            sortOrder: { gt: oldSortOrder },
-          },
-          data: { sortOrder: { decrement: 1 } },
-        });
-      }
+      // 1) 원래 자리에서 빠진 효과: 같은 부모의 sortOrder > old 인 형제들 -1.
+      //    sameParent 일 때도 항상 실행해야 same-parent forward move 의 gap 을 막음.
+      //    (예: [1,2,3,4,5] 에서 self=3 → 5 로 이동 시 step 1 을 건너뛰면 최종 [1,2,_,4,5,6])
+      await tx.scheduleNode.updateMany({
+        where: {
+          projectId: target.projectId,
+          parentId: oldParentId,
+          sortOrder: { gt: oldSortOrder },
+          id: { not: nodeId }, // 안전장치 — 본인은 step 5 에서 갱신
+        },
+        data: { sortOrder: { decrement: 1 } },
+      });
 
       // 2) 새 부모의 자식 수 계산 → newSortOrder clamp
       const targetSiblingCount = await tx.scheduleNode.count({
         where: {
           projectId: target.projectId,
           parentId: body.newParentId ?? null,
-          ...(sameParent ? { id: { not: nodeId } } : {}),
+          id: { not: nodeId },
         },
       });
       const insertAt = Math.min(body.newSortOrder, targetSiblingCount + 1);
@@ -464,16 +464,14 @@ export class NodesService {
         });
       }
       // 같은 부모의 후속 형제 sortOrder 당김
-      if (target.parentId !== null || target.parentId === null) {
-        await tx.scheduleNode.updateMany({
-          where: {
-            projectId: target.projectId,
-            parentId: target.parentId,
-            sortOrder: { gt: target.sortOrder },
-          },
-          data: { sortOrder: { decrement: 1 } },
-        });
-      }
+      await tx.scheduleNode.updateMany({
+        where: {
+          projectId: target.projectId,
+          parentId: target.parentId,
+          sortOrder: { gt: target.sortOrder },
+        },
+        data: { sortOrder: { decrement: 1 } },
+      });
       // ScheduleNode.parent FK 의 onDelete 가 SetNull 이라 자식이 루트로 떠오를 수 있음.
       // 정책은 "cascade 삭제" — 명시적으로 자손부터 leaf-first 로 직접 삭제.
       const ordered = [...subtree].sort((a, b) => b.depth - a.depth);
