@@ -273,6 +273,38 @@ export const NodeTreeItem = z.object({
 });
 export type NodeTreeItem = z.infer<typeof NodeTreeItem>;
 
+// ─── 댓글 DTO ──────────────────────────────────────────────────────────────
+export const CreateCommentDto = z.object({
+  body: z.string().min(1).max(4000),
+});
+export type CreateCommentDto = z.infer<typeof CreateCommentDto>;
+
+export const NodeCommentItem = z.object({
+  id: z.string(),
+  nodeId: z.string(),
+  authorId: z.string(),
+  authorUsername: z.string(),
+  authorDisplayName: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type NodeCommentItem = z.infer<typeof NodeCommentItem>;
+
+// ─── 노드 히스토리 ─────────────────────────────────────────────────────────
+export const NodeHistoryItem = z.object({
+  id: z.string(),
+  nodeIdSnapshot: z.string(),         // 원본 nodeId — 노드 삭제 후에도 유지
+  projectIdSnapshot: z.string(),
+  actorId: z.string(),
+  actorUsername: z.string(),
+  actorDisplayName: z.string(),
+  action: NodeAction,
+  diff: z.record(z.unknown()),        // { field: { from, to } } 또는 자유 형식
+  occurredAt: z.string(),
+});
+export type NodeHistoryItem = z.infer<typeof NodeHistoryItem>;
+
 // ─── 동시성 충돌 응답 ──────────────────────────────────────────────────────
 export const ConflictResponse = z.object({
   code: z.literal('CONFLICT'),

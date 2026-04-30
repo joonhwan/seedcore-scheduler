@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ProjectsModule } from './projects/projects.module';
 import { MembersModule } from './members/members.module';
+import { NodesModule } from './nodes/nodes.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
 import { AuthGuard } from './auth/auth.guard';
 
@@ -23,6 +24,7 @@ import { AuthGuard } from './auth/auth.guard';
     UsersModule,
     ProjectsModule,
     MembersModule,
+    NodesModule,
     BootstrapModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],

@@ -1,8 +1,8 @@
 # SAM Scheduler — 세션 이관 문서
 
-> 다음 세션에서 **M2b (일정 노드 트리 백엔드)** 를 시작하기 위한 인수인계.
+> 다음 세션에서 **M2c (웹 프론트엔드 — 프로젝트 목록 + 트리 뷰)** 를 시작하기 위한 인수인계.
 > 이 문서 + [DESIGN.md](./DESIGN.md) + [README.md](./README.md) 만으로 작업 재개가 가능하도록 작성됨.
-> 직전 마일스톤(M1 인증, M2a 프로젝트/멤버/관리자모드) 의 결정/구현 상세는 §6, §7 참조.
+> 직전 마일스톤(M1 인증, M2a 프로젝트/멤버/관리자모드, M2b 노드 트리 백엔드) 의 결정/구현 상세는 §6, §7, §8 참조.
 
 ---
 
@@ -32,7 +32,7 @@ pnpm dev
 
 ---
 
-## 1. 현재 상태 (M0 + M1 + M2a 완료)
+## 1. 현재 상태 (M0 + M1 + M2a + M2b 완료)
 
 ### M0 — 모노레포 스캐폴딩 ✓
 - pnpm workspaces 빌드/실행
@@ -92,11 +92,35 @@ POST   /api/v1/admin/users/:id/unlock           → 204 (failed_login_count=0, l
   DELETE /api/v1/projects/:id/members/:userId
   ```
 
-### 아직 안 한 것 (M2b 이후)
-- **일정 노드 트리 백엔드** (`/projects/:id/nodes`, `/nodes/:id`, `/nodes/:id/move`) — 다음 세션
-- 노드 history / comments
-- web — 프로젝트 목록/생성 화면 (관리자 모드 토글 + 띠 배너)
-- web — 트리 뷰 (M2c)
+### M2b — 일정 노드 트리 백엔드 ✓ (2026-04-30)
+- shared: `CreateCommentDto`, `NodeCommentItem`, `NodeHistoryItem` 추가
+- schema: `NodeHistory.nodeId` nullable + `onDelete=SetNull`, `nodeIdSnapshot` / `projectIdSnapshot` 컬럼 추가 (마이그레이션 `20260430211000_m2b_node_history_snapshot`)
+- `apps/api/src/nodes/nodes.service.ts` — 트리 CRUD (사이클·깊이≤4·타프로젝트 검증, sortOrder repack 양방향, depth 자손 일괄 갱신)
+- `apps/api/src/nodes/tree-aggregation.ts` — GROUP `startAtEffective`/`endAtEffective` post-order DFS 집계 (DESIGN §3.4 옵션 1)
+- `apps/api/src/nodes/comments.service.ts` — 댓글 CRUD (작성자/MANAGER+/ADMIN 모드 삭제 권한)
+- `apps/api/src/nodes/history.service.ts` — `nodeIdSnapshot` 으로 조회. 노드 삭제 후에도 history 보존 검증 완료. `take: 200` 제한
+- 권한: 노드/댓글 CRUD 는 멤버(MANAGER 또는 MEMBER) OR ADMIN+adminMode (DESIGN §4.2 매트릭스)
+- 동시성: body `expectedUpdatedAt` → 409 `{code:'CONFLICT', currentUpdatedAt}` (Projects 패턴 동일)
+- 감사로그: NODE_CREATE/UPDATE/MOVE/DELETE + adminMode 일 때 `ADMIN_OVERRIDE_EDIT` (`payload.sub`)
+
+### M2b 검증된 엔드포인트
+```
+GET    /api/v1/projects/:projectId/nodes        # 트리 배열, GROUP 에 effective 동봉
+POST   /api/v1/projects/:projectId/nodes        {kind, parentId?, title, description?, startAt?, endAt?}
+PATCH  /api/v1/nodes/:id                        {title?, description?, startAt?, endAt?, expectedUpdatedAt}
+POST   /api/v1/nodes/:id/move                   {newParentId, newSortOrder, expectedUpdatedAt}
+DELETE /api/v1/nodes/:id                        # 자손 cascade + sortOrder 형제 당김
+
+GET    /api/v1/nodes/:nodeId/comments
+POST   /api/v1/nodes/:nodeId/comments           {body}
+DELETE /api/v1/comments/:cid                    # 작성자/MANAGER+/ADMIN+adminMode
+
+GET    /api/v1/nodes/:id/history                # nodeIdSnapshot 조회, 삭제 후에도 유효
+```
+
+### 아직 안 한 것 (M2c 이후)
+- **web — 프로젝트 목록 / 생성 / 멤버 화면** (관리자 모드 토글 + 띠 배너) — 다음 세션
+- web — 트리 뷰 + 노드 폼 + 댓글/이력 패널
 - Timeline 뷰 (M3+)
 - 백업 자동 cron (운영 컨테이너)
 - 오프라인 번들 빌드 / restore 흐름
@@ -151,12 +175,16 @@ sam-scheduler/
 │   ├─ src/sessions/        SessionsService (글로벌 모듈)
 │   ├─ src/auth/            AuthGuard + AuthController + AuthService (login/logout/me/change-password)
 │   ├─ src/users/           UsersController + UsersService (ADMIN 사용자 관리)
+│   ├─ src/projects/        ProjectsController + ProjectsService (M2a)
+│   ├─ src/members/         MembersController + MembersService (M2a)
+│   ├─ src/nodes/           NodesController/Service + tree-aggregation + Comments + History (M2b)
 │   └─ src/bootstrap/       initial-admin.bootstrap.ts (OnApplicationBootstrap)
 │   └─ prisma/
-│       ├─ schema.prisma    (8 모델 + User 에 failed_login_count, locked_until)
+│       ├─ schema.prisma    (8 모델 + User 에 failed_login_count, locked_until + NodeHistory 스냅샷 컬럼)
 │       └─ migrations/
 │           ├─ 20260430123641_initial/
-│           └─ 20260430132204_m1_auth_lockout/
+│           ├─ 20260430132204_m1_auth_lockout/
+│           └─ 20260430211000_m2b_node_history_snapshot/
 │
 ├─ apps/web/                React + Vite + Tailwind
 │   ├─ package.json, tsconfig.json, tsconfig.node.json
@@ -183,76 +211,55 @@ sam-scheduler/
 
 ---
 
-## 4. M2b 작업 계획 — 일정 노드 트리 백엔드
+## 4. M2c 작업 계획 — 웹 프론트엔드 (프로젝트 목록 + 트리 뷰)
 
-DESIGN §3.2–§3.4 (모델/트리/집계), §5.5–§5.6 (API), §11 (M3 행) 참조.
+DESIGN §6 (프론트엔드 설계), 부록 A (와이어프레임) 참조. 백엔드 API 는 §1 의 검증된 엔드포인트가 모두 준비됨.
 
-### 4.0 M2 진입 결정 (확정 완료, 2026-04-30)
+### 4.0 M2c 진입 결정 (제안 — 첫 세션에서 확정 필요)
 
-| # | 항목 | 채택값 |
+| # | 항목 | 후보 |
 |---|---|---|
-| 1 | 트리 표현 | `parent_id` + `sort_order` + `depth` (materialized_path 미사용) |
-| 2 | sortOrder 재정렬 | 정수 step 1, 일괄 갱신 |
-| 3 | soft-delete | 프로젝트만 ARCHIVED soft, 노드는 즉시 cascade 삭제 + `NodeHistory` 보존 |
-| 4 | `ADMIN_OVERRIDE_EDIT` 트리거 | 헤더 `X-Admin-Mode: 1` 명시 시에만 |
-| 5 | 동시성 토큰 | body `expectedUpdatedAt` 만 (헤더 `If-Match` 미지원) |
-| 6 | GROUP 의 startAt/endAt 입력 | 무시(서버 강제) + 응답에 `startAtEffective`/`endAtEffective` 만 |
-| 7 | DELETE 의미 | ARCHIVED 만 hard delete. ACTIVE 면 409 (PATCH 로 먼저 archive) |
+| 1 | 트리 라이브러리 | (a) 직접 구현 (분기 200건/깊이 5) (b) react-arborist 등 |
+| 2 | drag&drop 이동 | (a) HTML5 native (b) dnd-kit (c) v1 미지원 (좌측 메뉴/단축키만) |
+| 3 | 동시성 충돌 UX | 409 발생 시 (a) 변경분 비교 모달 (b) "다시 불러오기" 토스트 |
+| 4 | 관리자 모드 활성화 | (a) 헤더 토글 (b) `/admin` 영역 진입 |
 
-### 4.1 모듈 구조 (제안)
+### 4.1 화면/라우팅 (DESIGN §6.1, A.1)
 
 ```
-apps/api/src/
-└─ nodes/
-    ├─ nodes.module.ts
-    ├─ nodes.controller.ts             /projects/:id/nodes, /nodes/:id, /nodes/:id/move
-    ├─ nodes.service.ts                트리 CRUD, 깊이/사이클 검사, sortOrder 재정렬
-    ├─ tree-aggregation.ts             GROUP 의 start_at_effective / end_at_effective 자동 집계
-    ├─ comments.controller.ts          /nodes/:id/comments, /comments/:cid
-    └─ history.controller.ts           /nodes/:id/history (조회만; 기록은 nodes.service 에서)
+/                            → 프로젝트 카드 목록 (내가 멤버 / 관리자 모드 시 전체)
+/projects/new                → ADMIN 전용 (관리자 모드 진입 후 노출)
+/projects/:id                → Tree+Table 메인 화면 (좌 트리, 우 상세 패널)
+/projects/:id/members        → 멤버 관리 (MANAGER+/ADMIN 모드)
+/projects/:id/nodes/:nodeId  → URL 로 노드 직접 진입
+/me/password                 → 기존
+/login                       → 기존
 ```
 
 ### 4.2 작업 순서 (제안)
 
-1. **노드 CRUD 기반**
-   - `GET /projects/:id/nodes` — 프로젝트 전체 트리 (배열). GROUP 행에는 `startAtEffective` / `endAtEffective` 동봉
-   - `POST /projects/:id/nodes` (멤버 또는 ADMIN 모드) — `kind=GROUP|ITEM`, `parentId?`, `title`, `description?`, `startAt?`, `endAt?` (GROUP 은 start/end 무시)
-   - `PATCH /nodes/:id` — `expectedUpdatedAt` 검사 + 409 처리
-   - `DELETE /nodes/:id` — 자손 cascade 삭제, history 는 보존
-2. **이동 (MoveNodeDto 이미 shared 에 있음)**
-   - `POST /nodes/:id/move` `{newParentId, newSortOrder, expectedUpdatedAt}`
-   - 검증: 사이클 / depth ≤ 5 / 같은 projectId 내
-3. **GROUP effective 집계**
-   - `tree-aggregation.ts` — 읽기 시 재귀 계산 (DESIGN §3.4 옵션 1)
-   - 응답 build 시점에서 한 번만 계산
-4. **NodeHistory**
-   - 모든 CREATE/UPDATE/MOVE/DELETE 마다 `diff_json` 기록
-   - `GET /nodes/:id/history` 조회 라우트
-5. **댓글**
-   - `GET/POST /nodes/:id/comments`, `DELETE /comments/:cid`
-   - 작성자/MANAGER+/ADMIN 모드만 삭제 가능
-6. **감사로그**
-   - 이미 shared 에 NODE_CREATE/UPDATE/MOVE/DELETE 정의됨 (M2a)
-   - ADMIN 모드 시 `ADMIN_OVERRIDE_EDIT` 동시 기록 (Projects 패턴 그대로)
+1. **프로젝트 목록 + 생성 화면**
+   - `/` — `useQuery('/projects')` 카드 그리드. 카드: 이름, 상태 뱃지, memberCount, myRole.
+   - 헤더에 ADMIN 사용자에게만 "관리자 모드" 토글 → API 호출에 `X-Admin-Mode: 1` 헤더 자동 부착. ON 일 때 상단에 띠 배너 표시.
+   - 관리자 모드 ON → "새 프로젝트" 버튼 노출 (ADMIN 전용).
+2. **프로젝트 상세 + 트리 뷰**
+   - 좌: 트리 (GROUP/ITEM 인디케이터, sortOrder 화살표, +자식/+형제 버튼).
+   - 우: 노드 상세 폼 (title, description, ITEM 만 startAt/endAt). GROUP 은 effective 만 read-only.
+   - 변경 시 `expectedUpdatedAt` 동봉. 409 → "다시 불러오기" 토스트.
+   - 댓글 패널 + 이력 패널.
+3. **멤버 관리**
+   - MANAGER+/ADMIN 모드 사용자에게만 노출. 사용자 검색 → role 선택 → 추가/제거.
+4. **에러/로딩 표준화**
+   - `api.ts` 의 `ApiError` 매핑: 401 → /login, 409 → "변경 충돌" 토스트, 403 → 안내, 5xx → 일반 오류.
 
-### 4.3 ⚠️ M2b 진입 전 해결 필요 — NodeHistory cascade 모순
+### 4.3 권장 사전 작업
 
-현재 schema:
-```
-model NodeHistory {
-  node ScheduleNode @relation(..., onDelete: Cascade)
-}
-```
-정책(M2a 결정 §3): "노드는 즉시 삭제 + history 보존". 그러나 cascade FK 라 노드 삭제 시 history 도 함께 삭제됨.
-
-선택지:
-- **(a) 스키마 수정**: NodeHistory.node 의 onDelete 를 RESTRICT 또는 SetNull, 그리고 `node_id` 를 nullable + `node_id_snapshot` 텍스트 컬럼 추가 (또는 `title_snapshot` 등)
-- **(b) 정책 완화**: history 는 프로젝트 삭제 시까지만 보존 (현재 schema 그대로 사용)
-
-권장: **(a)** — 노드 삭제 후에도 누가 언제 무엇을 지웠는지 history 로 남겨야 감사로그 의도와 부합. 마이그레이션 한 번 추가 필요.
+- shared 의 zod 스키마는 web 에서도 그대로 import 해 폼 검증에 사용 (LoginPage 패턴).
+- `useQuery` 키 컨벤션: `['projects']`, `['projects', id]`, `['projects', id, 'members']`, `['projects', id, 'nodes']`, `['nodes', id, 'comments']`.
+- 트리 데이터: 백엔드는 평면 배열 반환. 클라이언트에서 parentId 로 트리 구성 (5,000건 이내라 단순 reduce 로 충분).
 
 ### 4.4 새로 필요한 의존성
-없음.
+- 트리/D&D 결정에 따라 (선택). 기본은 0개.
 
 ---
 
@@ -352,7 +359,33 @@ export class ProjectsController {
 
 ---
 
-## 8. 참고 파일
+## 8. M2b 핵심 코드 위치 + 결정
+
+| 관심사 | 파일 |
+|---|---|
+| 노드 트리 CRUD/move | `apps/api/src/nodes/nodes.service.ts` (사이클·depth·sortOrder repack) |
+| GROUP effective 집계 | `apps/api/src/nodes/tree-aggregation.ts` (`buildTreeItems`, post-order DFS) |
+| 댓글 | `apps/api/src/nodes/comments.service.ts` (작성자/MANAGER+/ADMIN+adminMode 삭제) |
+| 이력 조회 | `apps/api/src/nodes/history.service.ts` (`nodeIdSnapshot` 으로 조회, take=200) |
+| 라우팅 | `apps/api/src/nodes/{nodes,comments,history}.controller.ts` |
+
+### 8.1 M2b 결정 (advisor 검증 후 확정)
+
+| # | 항목 | 채택 |
+|---|---|---|
+| 1 | depth 검증 | `< MAX_TREE_DEPTH (=5)` — 깊이 0..4 허용. create/move 둘 다 동일 |
+| 2 | NodeHistory 보존 | `nodeId` nullable + `onDelete=SetNull` + `nodeIdSnapshot` (NOT NULL) + `projectIdSnapshot` (NOT NULL). `diffJson` 에 모든 필드 스냅샷 |
+| 3 | DELETE 의 history | 자손 각각에 대해 DELETE 행 기록 후 leaf-first 직접 삭제. 같은 부모의 후속 형제 sortOrder 당김 |
+| 4 | sortOrder | 1-based, dense (step 1). create 시 자동 할당 (`max+1`). move 시 양쪽 부모 모두 repack |
+| 5 | newSortOrder clamp | `Math.min(newSortOrder, siblingCount+1)` — 너무 큰 값은 끝으로 |
+| 6 | UPDATE 의 GROUP startAt/endAt | `BadRequestException({error:'GROUP_DATES_NOT_EDITABLE'})` (입력 자체 거부). create 시엔 silently 무시 (=null 강제) |
+| 7 | 빈 UPDATE | 변경 필드 0 → history/audit 기록 없이 현재 노드 그대로 반환 |
+| 8 | history take 한계 | 200건 (페이지네이션은 v1.x 이후) |
+| 9 | Prisma data 타입 | scalar FK + 관계 혼합 시 `Prisma.ScheduleNodeUncheckedUpdateInput` 사용 (`updatedById: ctx.actorId` 직접) |
+
+---
+
+## 9. 참고 파일
 
 - 설계: [DESIGN.md](./DESIGN.md) — §3 모델, §4 인증/인가, §5 API, §7 백업, §11 로드맵
 - 사용 절차: [README.md](./README.md)
@@ -362,5 +395,5 @@ export class ProjectsController {
 
 ---
 
-*M2a 종료 시점 — 다음 작업은 M2b (일정 노드 트리 백엔드).*
+*M2b 종료 시점 — 다음 작업은 M2c (웹 프론트엔드: 프로젝트 목록 + 트리 뷰).*
 *마지막 커밋: 후속 — 본 갱신 시점.*

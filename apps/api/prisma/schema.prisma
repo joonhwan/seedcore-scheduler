@@ -116,17 +116,20 @@ model NodeComment {
 }
 
 model NodeHistory {
-  id         String   @id
-  nodeId     String   @map("node_id")
-  actorId    String   @map("actor_id")
-  action     String // CREATE/UPDATE/MOVE/DELETE/RESTORE
-  diffJson   String   @map("diff_json")
-  occurredAt DateTime @default(now()) @map("occurred_at")
+  id                String   @id
+  nodeId            String?  @map("node_id") // 노드 삭제 후엔 null. 조회는 nodeIdSnapshot 으로.
+  nodeIdSnapshot    String   @map("node_id_snapshot") // 항상 채워지는 원본 nodeId. 삭제 후 history 검색용.
+  projectIdSnapshot String   @map("project_id_snapshot") // 프로젝트 단위 history 조회용 (프로젝트가 삭제되면 cascade 로 row 가 사라지지 않음 — projects.onDelete=Cascade 는 schedule_nodes 만 따라감)
+  actorId           String   @map("actor_id")
+  action            String // CREATE/UPDATE/MOVE/DELETE/RESTORE
+  diffJson          String   @map("diff_json")
+  occurredAt        DateTime @default(now()) @map("occurred_at")
 
-  node  ScheduleNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  actor User         @relation(fields: [actorId], references: [id])
+  node  ScheduleNode? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+  actor User          @relation(fields: [actorId], references: [id])
 
-  @@index([nodeId, occurredAt])
+  @@index([nodeIdSnapshot, occurredAt])
+  @@index([projectIdSnapshot, occurredAt])
   @@map("node_history")
 }
 
