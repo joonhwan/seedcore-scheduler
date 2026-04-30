@@ -1,8 +1,8 @@
 # SAM Scheduler — 세션 이관 문서
 
-> 다음 세션에서 **M2c (웹 프론트엔드 — 프로젝트 목록 + 트리 뷰)** 를 시작하기 위한 인수인계.
+> 다음 세션에서 **M3 (Timeline 뷰 / 운영 자동화)** 를 시작하기 위한 인수인계.
 > 이 문서 + [DESIGN.md](./DESIGN.md) + [README.md](./README.md) 만으로 작업 재개가 가능하도록 작성됨.
-> 직전 마일스톤(M1 인증, M2a 프로젝트/멤버/관리자모드, M2b 노드 트리 백엔드) 의 결정/구현 상세는 §6, §7, §8 참조.
+> 직전 마일스톤(M1 인증, M2a 프로젝트/멤버/관리자모드, M2b 노드 트리 백엔드, M2c 웹 프론트엔드) 의 결정/구현 상세는 §6, §7, §8, §9 참조.
 
 ---
 
@@ -32,7 +32,7 @@ pnpm dev
 
 ---
 
-## 1. 현재 상태 (M0 + M1 + M2a + M2b 완료)
+## 1. 현재 상태 (M0 + M1 + M2a + M2b + M2c 완료)
 
 ### M0 — 모노레포 스캐폴딩 ✓
 - pnpm workspaces 빌드/실행
@@ -118,12 +118,41 @@ DELETE /api/v1/comments/:cid                    # 작성자/MANAGER+/ADMIN+admin
 GET    /api/v1/nodes/:id/history                # nodeIdSnapshot 조회, 삭제 후에도 유효
 ```
 
-### 아직 안 한 것 (M2c 이후)
-- **web — 프로젝트 목록 / 생성 / 멤버 화면** (관리자 모드 토글 + 띠 배너) — 다음 세션
-- web — 트리 뷰 + 노드 폼 + 댓글/이력 패널
-- Timeline 뷰 (M3+)
+### M2c — 웹 프론트엔드 (프로젝트 / 트리 / 댓글 / 이력 / 멤버) ✓ (2026-05-01)
+- **AdminMode 컨텍스트** (`apps/web/src/lib/adminMode.ts`) — `useSyncExternalStore` 모듈 store + localStorage 영속. 토글 시 `qc.invalidateQueries()` 전체 무효화. `api.ts` 의 `request()` 가 모든 요청에 자동 `X-Admin-Mode: 1` 부착.
+- **공통 UI**: `lib/toast.ts` (외부 store + `<ToastViewport>`), `lib/errors.ts` (`apiErrorMessage` — CONFLICT/CYCLE/MAX_DEPTH/GROUP_DATES_NOT_EDITABLE/LAST_MANAGER 등 매핑), `api.ts` 401 글로벌 핸들러 (`/auth/me` 제외 → me 캐시 null 처리 → `RequireAuth` 가 /login 리다이렉트)
+- **헤더**: ADMIN 사용자에게만 "관리자 모드" 토글 노출. ON 시 상단 띠 배너 + 토글 OFF 즉시 모든 쿼리 재요청. theme store 도 같은 패턴으로 정리(이전 per-hook state 버그 fix)
+- **라우트**: `/`, `/projects/new`, `/projects/:id`, `/projects/:id/members`
+- **프로젝트 목록 (`ProjectsPage`)**: 카드 그리드(이름·상태·myRole·memberCount). ADMIN+adminMode 만 "+ 새 프로젝트" 노출
+- **프로젝트 생성 (`ProjectNewPage`)**: zod safeParse + 사용자 검색 체크박스 (≥1 MANAGER 필수)
+- **프로젝트 상세 (`ProjectDetailPage`)**:
+  - 헤더: 보관/복원 (MANAGER+/ADMIN+adminMode), 영구 삭제 (ADMIN+adminMode + ARCHIVED 만), 멤버 관리 링크
+  - 좌측 트리 (`NodeTree`): GROUP/ITEM 인디케이터, 일자 표시, 호버 시 `↑↓ +자 +형 ⇄ ✕` 버튼. 깊이 4 ITEM 의 +자 비활성. 클램프 sortOrder
+  - 우측 패널: kind-aware `NodeDetail` (ITEM 만 startAt/endAt 입력, GROUP 은 effective read-only) + `NodeCommentsPanel` + `NodeHistoryPanel`
+  - 모달: `NodeFormDialog` (kind 라디오 + 조건부 일자), `ParentPickerDialog` (트리 picker, 사이클/깊이 사전체크)
+- **댓글 패널**: 권한별 작성/삭제 (작성자/MANAGER+/ADMIN+adminMode) — 백엔드 검증 동일
+- **이력 패널**: `{from, to}` diff 렌더 (CREATE 는 `to` 만), MOVE/UPDATE 는 from→to. 200건 한계 노출. 노드 update/move 시 history 자동 invalidate
+- **멤버 관리 (`ProjectMembersPage`)**: 현재 멤버 목록 + 사용자 검색·MEMBER/MANAGER 셀렉트·추가 버튼. LAST_MANAGER 거부 → 토스트
+- **검증**: typecheck (api+web+shared) 통과, web build 통과, dev 서버 + Playwright smoke 핵심 동선 확인 (login→adminMode→트리 CRUD→GROUP effective→댓글→history→멤버 LAST_MANAGER 토스트)
+
+### M2c 진입 결정 (실제 채택)
+| # | 항목 | 채택 |
+|---|---|---|
+| 1 | 트리 라이브러리 | (a) **직접 구현** — `components/NodeTree.tsx` recursive |
+| 2 | drag&drop 이동 | (c) **v1 미지원** + ↑↓ 버튼 + ⇄ "부모 변경" 모달 (advisor 권고로 추가) |
+| 3 | 동시성 충돌 UX | (b) **토스트** — `apiErrorMessage` 의 CONFLICT 매핑 |
+| 4 | 관리자 모드 진입 | (a) **헤더 토글** + 띠 배너 |
+
+### M2c 알려진 caveat (v1 의도)
+- adminMode 토글 OFF 중 비멤버 프로젝트 페이지에 머무르면 다음 refetch 가 403 → 페이지가 토스트만 표시 (자동 / 리다이렉트는 안 함). MVP 의도. 필요 시 `apiErrorMessage` 옆에 글로벌 403 핸들러 추가
+- 트리 dnd 미지원. 부모 변경은 ⇄ 버튼 모달
+- 이력 페이지네이션 미지원 (200건 take)
+
+### 아직 안 한 것 (M3 이후)
+- Timeline 뷰 / 캘린더 뷰 (DESIGN §6.4)
 - 백업 자동 cron (운영 컨테이너)
 - 오프라인 번들 빌드 / restore 흐름
+- 사용자 관리 화면 (`/admin/users`) — 백엔드는 M1 에서 준비됨, web UI 만 미구현
 
 ---
 
@@ -211,55 +240,31 @@ sam-scheduler/
 
 ---
 
-## 4. M2c 작업 계획 — 웹 프론트엔드 (프로젝트 목록 + 트리 뷰)
+## 4. M3 작업 계획 — Timeline 뷰 / 운영 자동화
 
-DESIGN §6 (프론트엔드 설계), 부록 A (와이어프레임) 참조. 백엔드 API 는 §1 의 검증된 엔드포인트가 모두 준비됨.
+DESIGN §6.4 (Timeline 뷰), §7 (백업/복원), §11 (로드맵) 참조.
 
-### 4.0 M2c 진입 결정 (제안 — 첫 세션에서 확정 필요)
+### 4.0 M3 진입 결정 (다음 세션에서 확정 필요)
 
 | # | 항목 | 후보 |
 |---|---|---|
-| 1 | 트리 라이브러리 | (a) 직접 구현 (분기 200건/깊이 5) (b) react-arborist 등 |
-| 2 | drag&drop 이동 | (a) HTML5 native (b) dnd-kit (c) v1 미지원 (좌측 메뉴/단축키만) |
-| 3 | 동시성 충돌 UX | 409 발생 시 (a) 변경분 비교 모달 (b) "다시 불러오기" 토스트 |
-| 4 | 관리자 모드 활성화 | (a) 헤더 토글 (b) `/admin` 영역 진입 |
+| 1 | Timeline 라이브러리 | (a) 직접 SVG/CSS grid (b) `vis-timeline` (c) `react-gantt-task` 등 |
+| 2 | Timeline 뷰의 상태 변경 | (a) 읽기 전용 (b) 드래그로 일자 조정 (UPDATE 호출) |
+| 3 | 백업 자동화 | (a) 컨테이너 cron (host crontab + bash) (b) NestJS 스케줄러 (c) 둘 다 |
+| 4 | 사용자 관리 web UI | (a) M3 에 포함 (b) 별도 마일스톤 |
 
-### 4.1 화면/라우팅 (DESIGN §6.1, A.1)
+### 4.1 후속 작업 후보
 
-```
-/                            → 프로젝트 카드 목록 (내가 멤버 / 관리자 모드 시 전체)
-/projects/new                → ADMIN 전용 (관리자 모드 진입 후 노출)
-/projects/:id                → Tree+Table 메인 화면 (좌 트리, 우 상세 패널)
-/projects/:id/members        → 멤버 관리 (MANAGER+/ADMIN 모드)
-/projects/:id/nodes/:nodeId  → URL 로 노드 직접 진입
-/me/password                 → 기존
-/login                       → 기존
-```
-
-### 4.2 작업 순서 (제안)
-
-1. **프로젝트 목록 + 생성 화면**
-   - `/` — `useQuery('/projects')` 카드 그리드. 카드: 이름, 상태 뱃지, memberCount, myRole.
-   - 헤더에 ADMIN 사용자에게만 "관리자 모드" 토글 → API 호출에 `X-Admin-Mode: 1` 헤더 자동 부착. ON 일 때 상단에 띠 배너 표시.
-   - 관리자 모드 ON → "새 프로젝트" 버튼 노출 (ADMIN 전용).
-2. **프로젝트 상세 + 트리 뷰**
-   - 좌: 트리 (GROUP/ITEM 인디케이터, sortOrder 화살표, +자식/+형제 버튼).
-   - 우: 노드 상세 폼 (title, description, ITEM 만 startAt/endAt). GROUP 은 effective 만 read-only.
-   - 변경 시 `expectedUpdatedAt` 동봉. 409 → "다시 불러오기" 토스트.
-   - 댓글 패널 + 이력 패널.
-3. **멤버 관리**
-   - MANAGER+/ADMIN 모드 사용자에게만 노출. 사용자 검색 → role 선택 → 추가/제거.
-4. **에러/로딩 표준화**
-   - `api.ts` 의 `ApiError` 매핑: 401 → /login, 409 → "변경 충돌" 토스트, 403 → 안내, 5xx → 일반 오류.
-
-### 4.3 권장 사전 작업
-
-- shared 의 zod 스키마는 web 에서도 그대로 import 해 폼 검증에 사용 (LoginPage 패턴).
-- `useQuery` 키 컨벤션: `['projects']`, `['projects', id]`, `['projects', id, 'members']`, `['projects', id, 'nodes']`, `['nodes', id, 'comments']`.
-- 트리 데이터: 백엔드는 평면 배열 반환. 클라이언트에서 parentId 로 트리 구성 (5,000건 이내라 단순 reduce 로 충분).
-
-### 4.4 새로 필요한 의존성
-- 트리/D&D 결정에 따라 (선택). 기본은 0개.
+1. **Timeline 뷰 (`/projects/:id` 의 추가 탭)**
+   - 평면 NodeTreeItem[] → 일자별로 정렬한 간트 형태
+   - GROUP 은 effective 범위로 막대 (자식 ITEM 합)
+   - ITEM 은 startAt..endAt 막대
+   - 좌측 노드 라벨 + 상단 일자 헤더
+2. **사용자 관리 web UI** (백엔드 M1 준비 완료):
+   - `/admin/users` — 목록, 생성, displayName/active 토글, 비밀번호 리셋(임시 비번 토스트), 잠금 해제
+3. **백업 자동화**:
+   - `deploy/scripts/full-backup.sh` 가 이미 존재. 스케줄링 + 보존(`BACKUP_RETENTION_DAYS`) 자동화
+4. **오프라인 번들 / restore 흐름** (DESIGN §10): docker save + scripts 정리
 
 ---
 
@@ -385,7 +390,43 @@ export class ProjectsController {
 
 ---
 
-## 9. 참고 파일
+## 9. M2c 핵심 코드 위치 + 결정
+
+| 관심사 | 파일 |
+|---|---|
+| AdminMode store | `apps/web/src/lib/adminMode.ts` (`useAdminMode`, 토글 시 `qc.invalidateQueries()`) |
+| 외부 store 패턴 | `apps/web/src/lib/store.ts` (`createStore` + `useStore` = `useSyncExternalStore`) |
+| api 헤더 자동 부착 | `apps/web/src/lib/api.ts` (`request()` 가 `isAdminModeOn()` 검사 → `X-Admin-Mode: 1`) |
+| 401 글로벌 핸들러 | `apps/web/src/main.tsx` (`configureApi({onUnauthorized})` → me 캐시 null) |
+| 토스트 | `apps/web/src/lib/toast.ts` + `apps/web/src/components/ToastViewport.tsx` |
+| ApiError 매핑 | `apps/web/src/lib/errors.ts` (`apiErrorMessage`, KNOWN 사전) |
+| 도메인 hooks | `apps/web/src/lib/{projects,nodes,members,users,comments,history}.ts` |
+| 트리 컴포넌트 | `apps/web/src/components/NodeTree.tsx` (`buildTree`, `maxDescendantDepth`) |
+| 노드 상세 폼 | `apps/web/src/components/NodeDetail.tsx` (kind-aware) |
+| 노드 생성 모달 | `apps/web/src/components/NodeFormDialog.tsx` |
+| 부모 변경 모달 | `apps/web/src/components/ParentPickerDialog.tsx` (사이클·깊이 사전체크) |
+| 댓글 패널 | `apps/web/src/components/NodeCommentsPanel.tsx` |
+| 이력 패널 | `apps/web/src/components/NodeHistoryPanel.tsx` (CREATE 는 `to`, UPDATE/MOVE 는 from→to) |
+| 페이지 | `apps/web/src/pages/{ProjectsPage, ProjectNewPage, ProjectDetailPage, ProjectMembersPage}.tsx` |
+
+### 9.1 M2c 결정 (advisor 검증 후 확정)
+
+| # | 항목 | 채택 |
+|---|---|---|
+| 1 | adminMode + 캐시 전략 | 토글 시 `qc.invalidateQueries()` 전체 무효화. queryKey 에 adminMode 포함하지 않음 (150유저 스코프, 단순) |
+| 2 | 트리 라이브러리 | 직접 구현. 5,000건 이내 + reduce 로 build, 재귀 컴포넌트로 렌더 |
+| 3 | drag&drop | v1 미지원. ↑↓ 같은-부모 reorder + ⇄ 부모변경 모달 |
+| 4 | 부모변경 사전검증 | 사이클(자기/자손)·깊이(`newParent.depth + 1 + (subtreeMax - oldDepth) < 5`)·current parent 동일 모두 클라이언트 사전체크 + 백엔드 재검증 |
+| 5 | 트리 +자 비활성 | `node.depth + 1 >= MAX_TREE_DEPTH` 시 disabled (4단 ITEM) |
+| 6 | GROUP 폼 | startAt/endAt 입력 X — `startAtEffective`/`endAtEffective` read-only. ITEM 만 date input 노출 |
+| 7 | 동시성 충돌 UX | "다시 불러오기" 토스트 (변경분 비교 모달은 v1.x 이후) |
+| 8 | adminMode 토글 OFF caveat | 비멤버 프로젝트 페이지에 머무르면 다음 refetch 가 403 → 토스트만. 자동 리다이렉트 안 함 (의도) |
+| 9 | useUpdateNode/useMoveNode | 노드/프로젝트 invalidate + 영향 노드 history invalidate (`['nodes', id, 'history']`) |
+| 10 | useTheme 패턴 정리 | 동일 외부 store 패턴으로 교체 (이전 per-hook state 버그 fix) |
+
+---
+
+## 10. 참고 파일
 
 - 설계: [DESIGN.md](./DESIGN.md) — §3 모델, §4 인증/인가, §5 API, §7 백업, §11 로드맵
 - 사용 절차: [README.md](./README.md)
@@ -395,5 +436,5 @@ export class ProjectsController {
 
 ---
 
-*M2b 종료 시점 — 다음 작업은 M2c (웹 프론트엔드: 프로젝트 목록 + 트리 뷰).*
+*M2c 종료 시점 — 다음 작업은 M3 (Timeline 뷰 / 운영 자동화 / 사용자 관리 UI 등).*
 *마지막 커밋: 후속 — 본 갱신 시점.*

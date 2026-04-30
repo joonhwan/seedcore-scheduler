@@ -43,3 +43,6 @@ Thumbs.db
 
 # coverage
 coverage/
+
+# Playwright MCP scratch (browser snapshots / console logs)
+.playwright-mcp/

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { createStore, useStore } from './store';
 
 export type Theme = 'light' | 'dark';
 
@@ -9,12 +10,14 @@ function readInitial(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+const themeStore = createStore<Theme>(readInitial());
+
 export function useTheme(): {
   theme: Theme;
   setTheme: (t: Theme) => void;
   toggle: () => void;
 } {
-  const [theme, setTheme] = useState<Theme>(readInitial);
+  const theme = useStore(themeStore);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -25,7 +28,7 @@ export function useTheme(): {
 
   return {
     theme,
-    setTheme,
-    toggle: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
+    setTheme: (t) => themeStore.set(t),
+    toggle: () => themeStore.set(themeStore.get() === 'dark' ? 'light' : 'dark'),
   };
 }

@@ -1,0 +1,163 @@
+import { useEffect, useState, type FormEvent } from 'react';
+import type { NodeTreeItem, UpdateNodeDto } from '@sam/shared';
+import { apiErrorMessage } from '../lib/errors';
+import { toast } from '../lib/toast';
+import { useUpdateNode } from '../lib/nodes';
+
+interface Props {
+  projectId: string;
+  node: NodeTreeItem;
+  canEdit: boolean;
+}
+
+export default function NodeDetail({ projectId, node, canEdit }: Props) {
+  const [title, setTitle] = useState(node.title);
+  const [description, setDescription] = useState(node.description ?? '');
+  const [startAt, setStartAt] = useState(node.startAt ?? '');
+  const [endAt, setEndAt] = useState(node.endAt ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const update = useUpdateNode(projectId);
+  const isGroup = node.kind === 'GROUP';
+
+  useEffect(() => {
+    setTitle(node.title);
+    setDescription(node.description ?? '');
+    setStartAt(node.startAt ?? '');
+    setEndAt(node.endAt ?? '');
+    setError(null);
+  }, [node.id, node.updatedAt]);
+
+  const dirty =
+    title !== node.title ||
+    description !== (node.description ?? '') ||
+    (!isGroup && startAt !== (node.startAt ?? '')) ||
+    (!isGroup && endAt !== (node.endAt ?? ''));
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!dirty) return;
+
+    const body: UpdateNodeDto = { expectedUpdatedAt: node.updatedAt };
+    if (title !== node.title) body.title = title.trim();
+    if (description !== (node.description ?? '')) {
+      body.description = description.trim() === '' ? null : description.trim();
+    }
+    if (!isGroup) {
+      if (startAt !== (node.startAt ?? '')) body.startAt = startAt === '' ? null : startAt;
+      if (endAt !== (node.endAt ?? '')) body.endAt = endAt === '' ? null : endAt;
+    }
+    if (startAt && endAt && startAt > endAt) {
+      setError('시작일은 종료일보다 작거나 같아야 합니다.');
+      return;
+    }
+
+    try {
+      await update.mutateAsync({ id: node.id, body });
+      toast.success('저장되었습니다.');
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold">{isGroup ? 'GROUP 노드' : 'ITEM 노드'}</h2>
+        <span className="text-xs text-slate-500">depth {node.depth} · sortOrder {node.sortOrder}</span>
+      </div>
+
+      <Field label="제목 *">
+        <input
+          className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={256}
+          required
+          disabled={!canEdit}
+        />
+      </Field>
+
+      <Field label="설명">
+        <textarea
+          className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+          rows={4}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          maxLength={4000}
+          disabled={!canEdit}
+        />
+      </Field>
+
+      {isGroup ? (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="시작일 (집계)">
+            <input
+              type="text"
+              readOnly
+              value={node.startAtEffective ?? '—'}
+              className="w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+            />
+          </Field>
+          <Field label="종료일 (집계)">
+            <input
+              type="text"
+              readOnly
+              value={node.endAtEffective ?? '—'}
+              className="w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+            />
+          </Field>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="시작일">
+            <input
+              type="date"
+              value={startAt}
+              onChange={(e) => setStartAt(e.target.value)}
+              className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              disabled={!canEdit}
+            />
+          </Field>
+          <Field label="종료일">
+            <input
+              type="date"
+              value={endAt}
+              onChange={(e) => setEndAt(e.target.value)}
+              className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              disabled={!canEdit}
+            />
+          </Field>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
+          {error}
+        </div>
+      )}
+
+      {canEdit && (
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={!dirty || update.isPending}
+            className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+          >
+            {update.isPending ? '저장 중…' : '저장'}
+          </button>
+        </div>
+      )}
+    </form>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block text-sm">
+      <span className="block text-slate-700 dark:text-slate-300">{label}</span>
+      <div className="mt-1">{children}</div>
+    </label>
+  );
+}

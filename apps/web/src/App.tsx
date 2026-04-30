@@ -2,30 +2,14 @@ import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useTheme } from './lib/theme';
 import { useLogout, useMe } from './lib/auth';
+import { useAdminMode } from './lib/adminMode';
+import ToastViewport from './components/ToastViewport';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
-
-function Home() {
-  return (
-    <main className="mx-auto max-w-3xl p-6">
-      <h1 className="text-2xl font-bold">SAM Scheduler</h1>
-      <p className="mt-2 text-slate-600 dark:text-slate-400">
-        프로젝트 일정관리 — M1 인증 단계까지 동작합니다.
-      </p>
-      <p className="mt-4 text-sm">
-        API 헬스체크:{' '}
-        <a
-          className="text-sky-600 underline dark:text-sky-400"
-          href="/api/v1/health"
-          target="_blank"
-          rel="noreferrer"
-        >
-          /api/v1/health
-        </a>
-      </p>
-    </main>
-  );
-}
+import ProjectsPage from './pages/ProjectsPage';
+import ProjectNewPage from './pages/ProjectNewPage';
+import ProjectDetailPage from './pages/ProjectDetailPage';
+import ProjectMembersPage from './pages/ProjectMembersPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const me = useMe();
@@ -42,10 +26,24 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminBanner() {
+  const { on } = useAdminMode();
+  const me = useMe();
+  if (!on || me.data?.globalRole !== 'ADMIN') return null;
+  return (
+    <div className="border-b border-amber-300 bg-amber-100 px-6 py-1.5 text-center text-xs font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+      관리자 모드 활성 — 모든 프로젝트/노드를 우회 편집할 수 있습니다. 모든 변경은 감사로그에 기록됩니다.
+    </div>
+  );
+}
+
 function Header() {
-  const { theme, toggle } = useTheme();
+  const { theme, toggle: toggleTheme } = useTheme();
   const me = useMe();
   const logout = useLogout();
+  const adminMode = useAdminMode();
+  const isAdmin = me.data?.globalRole === 'ADMIN';
+
   return (
     <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3 dark:border-slate-700">
       <Link to="/" className="font-semibold">
@@ -54,9 +52,22 @@ function Header() {
       <div className="flex items-center gap-3 text-sm">
         {me.data && (
           <>
+            {isAdmin && (
+              <label className="flex cursor-pointer items-center gap-2 select-none">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-amber-500"
+                  checked={adminMode.on}
+                  onChange={() => adminMode.toggle()}
+                />
+                <span className={adminMode.on ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-slate-600 dark:text-slate-400'}>
+                  관리자 모드
+                </span>
+              </label>
+            )}
             <span className="text-slate-600 dark:text-slate-400">
               {me.data.displayName}
-              {me.data.globalRole === 'ADMIN' ? ' (ADMIN)' : ''}
+              {isAdmin ? ' (ADMIN)' : ''}
             </span>
             <button
               type="button"
@@ -69,7 +80,7 @@ function Header() {
         )}
         <button
           type="button"
-          onClick={toggle}
+          onClick={toggleTheme}
           className="rounded-md border border-slate-300 px-3 py-1 dark:border-slate-700"
           aria-label="테마 전환"
         >
@@ -84,6 +95,7 @@ export default function App() {
   return (
     <>
       <Header />
+      <AdminBanner />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
@@ -98,11 +110,36 @@ export default function App() {
           path="/"
           element={
             <RequireAuth>
-              <Home />
+              <ProjectsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/projects/new"
+          element={
+            <RequireAuth>
+              <ProjectNewPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/projects/:id"
+          element={
+            <RequireAuth>
+              <ProjectDetailPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/projects/:id/members"
+          element={
+            <RequireAuth>
+              <ProjectMembersPage />
             </RequireAuth>
           }
         />
       </Routes>
+      <ToastViewport />
     </>
   );
 }
