@@ -131,5 +131,152 @@ export const AuditAction = z.enum([
   'USER_PASSWORD_RESET',
   'USER_UNLOCK',
   'ADMIN_OVERRIDE_EDIT',
+  'PROJECT_CREATE',
+  'PROJECT_UPDATE',
+  'PROJECT_ARCHIVE',
+  'PROJECT_RESTORE',
+  'PROJECT_DELETE',
+  'MEMBER_ADD',
+  'MEMBER_REMOVE',
+  'NODE_CREATE',
+  'NODE_UPDATE',
+  'NODE_MOVE',
+  'NODE_DELETE',
 ]);
 export type AuditAction = z.infer<typeof AuditAction>;
+
+// ─── 프로젝트 DTO ──────────────────────────────────────────────────────────
+export const CreateProjectDto = z.object({
+  name: z.string().min(1).max(128),
+  description: z.string().max(2000).optional(),
+  managerUserIds: z.array(z.string().min(1)).min(1, '최소 1명의 MANAGER 가 필요합니다'),
+});
+export type CreateProjectDto = z.infer<typeof CreateProjectDto>;
+
+export const UpdateProjectDto = z
+  .object({
+    name: z.string().min(1).max(128).optional(),
+    description: z.string().max(2000).nullable().optional(),
+    status: ProjectStatus.optional(),
+    expectedUpdatedAt: z.string(),
+  })
+  .refine(
+    (v) =>
+      v.name !== undefined ||
+      v.description !== undefined ||
+      v.status !== undefined,
+    { message: '변경 항목이 없습니다' },
+  );
+export type UpdateProjectDto = z.infer<typeof UpdateProjectDto>;
+
+export const ProjectListItem = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  status: ProjectStatus,
+  myRole: ProjectRole.nullable(), // 비멤버(ADMIN 모드)면 null
+  memberCount: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ProjectListItem = z.infer<typeof ProjectListItem>;
+
+export const ProjectDetail = ProjectListItem.extend({
+  createdById: z.string(),
+});
+export type ProjectDetail = z.infer<typeof ProjectDetail>;
+
+// ─── 멤버 DTO ──────────────────────────────────────────────────────────────
+export const AddMemberDto = z.object({
+  userId: z.string().min(1),
+  role: ProjectRole,
+});
+export type AddMemberDto = z.infer<typeof AddMemberDto>;
+
+export const ProjectMemberItem = z.object({
+  userId: z.string(),
+  username: z.string(),
+  displayName: z.string(),
+  role: ProjectRole,
+  addedAt: z.string(),
+});
+export type ProjectMemberItem = z.infer<typeof ProjectMemberItem>;
+
+// ─── 일정 노드 DTO ─────────────────────────────────────────────────────────
+export const CreateNodeDto = z
+  .object({
+    parentId: z.string().min(1).nullable().optional(),
+    kind: NodeKind,
+    title: z.string().min(1).max(256),
+    description: z.string().max(4000).optional(),
+    startAt: IsoDate.optional(), // ITEM 만 의미. GROUP 은 무시됨
+    endAt: IsoDate.optional(),
+  })
+  .refine(
+    (v) => {
+      if (v.startAt && v.endAt) return v.startAt <= v.endAt;
+      return true;
+    },
+    { message: 'startAt 은 endAt 보다 작거나 같아야 합니다' },
+  );
+export type CreateNodeDto = z.infer<typeof CreateNodeDto>;
+
+export const UpdateNodeDto = z
+  .object({
+    title: z.string().min(1).max(256).optional(),
+    description: z.string().max(4000).nullable().optional(),
+    startAt: IsoDate.nullable().optional(),
+    endAt: IsoDate.nullable().optional(),
+    expectedUpdatedAt: z.string(),
+  })
+  .refine(
+    (v) =>
+      v.title !== undefined ||
+      v.description !== undefined ||
+      v.startAt !== undefined ||
+      v.endAt !== undefined,
+    { message: '변경 항목이 없습니다' },
+  )
+  .refine(
+    (v) => {
+      if (v.startAt && v.endAt) return v.startAt <= v.endAt;
+      return true;
+    },
+    { message: 'startAt 은 endAt 보다 작거나 같아야 합니다' },
+  );
+export type UpdateNodeDto = z.infer<typeof UpdateNodeDto>;
+
+export const MoveNodeDto = z.object({
+  newParentId: z.string().min(1).nullable(),
+  newSortOrder: z.number().int().nonnegative(),
+  expectedUpdatedAt: z.string(),
+});
+export type MoveNodeDto = z.infer<typeof MoveNodeDto>;
+
+export const NodeTreeItem = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  parentId: z.string().nullable(),
+  kind: NodeKind,
+  title: z.string(),
+  description: z.string().nullable(),
+  startAt: z.string().nullable(),       // ITEM: 직접 입력값 / GROUP: null
+  endAt: z.string().nullable(),
+  startAtEffective: z.string().nullable(), // GROUP: 자동집계, ITEM: startAt 동일
+  endAtEffective: z.string().nullable(),
+  sortOrder: z.number().int(),
+  depth: z.number().int(),
+  createdById: z.string(),
+  updatedById: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type NodeTreeItem = z.infer<typeof NodeTreeItem>;
+
+// ─── 동시성 충돌 응답 ──────────────────────────────────────────────────────
+export const ConflictResponse = z.object({
+  code: z.literal('CONFLICT'),
+  message: z.string(),
+  currentUpdatedAt: z.string(),
+});
+export type ConflictResponse = z.infer<typeof ConflictResponse>;

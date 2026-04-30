@@ -7,6 +7,8 @@ import { AuditModule } from './audit/audit.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { ProjectsModule } from './projects/projects.module';
+import { MembersModule } from './members/members.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
 import { AuthGuard } from './auth/auth.guard';
 
@@ -19,6 +21,8 @@ import { AuthGuard } from './auth/auth.guard';
     HealthModule,
     AuthModule,
     UsersModule,
+    ProjectsModule,
+    MembersModule,
     BootstrapModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],

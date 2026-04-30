@@ -16,6 +16,11 @@ export interface AuthSession {
 export interface AuthenticatedRequest extends Request {
   user?: AuthUser;
   session?: AuthSession;
+  /**
+   * `X-Admin-Mode: 1` 헤더를 ADMIN 사용자가 보낸 경우에만 true.
+   * non-ADMIN 의 헤더는 silently 무시됨. AdminModeMiddleware 가 채움.
+   */
+  adminMode?: boolean;
 }
 
 export function getClientIp(req: Request): string | undefined {

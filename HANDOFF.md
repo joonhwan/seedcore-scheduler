@@ -1,8 +1,8 @@
 # SAM Scheduler — 세션 이관 문서
 
-> 다음 세션에서 **M2 (프로젝트 / 멤버 / 일정 노드 CRUD)** 를 시작하기 위한 인수인계.
+> 다음 세션에서 **M2b (일정 노드 트리 백엔드)** 를 시작하기 위한 인수인계.
 > 이 문서 + [DESIGN.md](./DESIGN.md) + [README.md](./README.md) 만으로 작업 재개가 가능하도록 작성됨.
-> 직전 마일스톤(M1 인증) 의 결정/구현 상세는 §6, §7 참조.
+> 직전 마일스톤(M1 인증, M2a 프로젝트/멤버/관리자모드) 의 결정/구현 상세는 §6, §7 참조.
 
 ---
 
@@ -32,7 +32,7 @@ pnpm dev
 
 ---
 
-## 1. 현재 상태 (M0 + M1 완료)
+## 1. 현재 상태 (M0 + M1 + M2a 완료)
 
 ### M0 — 모노레포 스캐폴딩 ✓
 - pnpm workspaces 빌드/실행
@@ -72,11 +72,32 @@ POST   /api/v1/admin/users/:id/reset-password   → {temporaryPassword}
 POST   /api/v1/admin/users/:id/unlock           → 204 (failed_login_count=0, locked_until=null)
 ```
 
-### 아직 안 한 것 (M2 이후)
-- **프로젝트 / 멤버 / 일정 노드 CRUD** ← 다음 세션
-- Timeline 뷰 / 트리 뷰 UI
-- 노드 동시성 (`If-Match: <updated_at>`) + 409 Conflict 처리
+### M2a — 프로젝트 / 멤버 / 관리자 모드 ✓ (2026-04-30)
+- shared: `AuditAction` 에 PROJECT_*/MEMBER_*/NODE_* 추가 + `CreateProjectDto`, `UpdateProjectDto`, `ProjectListItem`, `ProjectDetail`, `AddMemberDto`, `ProjectMemberItem`, `CreateNodeDto`, `UpdateNodeDto`, `MoveNodeDto`, `NodeTreeItem`, `ConflictResponse`
+- `apps/api/src/projects/` — `ProjectsService` 가시성 필터 (ADMIN+adminMode → 전체, 그 외 → 멤버 프로젝트), `ProjectsController` (`GET /projects`, `GET /projects/:id`, `POST/PATCH/DELETE /admin/projects[/...]`)
+- `apps/api/src/members/` — `GET/POST /projects/:id/members`, `DELETE /projects/:id/members/:userId`. 마지막 MANAGER 제거 거부.
+- **AdminMode = 컨텍스트 주입**(차단 X). `AuthGuard` 가 ADMIN 사용자 + `X-Admin-Mode: 1` 헤더일 때만 `req.adminMode=true` 채움. non-ADMIN 의 헤더는 silently 무시.
+- 동시성: `expectedUpdatedAt` body 필드 검사 → 불일치 시 `409 { code:'CONFLICT', currentUpdatedAt }`.
+- DELETE 의미: hard delete 는 `status='ARCHIVED'` 일 때만. ACTIVE 면 `409 NOT_ARCHIVED` ("PATCH status=ARCHIVED 후 삭제하라"). PATCH 로 archive/restore 토글.
+- 모든 state-changing 라우트에 `@UseGuards(OriginGuard)`. ADMIN 모드 변경은 `ADMIN_OVERRIDE_EDIT` 별도 감사.
+- 검증된 엔드포인트:
+  ```
+  GET    /api/v1/projects                                     # 가시성 필터
+  GET    /api/v1/projects/:id
+  POST   /api/v1/admin/projects        {name, description?, managerUserIds[]}
+  PATCH  /api/v1/admin/projects/:id    {name?, description?, status?, expectedUpdatedAt}
+  DELETE /api/v1/admin/projects/:id    # ARCHIVED 만 hard delete
+  GET    /api/v1/projects/:id/members
+  POST   /api/v1/projects/:id/members  {userId, role}
+  DELETE /api/v1/projects/:id/members/:userId
+  ```
+
+### 아직 안 한 것 (M2b 이후)
+- **일정 노드 트리 백엔드** (`/projects/:id/nodes`, `/nodes/:id`, `/nodes/:id/move`) — 다음 세션
 - 노드 history / comments
+- web — 프로젝트 목록/생성 화면 (관리자 모드 토글 + 띠 배너)
+- web — 트리 뷰 (M2c)
+- Timeline 뷰 (M3+)
 - 백업 자동 cron (운영 컨테이너)
 - 오프라인 번들 빌드 / restore 흐름
 
@@ -162,85 +183,76 @@ sam-scheduler/
 
 ---
 
-## 4. M2 작업 계획 — 프로젝트 / 멤버 / 일정 노드 CRUD
+## 4. M2b 작업 계획 — 일정 노드 트리 백엔드
 
-DESIGN §3 (모델), §4.2 (인가 매트릭스), §5.3–§5.6 (API), §6 (프론트), §11 (M2 행) 참조.
+DESIGN §3.2–§3.4 (모델/트리/집계), §5.5–§5.6 (API), §11 (M3 행) 참조.
+
+### 4.0 M2 진입 결정 (확정 완료, 2026-04-30)
+
+| # | 항목 | 채택값 |
+|---|---|---|
+| 1 | 트리 표현 | `parent_id` + `sort_order` + `depth` (materialized_path 미사용) |
+| 2 | sortOrder 재정렬 | 정수 step 1, 일괄 갱신 |
+| 3 | soft-delete | 프로젝트만 ARCHIVED soft, 노드는 즉시 cascade 삭제 + `NodeHistory` 보존 |
+| 4 | `ADMIN_OVERRIDE_EDIT` 트리거 | 헤더 `X-Admin-Mode: 1` 명시 시에만 |
+| 5 | 동시성 토큰 | body `expectedUpdatedAt` 만 (헤더 `If-Match` 미지원) |
+| 6 | GROUP 의 startAt/endAt 입력 | 무시(서버 강제) + 응답에 `startAtEffective`/`endAtEffective` 만 |
+| 7 | DELETE 의미 | ARCHIVED 만 hard delete. ACTIVE 면 409 (PATCH 로 먼저 archive) |
 
 ### 4.1 모듈 구조 (제안)
 
 ```
 apps/api/src/
-├─ projects/
-│   ├─ projects.module.ts
-│   ├─ projects.controller.ts          GET /projects, /admin/projects CRUD/backup/restore
-│   └─ projects.service.ts             권한 필터 (자기 멤버 프로젝트만 / ADMIN 모드 시 전체)
-│
-├─ members/
-│   ├─ members.module.ts
-│   ├─ members.controller.ts           /projects/:id/members 조회/추가/제거
-│   └─ members.service.ts              MANAGER+ 만 변경 가능
-│
-├─ nodes/
-│   ├─ nodes.module.ts
-│   ├─ nodes.controller.ts             /projects/:id/nodes, /nodes/:id, /nodes/:id/move
-│   ├─ nodes.service.ts                트리 CRUD, 깊이/사이클 검사, sortOrder 재정렬
-│   ├─ tree-aggregation.ts             GROUP 의 start_at_effective / end_at_effective 자동 집계
-│   ├─ comments.controller.ts          /nodes/:id/comments, /comments/:cid
-│   └─ history.controller.ts           /nodes/:id/history (조회만; 기록은 nodes.service 에서)
-│
-└─ admin-mode/
-    └─ admin-mode.guard.ts             요청 헤더 'X-Admin-Mode: 1' 검사 → ADMIN 모드 진입 표식
-                                       (감사로그 action='ADMIN_OVERRIDE_EDIT' 으로 기록)
+└─ nodes/
+    ├─ nodes.module.ts
+    ├─ nodes.controller.ts             /projects/:id/nodes, /nodes/:id, /nodes/:id/move
+    ├─ nodes.service.ts                트리 CRUD, 깊이/사이클 검사, sortOrder 재정렬
+    ├─ tree-aggregation.ts             GROUP 의 start_at_effective / end_at_effective 자동 집계
+    ├─ comments.controller.ts          /nodes/:id/comments, /comments/:cid
+    └─ history.controller.ts           /nodes/:id/history (조회만; 기록은 nodes.service 에서)
 ```
 
 ### 4.2 작업 순서 (제안)
 
-1. **shared zod DTO 확장**
-   - `CreateProjectDto`, `UpdateProjectDto`, `AddMemberDto`, `CreateNodeDto`, `UpdateNodeDto`, `MoveNodeDto`
-   - `ProjectListItem`, `NodeTreeItem` (with `startAtEffective`/`endAtEffective`)
-   - `ConflictResponse` (server 의 현재 `updatedAt` 동봉)
-2. **Projects 기본 CRUD**
-   - `GET /projects` — 사용자 가시 프로젝트 (멤버이거나 ADMIN 모드)
-   - `POST /admin/projects` — `manager_user_ids[]` 와 함께 생성 (트랜잭션: project + members)
-   - `PATCH /admin/projects/:id`, `DELETE /admin/projects/:id` (soft archive 후 영구 삭제 옵션)
-3. **Members**
-   - `GET /projects/:id/members`
-   - `POST /projects/:id/members` (MANAGER+ 또는 ADMIN 모드)
-   - `DELETE /projects/:id/members/:userId`
-4. **Nodes — 트리 모델**
-   - `kind=GROUP|ITEM`, `parentId`, `sortOrder`, `depth`
-   - 깊이 ≤ `MAX_TREE_DEPTH`(5), 사이클 검사, 타프로젝트 이동 거부
-   - `GROUP` 은 `startAt`/`endAt` 직접 입력 무시 — children 의 min/max 로 effective 집계
-   - 모든 변경은 `NodeHistory` 에 diff 기록 (CREATE/UPDATE/MOVE/DELETE/RESTORE)
-5. **동시성 (DESIGN §5.6)**
-   - 모든 update/move 는 `If-Match: <updatedAt>` 또는 body `expectedUpdatedAt` 검사
-   - 불일치 시 409 + 현재 서버 값 반환
-6. **댓글 + 히스토리 조회**
-   - `GET/POST /nodes/:id/comments`, `DELETE /comments/:cid` (작성자/MANAGER+/ADMIN)
-   - `GET /nodes/:id/history`
-7. **관리자 모드 UX (DESIGN §4.2.1)**
-   - 헤더 `X-Admin-Mode: 1` (또는 쿠키) 로 진입
-   - 진입 상태에서의 모든 변경은 `ADMIN_OVERRIDE_EDIT` 감사 추가 기록
-   - web: 헤더 토글 버튼 + 띠 배너
-8. **web — 프로젝트/노드 화면**
-   - `/projects` 목록 + 생성 (ADMIN)
-   - `/projects/:id` 트리 뷰 (펼침/접힘, GROUP 색깔 구분, 날짜 칩)
-   - 추후 M3 의 timeline 으로 발전
+1. **노드 CRUD 기반**
+   - `GET /projects/:id/nodes` — 프로젝트 전체 트리 (배열). GROUP 행에는 `startAtEffective` / `endAtEffective` 동봉
+   - `POST /projects/:id/nodes` (멤버 또는 ADMIN 모드) — `kind=GROUP|ITEM`, `parentId?`, `title`, `description?`, `startAt?`, `endAt?` (GROUP 은 start/end 무시)
+   - `PATCH /nodes/:id` — `expectedUpdatedAt` 검사 + 409 처리
+   - `DELETE /nodes/:id` — 자손 cascade 삭제, history 는 보존
+2. **이동 (MoveNodeDto 이미 shared 에 있음)**
+   - `POST /nodes/:id/move` `{newParentId, newSortOrder, expectedUpdatedAt}`
+   - 검증: 사이클 / depth ≤ 5 / 같은 projectId 내
+3. **GROUP effective 집계**
+   - `tree-aggregation.ts` — 읽기 시 재귀 계산 (DESIGN §3.4 옵션 1)
+   - 응답 build 시점에서 한 번만 계산
+4. **NodeHistory**
+   - 모든 CREATE/UPDATE/MOVE/DELETE 마다 `diff_json` 기록
+   - `GET /nodes/:id/history` 조회 라우트
+5. **댓글**
+   - `GET/POST /nodes/:id/comments`, `DELETE /comments/:cid`
+   - 작성자/MANAGER+/ADMIN 모드만 삭제 가능
+6. **감사로그**
+   - 이미 shared 에 NODE_CREATE/UPDATE/MOVE/DELETE 정의됨 (M2a)
+   - ADMIN 모드 시 `ADMIN_OVERRIDE_EDIT` 동시 기록 (Projects 패턴 그대로)
 
-### 4.3 결정 필요 (M2 진입 전 확인 권장)
+### 4.3 ⚠️ M2b 진입 전 해결 필요 — NodeHistory cascade 모순
 
-1. **트리 표현 방식**: 단일 `parent_id` (현재) vs 추가로 `path`/`materialized_path` 컬럼. 자식 다중 조회 시 효율 차이. 본 규모(150 명) 에선 parent_id 만으로도 충분히 빠름 — **권장: parent_id 만 유지**.
-2. **`sortOrder` 재정렬 전략**: 정수 step 1 (재정렬 시 일괄 갱신) vs Lexorank/Fractional indexing. **권장: 정수 step 1** (단순). 100 자식 미만 가정.
-3. **soft-delete 정책**: `Project.status='ARCHIVED'` 그대로 두고 노드는 cascade 물리 삭제 vs 노드도 soft-delete. **권장: 프로젝트 archive 만 soft, 노드는 즉시 삭제 + history 보존**.
-4. **`ADMIN_OVERRIDE_EDIT` 트리거**: 헤더 `X-Admin-Mode: 1` 명시 vs ADMIN 이 비-멤버 프로젝트 편집 시 자동 마킹. **권장: 헤더 명시** (UX 가이드대로 의도 표시).
-5. **동시성 토큰 형식**: `If-Match: <ISO8601>` vs body `expectedUpdatedAt` 둘 다 지원할지. **권장: body 만** (캐시 무관, 단순).
-6. **노드 생성 시 GROUP 의 dates**: 입력값이 들어와도 무시(서버 강제) vs 400. **권장: 무시 + 응답에서 effective 만 반환**.
+현재 schema:
+```
+model NodeHistory {
+  node ScheduleNode @relation(..., onDelete: Cascade)
+}
+```
+정책(M2a 결정 §3): "노드는 즉시 삭제 + history 보존". 그러나 cascade FK 라 노드 삭제 시 history 도 함께 삭제됨.
 
-DESIGN.md §3.2, §4.2, §5.3–§5.6 와 정합. 다음 세션에서 위 6 개 결정 후 §4.2 순서대로 진행하면 됨.
+선택지:
+- **(a) 스키마 수정**: NodeHistory.node 의 onDelete 를 RESTRICT 또는 SetNull, 그리고 `node_id` 를 nullable + `node_id_snapshot` 텍스트 컬럼 추가 (또는 `title_snapshot` 등)
+- **(b) 정책 완화**: history 는 프로젝트 삭제 시까지만 보존 (현재 schema 그대로 사용)
+
+권장: **(a)** — 노드 삭제 후에도 누가 언제 무엇을 지웠는지 history 로 남겨야 감사로그 의도와 부합. 마이그레이션 한 번 추가 필요.
 
 ### 4.4 새로 필요한 의존성
-없음 — 이미 있는 zod / TanStack Query / Prisma / cookie 만으로 가능.
-선택: `nanoid` 등 ID 생성 라이브러리 (현재 `crypto.randomUUID`).
+없음.
 
 ---
 
@@ -350,5 +362,5 @@ export class ProjectsController {
 
 ---
 
-*M1 종료 시점 — 다음 작업은 M2 (프로젝트 / 멤버 / 일정 노드 CRUD).*
-*마지막 커밋: `4832827 M1 auth: 세션/사용자/잠금/감사로그 + 로그인 화면`.*
+*M2a 종료 시점 — 다음 작업은 M2b (일정 노드 트리 백엔드).*
+*마지막 커밋: 후속 — 본 갱신 시점.*

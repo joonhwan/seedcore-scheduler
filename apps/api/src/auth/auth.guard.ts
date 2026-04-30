@@ -68,6 +68,14 @@ export class AuthGuard implements CanActivate {
     };
     req.session = { sid: session.sid, expiresAt: session.expiresAt };
 
+    // X-Admin-Mode: 1 헤더는 ADMIN 사용자에 한해 의미가 있음.
+    // non-ADMIN 의 헤더는 silently 무시 (UX 힌트일 뿐 권한 클레임이 아님).
+    const adminModeHeader = req.headers['x-admin-mode'];
+    req.adminMode =
+      typeof adminModeHeader === 'string' &&
+      adminModeHeader === '1' &&
+      req.user.globalRole === 'ADMIN';
+
     const allowPasswordChange =
       this.reflector.getAllAndOverride<boolean>(ALLOW_PASSWORD_CHANGE_KEY, [
         handler,
