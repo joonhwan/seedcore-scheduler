@@ -5,9 +5,10 @@ import { PrismaClient } from '@prisma/client';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     await this.$connect();
-    await this.$executeRawUnsafe('PRAGMA journal_mode=WAL;');
-    await this.$executeRawUnsafe('PRAGMA synchronous=NORMAL;');
-    await this.$executeRawUnsafe('PRAGMA foreign_keys=ON;');
+    // PRAGMA journal_mode 는 결과 행을 반환하므로 $queryRawUnsafe 사용.
+    await this.$queryRawUnsafe('PRAGMA journal_mode=WAL;');
+    await this.$queryRawUnsafe('PRAGMA synchronous=NORMAL;');
+    await this.$queryRawUnsafe('PRAGMA foreign_keys=ON;');
   }
 
   async onModuleDestroy(): Promise<void> {

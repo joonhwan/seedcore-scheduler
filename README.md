@@ -19,24 +19,38 @@ deploy/           docker compose, nginx, 백업 스크립트
 
 ## 로컬 개발
 
+> **순서가 중요합니다.** 1~4 를 먼저 완료해야 5 의 `pnpm dev` 가 정상 부팅합니다.
+> Prisma Client / DB 가 없으면 NestJS 가 부트시 크래시 → web 의 `/api/*` 프록시가 ECONNREFUSED.
+
 ```bash
-# 의존성 설치
+# 1) 의존성 설치
 pnpm install
 
-# 공유 패키지 빌드 (web/api 가 참조)
+# 2) 공유 패키지 빌드 (web/api 가 컴파일된 dist 를 참조)
 pnpm -F @sam/shared build
 
-# API 환경변수
+# 3) API 환경변수
 cp apps/api/.env.example apps/api/.env
 
-# DB 초기화 (apps/api/data/app.db 생성)
+# 4) Prisma 마이그레이션 + 클라이언트 생성 + DB 파일 생성
 pnpm -F @sam/api prisma:migrate:dev
+#    → apps/api/prisma/migrations/<timestamp>_init/
+#    → apps/api/prisma/data/app.db (Prisma 의 file: URL 은 schema.prisma 위치 기준 상대경로)
 
-# 개발 서버 (api: 3000, web: 5173)
+# 5) 개발 서버 (api: 3000, web: 5173)
 pnpm dev
 ```
 
 브라우저: http://localhost:5173 — Vite 가 `/api/*` 를 `localhost:3000` 으로 프록시.
+
+### 자주 만나는 문제
+
+| 증상 | 원인 / 해결 |
+|---|---|
+| web 콘솔에 `[vite] http proxy error /api/v1/...  ECONNREFUSED` | api 가 안 떴음. `apps/api dev` 로그 확인. 보통 4번 단계(prisma:migrate:dev)를 건너뛴 경우 |
+| `Cannot find module '...apps/api/dist/main'` | tsbuildinfo 캐시가 emit 을 스킵. `apps/api/tsconfig.json` 의 `incremental: false` 가 적용되어 있어야 하며, 해결 안 되면 `apps/api/tsconfig.tsbuildinfo` 와 `apps/api/dist` 삭제 후 재시작 |
+| `The "class-validator" package is missing` | 본 프로젝트는 zod 사용. `ValidationPipe` 를 추가하지 말 것 |
+| `Execute returned results, which is not allowed in SQLite` (P2010) | PRAGMA 류는 결과 행을 반환하므로 Prisma 의 `$queryRawUnsafe` 사용 (`$executeRawUnsafe` 불가) |
 
 ## 운영(에어갭) 설치
 
