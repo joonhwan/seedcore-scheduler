@@ -15,11 +15,6 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": false,
     "useDefineForClassFields": true,
-    "incremental": true,
-    "baseUrl": ".",
-    "paths": {
-      "@sam/shared": ["packages/shared/src/index.ts"],
-      "@sam/shared/*": ["packages/shared/src/*"]
-    }
+    "incremental": true
   }
 }

@@ -2,8 +2,10 @@ import { Controller, Get } from '@nestjs/common';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service';
+import { Public } from '../auth/auth.guard';
 
 @Controller('health')
+@Public()
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
