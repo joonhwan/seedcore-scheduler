@@ -9,6 +9,17 @@ build/
 .turbo/
 *.tsbuildinfo
 
+# tsc -b 가 워크스페이스 *.config.ts 와 같은 위치에 떨어뜨리는 산출물
+# (실제 런타임은 원본 .ts 를 읽음)
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
+apps/web/tailwind.config.js
+apps/web/tailwind.config.d.ts
+
+# tsc -w 가 incremental 캐시 꼬임으로 src/ 에 emit 하는 케이스
+packages/shared/src/*.js
+packages/shared/src/*.js.map
+
 # env / secrets
 .env
 .env.local
