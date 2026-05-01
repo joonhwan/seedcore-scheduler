@@ -203,6 +203,9 @@ export const ProjectMemberItem = z.object({
 export type ProjectMemberItem = z.infer<typeof ProjectMemberItem>;
 
 // ─── 일정 노드 DTO ─────────────────────────────────────────────────────────
+export const Progress = z.number().int().min(0).max(100);
+export type Progress = z.infer<typeof Progress>;
+
 export const CreateNodeDto = z
   .object({
     parentId: z.string().min(1).nullable().optional(),
@@ -211,6 +214,7 @@ export const CreateNodeDto = z
     description: z.string().max(4000).optional(),
     startAt: IsoDate.optional(), // ITEM 만 의미. GROUP 은 무시됨
     endAt: IsoDate.optional(),
+    progress: Progress.optional(),  // ITEM 만 의미. GROUP 은 무시됨
   })
   .refine(
     (v) => {
@@ -227,6 +231,7 @@ export const UpdateNodeDto = z
     description: z.string().max(4000).nullable().optional(),
     startAt: IsoDate.nullable().optional(),
     endAt: IsoDate.nullable().optional(),
+    progress: Progress.optional(),
     expectedUpdatedAt: z.string(),
   })
   .refine(
@@ -234,7 +239,8 @@ export const UpdateNodeDto = z
       v.title !== undefined ||
       v.description !== undefined ||
       v.startAt !== undefined ||
-      v.endAt !== undefined,
+      v.endAt !== undefined ||
+      v.progress !== undefined,
     { message: '변경 항목이 없습니다' },
   )
   .refine(
@@ -264,6 +270,8 @@ export const NodeTreeItem = z.object({
   endAt: z.string().nullable(),
   startAtEffective: z.string().nullable(), // GROUP: 자동집계, ITEM: startAt 동일
   endAtEffective: z.string().nullable(),
+  progress: z.number().int(),                    // ITEM: 직접 입력값 / GROUP: 0 (참고용, UI 는 progressEffective 사용)
+  progressEffective: z.number().int().nullable(), // ITEM: progress 동일 / GROUP: 자손 ITEM 단순평균(반올림). 자손 ITEM 0개면 null
   sortOrder: z.number().int(),
   depth: z.number().int(),
   createdById: z.string(),

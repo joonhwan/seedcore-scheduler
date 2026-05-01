@@ -5,6 +5,7 @@ const KNOWN: Record<string, string> = {
   CYCLE_DETECTED: '하위 노드를 자기 자신의 자손으로 이동할 수 없습니다.',
   MAX_DEPTH_EXCEEDED: '최대 깊이(5단계)를 초과했습니다.',
   GROUP_DATES_NOT_EDITABLE: 'GROUP 노드는 시작/종료일을 직접 편집할 수 없습니다.',
+  GROUP_PROGRESS_NOT_EDITABLE: 'GROUP 노드의 진행율은 자손 ITEM 들의 평균으로 자동 계산됩니다.',
   PROJECT_BOUNDARY: '다른 프로젝트로는 이동할 수 없습니다.',
   NOT_ARCHIVED: '활성 상태에서는 삭제할 수 없습니다. 먼저 보관(ARCHIVE) 처리하세요.',
   LAST_MANAGER: '마지막 MANAGER 는 제거할 수 없습니다.',

@@ -80,6 +80,7 @@ model ScheduleNode {
   description String?
   startAt     String?  @map("start_at") // YYYY-MM-DD (ITEM 만 직접 입력)
   endAt       String?  @map("end_at")
+  progress    Int      @default(0) // 0..100 (ITEM 만 직접 입력). GROUP 의 effective 는 자손 ITEM 단순평균. CHECK 제약은 마이그레이션에서 추가
   sortOrder   Int      @map("sort_order")
   depth       Int // 0..4 — CHECK 제약은 마이그레이션에서 추가
   createdById String   @map("created_by")

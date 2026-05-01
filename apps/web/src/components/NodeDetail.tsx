@@ -15,6 +15,7 @@ export default function NodeDetail({ projectId, node, canEdit }: Props) {
   const [description, setDescription] = useState(node.description ?? '');
   const [startAt, setStartAt] = useState(node.startAt ?? '');
   const [endAt, setEndAt] = useState(node.endAt ?? '');
+  const [progress, setProgress] = useState(node.progress);
   const [error, setError] = useState<string | null>(null);
   const update = useUpdateNode(projectId);
   const isGroup = node.kind === 'GROUP';
@@ -24,6 +25,7 @@ export default function NodeDetail({ projectId, node, canEdit }: Props) {
     setDescription(node.description ?? '');
     setStartAt(node.startAt ?? '');
     setEndAt(node.endAt ?? '');
+    setProgress(node.progress);
     setError(null);
   }, [node.id, node.updatedAt]);
 
@@ -31,7 +33,8 @@ export default function NodeDetail({ projectId, node, canEdit }: Props) {
     title !== node.title ||
     description !== (node.description ?? '') ||
     (!isGroup && startAt !== (node.startAt ?? '')) ||
-    (!isGroup && endAt !== (node.endAt ?? ''));
+    (!isGroup && endAt !== (node.endAt ?? '')) ||
+    (!isGroup && progress !== node.progress);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -46,6 +49,7 @@ export default function NodeDetail({ projectId, node, canEdit }: Props) {
     if (!isGroup) {
       if (startAt !== (node.startAt ?? '')) body.startAt = startAt === '' ? null : startAt;
       if (endAt !== (node.endAt ?? '')) body.endAt = endAt === '' ? null : endAt;
+      if (progress !== node.progress) body.progress = progress;
     }
     if (startAt && endAt && startAt > endAt) {
       setError('시작일은 종료일보다 작거나 같아야 합니다.');
@@ -91,45 +95,64 @@ export default function NodeDetail({ projectId, node, canEdit }: Props) {
       </Field>
 
       {isGroup ? (
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="시작일 (집계)">
-            <input
-              type="text"
-              readOnly
-              value={node.startAtEffective ?? '—'}
-              className="w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-            />
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="시작일 (집계)">
+              <input
+                type="text"
+                readOnly
+                value={node.startAtEffective ?? '—'}
+                className="w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+              />
+            </Field>
+            <Field label="종료일 (집계)">
+              <input
+                type="text"
+                readOnly
+                value={node.endAtEffective ?? '—'}
+                className="w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+              />
+            </Field>
+          </div>
+          <Field label="진행율 (자손 ITEM 평균)">
+            <ProgressReadOnly value={node.progressEffective} />
           </Field>
-          <Field label="종료일 (집계)">
-            <input
-              type="text"
-              readOnly
-              value={node.endAtEffective ?? '—'}
-              className="w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-            />
-          </Field>
-        </div>
+        </>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="시작일">
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="시작일">
+              <input
+                type="date"
+                value={startAt}
+                onChange={(e) => setStartAt(e.target.value)}
+                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                disabled={!canEdit}
+              />
+            </Field>
+            <Field label="종료일">
+              <input
+                type="date"
+                value={endAt}
+                onChange={(e) => setEndAt(e.target.value)}
+                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                disabled={!canEdit}
+              />
+            </Field>
+          </div>
+          <Field label={`진행율 — ${progress}%`}>
             <input
-              type="date"
-              value={startAt}
-              onChange={(e) => setStartAt(e.target.value)}
-              className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={progress}
+              onChange={(e) => setProgress(parseInt(e.target.value, 10))}
               disabled={!canEdit}
+              className="w-full accent-sky-600 disabled:opacity-50"
             />
           </Field>
-          <Field label="종료일">
-            <input
-              type="date"
-              value={endAt}
-              onChange={(e) => setEndAt(e.target.value)}
-              className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-              disabled={!canEdit}
-            />
-          </Field>
-        </div>
+        </>
       )}
 
       {error && (
@@ -159,5 +182,26 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="block text-slate-700 dark:text-slate-300">{label}</span>
       <div className="mt-1">{children}</div>
     </label>
+  );
+}
+
+function ProgressReadOnly({ value }: { value: number | null }) {
+  if (value === null) {
+    return (
+      <div className="text-xs text-slate-500 dark:text-slate-400">
+        자손 ITEM 이 없어 산출되지 않습니다.
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-3">
+      <div className="h-2 flex-1 overflow-hidden rounded bg-slate-200 dark:bg-slate-700">
+        <div
+          className="h-full bg-sky-600"
+          style={{ width: `${value}%` }}
+        />
+      </div>
+      <span className="w-12 text-right font-mono text-sm">{value}%</span>
+    </div>
   );
 }

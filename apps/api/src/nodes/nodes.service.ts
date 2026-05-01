@@ -72,9 +72,10 @@ export class NodesService {
       throw new BadRequestException({ error: 'MAX_DEPTH_EXCEEDED' });
     }
 
-    // GROUP 은 startAt/endAt 직접 입력 금지 (서버가 무시)
+    // GROUP 은 startAt/endAt/progress 직접 입력 금지 (서버가 무시)
     const startAt = body.kind === 'GROUP' ? null : body.startAt ?? null;
     const endAt = body.kind === 'GROUP' ? null : body.endAt ?? null;
+    const progress = body.kind === 'GROUP' ? 0 : body.progress ?? 0;
 
     const id = randomUUID();
     const created = await this.prisma.$transaction(async (tx) => {
@@ -94,6 +95,7 @@ export class NodesService {
           description: body.description ?? null,
           startAt,
           endAt,
+          progress,
           sortOrder: nextSort,
           depth,
           createdById: ctx.actorId,
@@ -114,6 +116,7 @@ export class NodesService {
           depth: { from: null, to: node.depth },
           startAt: { from: null, to: node.startAt },
           endAt: { from: null, to: node.endAt },
+          progress: { from: null, to: node.progress },
         },
       });
       return node;
@@ -168,6 +171,9 @@ export class NodesService {
     ) {
       throw new BadRequestException({ error: 'GROUP_DATES_NOT_EDITABLE' });
     }
+    if (target.kind === 'GROUP' && body.progress !== undefined) {
+      throw new BadRequestException({ error: 'GROUP_PROGRESS_NOT_EDITABLE' });
+    }
 
     // 결합된 startAt/endAt 검증 (한쪽만 바뀌어도 새 값 기준으로 검사)
     const nextStart =
@@ -199,6 +205,10 @@ export class NodesService {
     if (body.endAt !== undefined && body.endAt !== target.endAt) {
       data.endAt = body.endAt;
       diff.endAt = { from: target.endAt, to: body.endAt };
+    }
+    if (body.progress !== undefined && body.progress !== target.progress) {
+      data.progress = body.progress;
+      diff.progress = { from: target.progress, to: body.progress };
     }
 
     if (Object.keys(diff).length === 0) {
@@ -460,6 +470,7 @@ export class NodesService {
             depth: { from: n.depth, to: null },
             startAt: { from: n.startAt, to: null },
             endAt: { from: n.endAt, to: null },
+            progress: { from: n.progress, to: null },
           },
         });
       }
@@ -566,18 +577,21 @@ export class NodesService {
   }
 
   private toSingleTreeItem(node: ScheduleNode): NodeTreeItem {
-    // 단일 노드 응답에서는 effective = 본인 startAt/endAt (자식 정보 없음)
+    // 단일 노드 응답에서는 effective = 본인 값 (자식 정보 없음 — GROUP 의 progressEffective 는 null)
+    const isItem = node.kind === 'ITEM';
     return {
       id: node.id,
       projectId: node.projectId,
       parentId: node.parentId,
-      kind: node.kind === 'GROUP' ? 'GROUP' : 'ITEM',
+      kind: isItem ? 'ITEM' : 'GROUP',
       title: node.title,
       description: node.description,
-      startAt: node.kind === 'ITEM' ? node.startAt : null,
-      endAt: node.kind === 'ITEM' ? node.endAt : null,
-      startAtEffective: node.kind === 'ITEM' ? node.startAt : null,
-      endAtEffective: node.kind === 'ITEM' ? node.endAt : null,
+      startAt: isItem ? node.startAt : null,
+      endAt: isItem ? node.endAt : null,
+      startAtEffective: isItem ? node.startAt : null,
+      endAtEffective: isItem ? node.endAt : null,
+      progress: node.progress,
+      progressEffective: isItem ? node.progress : null,
       sortOrder: node.sortOrder,
       depth: node.depth,
       createdById: node.createdById,
