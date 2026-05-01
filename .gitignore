@@ -30,7 +30,7 @@ data/
 *.db
 *.db-shm
 *.db-wal
-backup/
+/backup/
 logs/
 
 # editor / OS
