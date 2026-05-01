@@ -10,6 +10,7 @@ import ProjectsPage from './pages/ProjectsPage';
 import ProjectNewPage from './pages/ProjectNewPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import ProjectMembersPage from './pages/ProjectMembersPage';
+import AdminUsersPage from './pages/AdminUsersPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const me = useMe();
@@ -52,6 +53,14 @@ function Header() {
       <div className="flex items-center gap-3 text-sm">
         {me.data && (
           <>
+            {isAdmin && (
+              <Link
+                to="/admin/users"
+                className="text-slate-600 hover:underline dark:text-slate-400"
+              >
+                사용자 관리
+              </Link>
+            )}
             {isAdmin && (
               <label className="flex cursor-pointer items-center gap-2 select-none">
                 <input
@@ -135,6 +144,14 @@ export default function App() {
           element={
             <RequireAuth>
               <ProjectMembersPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <RequireAuth>
+              <AdminUsersPage />
             </RequireAuth>
           }
         />
