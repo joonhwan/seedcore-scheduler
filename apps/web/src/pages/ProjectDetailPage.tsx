@@ -248,6 +248,12 @@ function ProjectHeader({
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <Link
+          to={`/projects/${project.id}/timeline`}
+          className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+        >
+          Timeline 뷰
+        </Link>
+        <Link
           to={`/projects/${project.id}/members`}
           className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
         >

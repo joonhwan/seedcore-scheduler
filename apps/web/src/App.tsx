@@ -9,6 +9,7 @@ import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectNewPage from './pages/ProjectNewPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
+import ProjectTimelinePage from './pages/ProjectTimelinePage';
 import ProjectMembersPage from './pages/ProjectMembersPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 
@@ -136,6 +137,14 @@ export default function App() {
           element={
             <RequireAuth>
               <ProjectDetailPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/projects/:id/timeline"
+          element={
+            <RequireAuth>
+              <ProjectTimelinePage />
             </RequireAuth>
           }
         />

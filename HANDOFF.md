@@ -1,8 +1,8 @@
 # SAM Scheduler — 세션 이관 문서
 
-> 다음 세션에서 **M3 (Timeline 뷰 / 운영 자동화)** 를 시작하기 위한 인수인계.
+> M0 + M1 + M2(a/b/c) + M3(a/b/c/d) 까지 완료. 다음 세션은 **v1 출시 폴리시 / 오프라인 번들** 이 자연스러운 후속.
 > 이 문서 + [DESIGN.md](./DESIGN.md) + [README.md](./README.md) 만으로 작업 재개가 가능하도록 작성됨.
-> 직전 마일스톤(M1 인증, M2a 프로젝트/멤버/관리자모드, M2b 노드 트리 백엔드, M2c 웹 프론트엔드) 의 결정/구현 상세는 §6, §7, §8, §9 참조.
+> 직전 마일스톤들의 결정/구현 상세는 §6~§11 참조.
 
 ---
 
@@ -32,7 +32,7 @@ pnpm dev
 
 ---
 
-## 1. 현재 상태 (M0 + M1 + M2a + M2b + M2c 완료)
+## 1. 현재 상태 (M0 + M1 + M2a + M2b + M2c + M3a + M3b + M3c + M3d 완료)
 
 ### M0 — 모노레포 스캐폴딩 ✓
 - pnpm workspaces 빌드/실행
@@ -148,11 +148,69 @@ GET    /api/v1/nodes/:id/history                # nodeIdSnapshot 조회, 삭제 
 - 트리 dnd 미지원. 부모 변경은 ⇄ 버튼 모달
 - 이력 페이지네이션 미지원 (200건 take)
 
-### 아직 안 한 것 (M3 이후)
-- Timeline 뷰 / 캘린더 뷰 (DESIGN §6.4)
-- 백업 자동 cron (운영 컨테이너)
-- 오프라인 번들 빌드 / restore 흐름
-- 사용자 관리 화면 (`/admin/users`) — 백엔드는 M1 에서 준비됨, web UI 만 미구현
+### M3a — 사용자 관리 web UI ✓ (2026-05-01)
+- `/admin/users` 라우트, 헤더에 ADMIN 한정 "사용자 관리" 링크 (adminMode 와 무관, `globalRole === 'ADMIN'` 만으로 가드)
+- `AdminUsersPage`: 검색·상태 필터(기본 "전체"), 행 인라인 displayName 편집, 비활성/잠금/비번변경필요 배지, 자기자신 비활성화 disabled
+- `UserCreateDialog`: zod safeParse + 비밀번호 정책(`validatePassword`) 사전체크 → USER 권한으로만 생성, `passwordMustChange=true`
+- `TempPasswordDialog`: 비번 리셋 후 1회성 표시 + 복사 버튼. 캐시/URL 미저장
+- `lib/users`: `useCreateUser/useUpdateUser/useResetPassword/useUnlockUser` mutation + 공통 `['admin','users']` invalidate
+- `lib/errors`: `USERNAME_TAKEN`, `PASSWORD_POLICY_VIOLATION`, `LAST_ACTIVE_ADMIN`, `USER_NOT_FOUND` 매핑
+
+### M3a 검증된 동선
+```
+GET    /api/v1/admin/users?query=&status=active|inactive|all   # 페이지 기본 'all'
+POST   /api/v1/admin/users           {username, displayName, initialPassword}
+PATCH  /api/v1/admin/users/:id       {displayName?, isActive?}
+POST   /api/v1/admin/users/:id/reset-password   → {temporaryPassword}
+POST   /api/v1/admin/users/:id/unlock           → 204
+```
+
+### M3b — 백업 자동화 (NestJS 스케줄러) ✓ (2026-05-01)
+- `apps/api/src/backup/{backup.module,backup.service,backup.controller}.ts` 신규
+- `@nestjs/schedule@^6.1.3` + `cron@^4.x` 의존성 추가
+- `SchedulerRegistry.addCronJob` 동적 등록 (TZ='Asia/Seoul' 하드코드, env 변경에 강함)
+- `BACKUP_DB_PATH` 별도 env (Prisma DATABASE_URL 파싱 회피). dev portable 기본값: `cwd/prisma/data/app.db`, `cwd/data/backup`
+- VACUUM INTO 인라인 path (parameter 미지원 — `'` escape) → tmp → gzip(level 9) → `BACKUP_DIR/YYYYMMDD/app.db.gz` + `.sha256` sidecar (sha256sum 표준 형식)
+- `isRunning` 게이트 (cron + manual 공통). overlap 방지 검증 완료
+- `BACKUP_RETENTION_DAYS` 초과 디렉토리 자동 정리 (mtime 기준)
+- `POST /admin/health/backup/run` (ADMIN+OriginGuard) — 동기 응답: `{ ok, path, sizeBytes, sha256, durationMs }`
+- `GET /health/backup` 디렉토리 스캔 그대로 (in-memory cache 미도입 — 재시작에도 정확)
+- `node:crypto` sha256 (sha256sum 셸 미사용 — air-gap 친화)
+- `deploy/scripts/{full-backup,restore-system,cleanup-old-backups}.sh` 는 **수동 fallback** 으로만 유지
+
+### M3c — 진행율(%) 도메인 + Tree 뷰 통합 ✓ (2026-05-01)
+- `ScheduleNode.progress` (Int 0..100, default 0) — 마이그레이션 `20260501004505_m3_node_progress` + CHECK 제약 (Prisma raw SQL 패치, schema 는 `@default(0)` 만)
+- shared: `Progress = z.number().int().min(0).max(100)`. `CreateNodeDto`/`UpdateNodeDto` 에 `progress?` 추가, `NodeTreeItem` 에 `progress` + `progressEffective` 추가
+- 집계 알고리즘: **자손 ITEM 단순평균(반올림)**. GROUP-only 자손은 sum/count 캐리로 평탄화. 자손 ITEM 0개면 `null`. 기간 가중 X (advisor 권고)
+- `nodes.service`: GROUP 의 progress 직접 입력 거부 (`GROUP_PROGRESS_NOT_EDITABLE` — startAt/endAt 와 동일 패턴). create 시엔 silent ignore
+- history diff 자동 포함 (CREATE/UPDATE/DELETE). UPDATE 의 같은-값 short-circuit 도 그대로
+- `NodeDetail`: ITEM = 슬라이더(step 5) + "진행율 — 75%" readout. GROUP = 막대 fill + "60%" read-only ("자손 ITEM 평균"). 자손 ITEM 0 GROUP = "산출되지 않습니다."
+- `toSingleTreeItem`: ITEM 의 `progressEffective=progress`, GROUP 은 `null` (다음 list refetch 가 채움)
+
+### M3d — Timeline 뷰 (`/projects/:id/timeline`) ✓ (2026-05-01)
+- 직접 SVG/CSS grid (외부 Gantt 라이브러리 미도입). v1 은 **읽기 전용** 막대. 편집은 우측 NodeDetail 패널에서 (Tree 뷰와 동일 컴포넌트 재사용)
+- 단위 토글: 일/주/월/분기 — 모두 px-per-day 기반 (`day:24, week:10, month:4, quarter:2`). 가로 스크롤 + sticky 라벨/헤더
+- 데이터 기반 range: `min(startAtEffective)` ~ `max(endAtEffective)` + 좌우 3일 padding. 빈 데이터면 메시지 표시 (crash X)
+- Date 처리는 day-count UTC 통일 (`parseYmd` → `Date.UTC` → `dayDiff` ms/86400000). 로컬 TZ 의존 X (advisor 의 off-by-one 함정 회피)
+- 빈 일자 노드는 라벨만 표시 (막대 X). 클릭 시 우측 NodeDetail 패널 열림
+- "오늘" 세로 빨간 선 + "오늘로 이동" 버튼 (scrollTo + counter trigger)
+- 트리 펼침 상태는 Tree↔Timeline 간 비공유 (Zustand 도입 회피). 재진입 시 fresh
+- ProjectDetailPage 헤더에 "Timeline 뷰" 링크 추가
+
+### 알려진 caveat / 의도된 한계
+- adminMode 토글 OFF 중 비멤버 프로젝트 페이지 머무르면 다음 refetch 가 403 → 토스트만 (M2c 그대로)
+- 트리 dnd 미지원. 부모 변경은 ⇄ 버튼 모달 (M2c 그대로)
+- 이력 페이지네이션 미지원 (200건 take, M2b 그대로)
+- Timeline 의 드래그 편집 (DESIGN §6.2.2) 은 v1.x 이후
+- 사용자 관리에서 ADMIN 으로 권한 승격 X (DESIGN §12-⑥ "단일 ADMIN 운영", `global_role` 변경은 시딩/DB 직접 조작만)
+- M3-4 의 UI smoke 는 Playwright MCP disconnect 로 수동 검증으로 위임 (typecheck+build 통과)
+
+### 아직 안 한 것 (v1.x / M4 이후)
+- 오프라인 번들 빌드 (`docker save` + 운영 install 스크립트 정리, DESIGN §10)
+- 시스템 복원 흐름 / 프로젝트 zip 백업·복원 UI (DESIGN §7.2~7.3)
+- Timeline 의 드래그 편집 (DESIGN §6.2.2)
+- 캘린더 뷰 (DESIGN §11 로드맵)
+- 캐시 컬럼 propagate 방식 (DESIGN §3.4 옵션 2) — 노드 5,000건 이내는 옵션 1 로 충분
 
 ---
 
@@ -240,31 +298,21 @@ sam-scheduler/
 
 ---
 
-## 4. M3 작업 계획 — Timeline 뷰 / 운영 자동화
+## 4. M3 진입 결정 (실제 채택)
 
-DESIGN §6.4 (Timeline 뷰), §7 (백업/복원), §11 (로드맵) 참조.
+| # | 항목 | 채택 | 이유 |
+|---|---|---|---|
+| 1 | Timeline 라이브러리 | (a) **직접 SVG/CSS grid** | v1 출시 우선. SVAR Gantt(@svar-ui/react-gantt) 도 검토했으나 도메인(권한/expectedUpdatedAt/GROUP 자동집계/depth≤4) 정합 부담 큼. 직접 구현 = 의존성 0, Tailwind/다크모드 통일, Air-gap 번들 가벼움 |
+| 2 | Timeline 의 상태 변경 | (a) **읽기 전용** | 드래그 편집은 v1.x. 트리 뷰의 NodeDetail 폼이 주 편집창 |
+| 3 | 백업 자동화 | (b) **NestJS 스케줄러** (`@nestjs/schedule`) | 컨테이너 1개 운영 단순. `BACKUP_CRON` env 와 정합. `/health/backup` 도 같은 프로세스 |
+| 4 | 사용자 관리 web UI | (a) **M3 에 포함** | 백엔드는 M1 완료. UI 분량 작음. ADMIN 운영 흐름의 마지막 빈 칸 |
+| ＋ | 진행율(%) 도메인 | **B 도입** — `ScheduleNode.progress` (Int 0..100, default 0). ITEM 직접 입력, GROUP `progressEffective` 자동집계 (자손 ITEM 단순평균) | Timeline 의 시각적 가치 + GROUP 의 effective 집계 인프라가 이미 존재 |
 
-### 4.0 M3 진입 결정 (다음 세션에서 확정 필요)
-
-| # | 항목 | 후보 |
-|---|---|---|
-| 1 | Timeline 라이브러리 | (a) 직접 SVG/CSS grid (b) `vis-timeline` (c) `react-gantt-task` 등 |
-| 2 | Timeline 뷰의 상태 변경 | (a) 읽기 전용 (b) 드래그로 일자 조정 (UPDATE 호출) |
-| 3 | 백업 자동화 | (a) 컨테이너 cron (host crontab + bash) (b) NestJS 스케줄러 (c) 둘 다 |
-| 4 | 사용자 관리 web UI | (a) M3 에 포함 (b) 별도 마일스톤 |
-
-### 4.1 후속 작업 후보
-
-1. **Timeline 뷰 (`/projects/:id` 의 추가 탭)**
-   - 평면 NodeTreeItem[] → 일자별로 정렬한 간트 형태
-   - GROUP 은 effective 범위로 막대 (자식 ITEM 합)
-   - ITEM 은 startAt..endAt 막대
-   - 좌측 노드 라벨 + 상단 일자 헤더
-2. **사용자 관리 web UI** (백엔드 M1 준비 완료):
-   - `/admin/users` — 목록, 생성, displayName/active 토글, 비밀번호 리셋(임시 비번 토스트), 잠금 해제
-3. **백업 자동화**:
-   - `deploy/scripts/full-backup.sh` 가 이미 존재. 스케줄링 + 보존(`BACKUP_RETENTION_DAYS`) 자동화
-4. **오프라인 번들 / restore 흐름** (DESIGN §10): docker save + scripts 정리
+### 4.x M3 후 자연스러운 후속
+- v1 출시 폴리시 (텍스트 검수, 한국어 i18n 분리, 키보드 내비)
+- 오프라인 번들 (`docker save` + install/restore 스크립트 정리)
+- 프로젝트 zip 백업·복원 UI
+- Timeline 의 드래그 편집 (DESIGN §6.2.2)
 
 ---
 
@@ -436,5 +484,5 @@ export class ProjectsController {
 
 ---
 
-*M2c 종료 시점 — 다음 작업은 M3 (Timeline 뷰 / 운영 자동화 / 사용자 관리 UI 등).*
-*마지막 커밋: 후속 — 본 갱신 시점.*
+*M3d 종료 시점 — 다음 작업은 v1 출시 폴리시 / 오프라인 번들 / 복원 UI.*
+*마지막 커밋: M3a, M3b, M3c, M3d 4개 커밋 + 본 HANDOFF 갱신.*
