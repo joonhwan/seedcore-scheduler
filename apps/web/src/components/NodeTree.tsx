@@ -105,7 +105,7 @@ function NodeRow({
   return (
     <li>
       <div
-        className={`group flex items-center gap-2 rounded px-2 py-1.5 text-sm ${
+        className={`group relative flex items-center gap-2 rounded px-2 py-1.5 text-sm ${
           isSelected
             ? 'bg-sky-100 dark:bg-sky-900/40'
             : 'hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -124,7 +124,7 @@ function NodeRow({
         </button>
 
         {canEdit && (
-          <div className="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
+          <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded bg-slate-100 px-1 py-0.5 shadow-sm group-hover:flex dark:bg-slate-700">
             <IconBtn
               title="위로"
               disabled={indexAmongSiblings === 0}
