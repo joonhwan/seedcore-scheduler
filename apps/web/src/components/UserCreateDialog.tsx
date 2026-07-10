@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CreateUserDto, validatePassword } from '@sam/shared';
+import { CreateUserDto, validatePassword, PASSWORD_MIN_LENGTH } from '@sam/shared';
 import { useCreateUser } from '../lib/users';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
@@ -34,7 +34,7 @@ export default function UserCreateDialog({
     if (policy) {
       setError(
         policy === 'TOO_SHORT'
-          ? '비밀번호는 최소 10자 이상이어야 합니다.'
+          ? `비밀번호는 최소 ${PASSWORD_MIN_LENGTH}자 이상이어야 합니다.`
           : policy === 'INSUFFICIENT_VARIETY'
             ? '비밀번호는 영문/숫자/특수 중 3종 이상을 포함해야 합니다.'
             : 'username 을 비밀번호에 포함할 수 없습니다.',
@@ -95,7 +95,7 @@ export default function UserCreateDialog({
             type="text"
             value={initialPassword}
             onChange={(e) => setInitialPassword(e.target.value)}
-            placeholder="최소 10자, 영·숫·특 중 3종"
+            placeholder="초기 비밀번호 입력"
             className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-1.5 font-mono dark:border-slate-700 dark:bg-slate-900"
           />
         </label>

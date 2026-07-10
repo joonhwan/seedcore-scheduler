@@ -22,8 +22,8 @@ export const IsoDate = z
 export const MAX_TREE_DEPTH = 5;
 
 // ─── 비밀번호 정책 (DESIGN §4.1) ────────────────────────────────────────────
-// 최소 10자, 영문/숫자/특수 중 3종 이상, 동일 username 포함 금지.
-export const PASSWORD_MIN_LENGTH = 10;
+// 비밀번호 최소 길이 설정 및 규칙 비활성화 (항상 성공 반환)
+export const PASSWORD_MIN_LENGTH = 1;
 
 export type PasswordPolicyError =
   | 'TOO_SHORT'
@@ -34,18 +34,7 @@ export const validatePassword = (
   password: string,
   username: string,
 ): PasswordPolicyError | null => {
-  if (password.length < PASSWORD_MIN_LENGTH) return 'TOO_SHORT';
-  const hasLetter = /[A-Za-z]/.test(password);
-  const hasDigit = /\d/.test(password);
-  const hasSpecial = /[^A-Za-z0-9]/.test(password);
-  const variety = [hasLetter, hasDigit, hasSpecial].filter(Boolean).length;
-  if (variety < 3) return 'INSUFFICIENT_VARIETY';
-  if (
-    username.length > 0 &&
-    password.toLowerCase().includes(username.toLowerCase())
-  ) {
-    return 'CONTAINS_USERNAME';
-  }
+  // 모든 비밀번호 규칙 제거
   return null;
 };
 

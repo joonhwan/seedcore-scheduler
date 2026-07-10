@@ -56,7 +56,7 @@ export default function ChangePasswordPage() {
           autoComplete="current-password"
         />
         <PasswordField
-          label={`새 비밀번호 (최소 ${PASSWORD_MIN_LENGTH}자, 영문/숫자/특수 중 3종 이상)`}
+          label="새 비밀번호"
           value={next}
           onChange={setNext}
           autoComplete="new-password"
