@@ -103,7 +103,7 @@ export default function Timeline({
   return (
     <div
       ref={scrollerRef}
-      className="overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+      className="overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 max-h-[500px] lg:max-h-[calc(100vh-220px)]"
     >
       <div
         className="relative"
@@ -206,7 +206,7 @@ function Row({
 
   return (
     <div
-      className={`flex border-b border-slate-100 dark:border-slate-800 ${
+      className={`group flex border-b border-slate-100 dark:border-slate-800 ${
         isSelected ? 'bg-sky-50 dark:bg-sky-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
       }`}
       style={{ height: ROW_HEIGHT }}
@@ -214,7 +214,11 @@ function Row({
       <button
         type="button"
         onClick={() => onSelect(node.id)}
-        className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-slate-200 bg-inherit px-3 text-left text-xs dark:border-slate-700"
+        className={`sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-slate-200 px-3 text-left text-xs dark:border-slate-700 ${
+          isSelected
+            ? 'bg-sky-50 dark:bg-sky-950'
+            : 'bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800'
+        }`}
         style={{ width: LABEL_WIDTH, paddingLeft: 12 + node.depth * 16 }}
         title={node.title}
       >
