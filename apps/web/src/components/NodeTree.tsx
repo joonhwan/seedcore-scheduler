@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { MAX_TREE_DEPTH, type NodeKind, type NodeTreeItem } from '@sam/shared';
 
-interface TreeNode extends NodeTreeItem {
+export interface TreeNode extends NodeTreeItem {
   children: TreeNode[];
 }
 

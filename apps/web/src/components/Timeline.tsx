@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MAX_TREE_DEPTH, type NodeTreeItem, type NodeHistoryItem } from '@sam/shared';
-import { buildTree, maxDescendantDepth } from './NodeTree';
+import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
 import { useNodeHistory } from '../lib/history';
 import { apiErrorMessage } from '../lib/errors';
 
@@ -46,13 +46,15 @@ function dayDiff(a: Date, b: Date): number {
   return Math.round((a.getTime() - b.getTime()) / 86400000);
 }
 
-function flattenTree(items: NodeTreeItem[]): NodeTreeItem[] {
+function flattenTree(items: NodeTreeItem[], collapsedIds: Set<string>): TreeNode[] {
   const tree = buildTree(items);
-  const out: NodeTreeItem[] = [];
-  function walk(arr: typeof tree) {
+  const out: TreeNode[] = [];
+  function walk(arr: TreeNode[]) {
     for (const n of arr) {
       out.push(n);
-      if (n.children.length > 0) walk(n.children);
+      if (n.children.length > 0 && !collapsedIds.has(n.id)) {
+        walk(n.children);
+      }
     }
   }
   walk(tree);
@@ -72,7 +74,29 @@ export default function Timeline({
   onChangeParent,
   onDelete,
 }: Props) {
-  const flat = useMemo(() => flattenTree(items), [items]);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const flat = useMemo(() => flattenTree(items, collapsedIds), [items, collapsedIds]);
+
+  const toggleCollapse = (id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const collapseAll = () => {
+    const groupIds = items.filter((n) => n.kind === 'GROUP').map((n) => n.id);
+    setCollapsedIds(new Set(groupIds));
+  };
+
+  const expandAll = () => {
+    setCollapsedIds(new Set());
+  };
 
   const range = useMemo(() => computeRange(items), [items]);
 
@@ -127,10 +151,28 @@ export default function Timeline({
           style={{ height: HEADER_HEIGHT }}
         >
           <div
-            className="sticky left-0 z-30 shrink-0 border-r border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            className="sticky left-0 z-30 shrink-0 border-r border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 flex items-center justify-between"
             style={{ width: LABEL_WIDTH }}
           >
-            노드
+            <span>노드</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={collapseAll}
+                className="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
+                title="모든 그룹 접기"
+              >
+                모두 접기
+              </button>
+              <button
+                type="button"
+                onClick={expandAll}
+                className="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
+                title="모든 그룹 펼치기"
+              >
+                모두 펼치기
+              </button>
+            </div>
           </div>
           <div className="relative" style={{ width: totalWidth }}>
             {headerCells.map((c, i) => (
@@ -169,6 +211,8 @@ export default function Timeline({
                 canEdit={canEdit}
                 siblingCount={siblingCount}
                 indexAmongSiblings={indexAmongSiblings}
+                isCollapsed={collapsedIds.has(n.id)}
+                onToggleCollapse={toggleCollapse}
                 onAddChild={onAddChild}
                 onAddSibling={onAddSibling}
                 onMoveSibling={onMoveSibling}
@@ -210,13 +254,15 @@ function Row({
   canEdit,
   siblingCount,
   indexAmongSiblings,
+  isCollapsed,
+  onToggleCollapse,
   onAddChild,
   onAddSibling,
   onMoveSibling,
   onChangeParent,
   onDelete,
 }: {
-  node: NodeTreeItem;
+  node: TreeNode;
   range: { start: Date; end: Date };
   ppd: number;
   totalWidth: number;
@@ -226,6 +272,8 @@ function Row({
   canEdit?: boolean | undefined;
   siblingCount: number;
   indexAmongSiblings: number;
+  isCollapsed: boolean;
+  onToggleCollapse: (id: string) => void;
   onAddChild?: ((parent: NodeTreeItem) => void) | undefined;
   onAddSibling?: ((sibling: NodeTreeItem) => void) | undefined;
   onMoveSibling?: ((node: NodeTreeItem, direction: -1 | 1) => void) | undefined;
@@ -237,9 +285,8 @@ function Row({
   const end = isGroup ? node.endAtEffective : node.endAt;
   const progress = isGroup ? node.progressEffective : node.progress;
 
-  const treeNode = node as any;
-  const childWouldExceedDepth = treeNode.depth + 1 >= MAX_TREE_DEPTH;
-  const subtreeMaxDepth = maxDescendantDepth(treeNode);
+  const childWouldExceedDepth = node.depth + 1 >= MAX_TREE_DEPTH;
+  const subtreeMaxDepth = maxDescendantDepth(node);
 
   let bar: { leftPx: number; widthPx: number } | null = null;
   if (start && end) {
@@ -259,13 +306,37 @@ function Row({
       style={{ height: ROW_HEIGHT }}
     >
       <div
-        className={`sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-slate-200 px-3 text-left text-xs dark:border-slate-700 relative ${
+        className={`sticky left-0 z-10 flex shrink-0 items-center gap-1 border-r border-slate-200 px-2 text-left text-xs dark:border-slate-700 relative ${
           isSelected
             ? 'bg-sky-50 dark:bg-sky-950'
             : 'bg-white dark:bg-slate-900 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800'
         }`}
-        style={{ width: LABEL_WIDTH, paddingLeft: 12 + node.depth * 16 }}
+        style={{ width: LABEL_WIDTH, paddingLeft: 8 + node.depth * 16 }}
       >
+        {/* 접기/펼치기 토글 버튼 */}
+        <div className="w-5 shrink-0 flex items-center justify-center">
+          {isGroup && node.children.length > 0 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleCollapse(node.id);
+              }}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center"
+              aria-label={isCollapsed ? '펼치기' : '접기'}
+            >
+              <svg
+                className={`w-4 h-4 fill-current transition-transform duration-150 ${
+                  isCollapsed ? '' : 'rotate-90'
+                }`}
+                viewBox="0 0 24 24"
+              >
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </button>
+          )}
+        </div>
+
         <button
           type="button"
           onClick={() => onSelect(node.id)}
