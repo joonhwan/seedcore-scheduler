@@ -1,0 +1,28 @@
+# fly.toml app configuration file for SAM Scheduler
+#
+# See https://fly.io/docs/reference/configuration/ for information
+
+app = "sam-scheduler-demo"
+primary_region = "nrt" # 도쿄 리전 (한국과 가까운 무료 권장 리전)
+
+[build]
+  dockerfile = "Dockerfile.fly"
+
+[env]
+  DATABASE_URL = "file:/var/sam-scheduler/data/app.db"
+  BACKUP_DIR = "/var/sam-scheduler/backup/daily"
+  # 세션 시크릿 등 민감한 환경변수는 fly secrets set 명령어로 주입하는 것을 권장합니다.
+
+
+[[mounts]]
+  source = "sam_data"
+  destination = "/var/sam-scheduler"
+  initial_size = "1gb" # Fly.io 무료 티어 범위 내 (최대 3GB 무료)
+
+[http_service]
+  internal_port = 80
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]

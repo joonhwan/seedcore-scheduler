@@ -1,0 +1,60 @@
+# syntax=docker/dockerfile:1.7
+FROM node:20-alpine AS base
+RUN corepack enable && apk add --no-cache sqlite gzip tini openssl nginx
+WORKDIR /app
+
+# --- Web 빌드 단계 ---
+FROM base AS builder-web
+COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+RUN pnpm install --no-frozen-lockfile
+COPY packages/shared ./packages/shared
+COPY apps/web ./apps/web
+RUN pnpm --filter @sam/shared build \
+ && pnpm --filter @sam/web build
+
+# --- API 빌드 단계 ---
+FROM base AS builder-api
+COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/shared/package.json ./packages/shared/
+RUN pnpm install --no-frozen-lockfile
+COPY packages/shared ./packages/shared
+COPY apps/api ./apps/api
+RUN pnpm --filter @sam/shared build \
+ && pnpm --filter @sam/api prisma:generate \
+ && pnpm --filter @sam/api build
+
+# --- 최종 런타임 단계 ---
+FROM base AS runtime
+ENV NODE_ENV=production
+
+# Nginx 설정 및 정적 리소스 복사
+COPY deploy/nginx.fly.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder-web /app/apps/web/dist /usr/share/nginx/html
+
+# API 서버 복사
+COPY --from=builder-api /app /app
+
+# run-services 쉘 스크립트 작성
+RUN printf '#!/bin/sh\n\
+# Nginx PID 디렉토리 생성 및 권한 설정\n\
+mkdir -p /run/nginx\n\
+\n\
+# 1. DB 마이그레이션 실행\n\
+cd /app/apps/api\n\
+pnpm prisma:migrate:deploy\n\
+\n\
+# 2. NestJS API 백서버 구동 (백그라운드)\n\
+node dist/main.js &\n\
+\n\
+# 3. Nginx 포그라운드 구동\n\
+nginx -g "daemon off;"\n' > /usr/local/bin/run-services.sh \
+ && chmod +x /usr/local/bin/run-services.sh
+
+WORKDIR /app/apps/api
+EXPOSE 80
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["/usr/local/bin/run-services.sh"]
