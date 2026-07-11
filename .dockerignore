@@ -1,0 +1,40 @@
+# Global dependency directories
+**/node_modules
+**/node_modules/**
+**/.pnpm-store
+
+# Global build outputs
+**/dist
+**/build
+**/out
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+
+# Data / SQLite databases / Backups / Logs (Root levels only to avoid ignoring source code like src/backup)
+/var
+/data
+*.db
+*.db-shm
+*.db-wal
+/backup
+/logs
+/deploy/var
+
+# Global IDE and hidden tooling directories
+**/.git
+**/.git/**
+**/.idea
+**/.vscode
+**/.claude
+**/.claude/**
+**/.remember
+**/.remember/**
+**/.agents
+**/.agents/**
+**/.playwright-mcp
+**/.playwright-mcp/**
+
+# Unnecessary markdown documentation
+**/*.md
+docs-customer/

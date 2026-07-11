@@ -11,6 +11,7 @@ primary_region = "nrt" # 도쿄 리전 (한국과 가까운 무료 권장 리전
 [env]
   DATABASE_URL = "file:/var/seedcore-scheduler/data/app.db"
   BACKUP_DIR = "/var/seedcore-scheduler/backup/daily"
+  WEB_ORIGIN = "https://seedcore-scheduler.fly.dev"
   # 세션 시크릿 등 민감한 환경변수는 fly secrets set 명령어로 주입하는 것을 권장합니다.
 
 

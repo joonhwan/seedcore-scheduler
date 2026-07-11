@@ -27,7 +27,10 @@ async function main() {
     where: { username },
     data: {
       passwordHash: hash,
-      passwordMustChange: false // 백엔드 강제 리셋이므로 즉시 로그인 및 사용 가능하도록 false 설정
+      passwordMustChange: false, // 백엔드 강제 리셋이므로 즉시 로그인 및 사용 가능하도록 false 설정
+      failedLoginCount: 0,
+      lockedUntil: null,
+      isActive: true
     }
   });
 

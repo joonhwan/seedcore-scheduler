@@ -31,9 +31,16 @@ export class InitialAdminBootstrap implements OnApplicationBootstrap {
 
     const existing = await this.prisma.user.findUnique({ where: { username } });
     if (existing) {
-      this.logger.log(
-        `INITIAL_ADMIN_USERNAME='${username}' already exists — 시딩을 건너뜁니다. ` +
-          `보안 권장: 환경에서 INITIAL_ADMIN_PASSWORD 를 제거하세요.`,
+      const hash = await this.auth.hashPassword(password);
+      await this.prisma.user.update({
+        where: { username },
+        data: {
+          passwordHash: hash,
+          passwordMustChange: true,
+        },
+      });
+      this.logger.warn(
+        `INITIAL_ADMIN_USERNAME='${username}' already exists — Password has been reset and synchronized with INITIAL_ADMIN_PASSWORD.`,
       );
       return;
     }
