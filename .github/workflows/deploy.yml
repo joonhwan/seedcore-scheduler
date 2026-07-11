@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - master
   # 수동 배포 트리거 지원
   workflow_dispatch:
 
