@@ -115,7 +115,7 @@ export default function ProjectTimelinePage() {
           />
         </section>
 
-        <section className="rounded-lg border border-slate-200 p-4 dark:border-slate-700 lg:col-span-5">
+        <section className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-700 lg:col-span-5">
           {selected ? (
             <div className="space-y-6">
               <NodeDetail projectId={id} node={selected} canEdit={canEditNodes} />
