@@ -53,8 +53,9 @@ function Header() {
 
   return (
     <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3 dark:border-slate-700">
-      <Link to="/" className="font-semibold">
-        SAM Scheduler
+      <Link to="/" className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-200">
+        <img src="/logo_b.png" alt="시드코어" className="h-6 w-auto dark:invert" />
+        <span>일정관리 시스템</span>
       </Link>
       <div className="flex items-center gap-3 text-sm">
         {me.data && (

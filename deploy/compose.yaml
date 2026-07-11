@@ -1,8 +1,8 @@
-name: sam-scheduler
+name: seedcore-scheduler
 
 services:
   api:
-    image: sam-scheduler-api:0.1.0
+    image: seedcore-scheduler-api:0.1.0
     container_name: sam-api
     build:
       context: ..
@@ -10,17 +10,17 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: file:/var/sam-scheduler/data/app.db
-      BACKUP_DIR: /var/sam-scheduler/backup/daily
+      DATABASE_URL: file:/var/seedcore-scheduler/data/app.db
+      BACKUP_DIR: /var/seedcore-scheduler/backup/daily
     volumes:
-      - ./var/data:/var/sam-scheduler/data
-      - ./var/backup:/var/sam-scheduler/backup
-      - ./var/logs:/var/sam-scheduler/logs
+      - ./var/data:/var/seedcore-scheduler/data
+      - ./var/backup:/var/seedcore-scheduler/backup
+      - ./var/logs:/var/seedcore-scheduler/logs
     networks:
       - sam-net
 
   nginx:
-    image: sam-scheduler-nginx:0.1.0
+    image: seedcore-scheduler-nginx:0.1.0
     container_name: sam-nginx
     build:
       context: ..

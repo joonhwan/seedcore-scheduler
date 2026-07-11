@@ -3,8 +3,8 @@
 set -eu
 
 DAY=$(date +%Y%m%d)
-DEST_DIR="${BACKUP_DIR:-/var/sam-scheduler/backup/daily}/$DAY"
-DB_PATH="${DB_PATH:-/var/sam-scheduler/data/app.db}"
+DEST_DIR="${BACKUP_DIR:-/var/seedcore-scheduler/backup/daily}/$DAY"
+DB_PATH="${DB_PATH:-/var/seedcore-scheduler/data/app.db}"
 
 mkdir -p "$DEST_DIR"
 TMP=$(mktemp -d)

@@ -4,8 +4,8 @@
 set -eu
 
 DAY="${1:?usage: restore-system.sh YYYYMMDD}"
-SRC="${BACKUP_DIR:-/var/sam-scheduler/backup/daily}/$DAY/app.db.gz"
-DB_PATH="${DB_PATH:-/var/sam-scheduler/data/app.db}"
+SRC="${BACKUP_DIR:-/var/seedcore-scheduler/backup/daily}/$DAY/app.db.gz"
+DB_PATH="${DB_PATH:-/var/seedcore-scheduler/data/app.db}"
 
 [ -f "$SRC" ] || { echo "no backup at $SRC"; exit 1; }
 

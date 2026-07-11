@@ -3,7 +3,7 @@
 set -eu
 
 KEEP="${BACKUP_RETENTION_DAYS:-30}"
-BASE="${BACKUP_DIR:-/var/sam-scheduler/backup/daily}"
+BASE="${BACKUP_DIR:-/var/seedcore-scheduler/backup/daily}"
 
 [ -d "$BASE" ] || exit 0
 find "$BASE" -mindepth 1 -maxdepth 1 -type d -mtime "+${KEEP}" -exec rm -rf {} +

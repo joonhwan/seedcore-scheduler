@@ -1,6 +1,6 @@
-# SAM Scheduler
+# SeedCore Scheduler (시드코어 일정관리 시스템)
 
-사내(Air-gap) 환경용 프로젝트 일정관리 웹. 상세 설계는 [DESIGN.md](./DESIGN.md) 참고.
+사내 폐쇄망(Air-gap) 환경용 프로젝트 일정관리 웹 애플리케이션. 상세 설계는 [DESIGN.md](./DESIGN.md) 참고.
 
 ## 구성
 
@@ -58,8 +58,8 @@ pnpm dev
    ```bash
    cd deploy
    docker compose build
-   docker save sam-scheduler-api:0.1.0   -o images/api.tar
-   docker save sam-scheduler-nginx:0.1.0 -o images/nginx.tar
+   docker save seedcore-scheduler-api:0.1.0   -o images/api.tar
+   docker save seedcore-scheduler-nginx:0.1.0 -o images/nginx.tar
    ```
 2. `deploy/` 폴더 전체(+ `images/`)를 사내 서버로 전달.
 3. 서버에서:

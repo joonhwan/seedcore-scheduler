@@ -31,7 +31,7 @@ export class HealthController {
     lastBackupAt: string | null;
     sizeBytes: number | null;
   }> {
-    const dir = process.env.BACKUP_DIR ?? '/var/sam-scheduler/backup/daily';
+    const dir = process.env.BACKUP_DIR ?? '/var/seedcore-scheduler/backup/daily';
     if (!existsSync(dir)) {
       return { dir, lastBackupAt: null, sizeBytes: null };
     }
