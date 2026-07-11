@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { NodeTreeItem, NodeHistoryItem } from '@sam/shared';
-import { buildTree } from './NodeTree';
+import { MAX_TREE_DEPTH, type NodeTreeItem, type NodeHistoryItem } from '@sam/shared';
+import { buildTree, maxDescendantDepth } from './NodeTree';
 import { useNodeHistory } from '../lib/history';
 import { apiErrorMessage } from '../lib/errors';
 
@@ -12,6 +12,12 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   jumpToTodayCounter: number; // 변경 시 "오늘로 이동" 트리거
+  canEdit?: boolean | undefined;
+  onAddChild?: ((parent: NodeTreeItem) => void) | undefined;
+  onAddSibling?: ((sibling: NodeTreeItem) => void) | undefined;
+  onMoveSibling?: ((node: NodeTreeItem, direction: -1 | 1) => void) | undefined;
+  onChangeParent?: ((node: NodeTreeItem) => void) | undefined;
+  onDelete?: ((node: NodeTreeItem) => void) | undefined;
 }
 
 const PPD: Record<TimelineUnit, number> = {
@@ -59,6 +65,12 @@ export default function Timeline({
   selectedId,
   onSelect,
   jumpToTodayCounter,
+  canEdit,
+  onAddChild,
+  onAddSibling,
+  onMoveSibling,
+  onChangeParent,
+  onDelete,
 }: Props) {
   const flat = useMemo(() => flattenTree(items), [items]);
 
@@ -136,18 +148,35 @@ export default function Timeline({
 
         {/* 행 영역 */}
         <div className="relative">
-          {flat.map((n) => (
-            <Row
-              key={n.id}
-              node={n}
-              range={range}
-              ppd={ppd}
-              totalWidth={totalWidth}
-              isSelected={selectedId === n.id}
-              onSelect={onSelect}
-              onHoverNode={setHoveredNode}
-            />
-          ))}
+          {flat.map((n) => {
+            const tree = buildTree(items);
+            const siblings = n.parentId
+              ? (flat.find((p) => p.id === n.parentId) as any)?.children ?? []
+              : tree;
+            const siblingCount = siblings.length;
+            const indexAmongSiblings = siblings.findIndex((s: any) => s.id === n.id);
+
+            return (
+              <Row
+                key={n.id}
+                node={n}
+                range={range}
+                ppd={ppd}
+                totalWidth={totalWidth}
+                isSelected={selectedId === n.id}
+                onSelect={onSelect}
+                onHoverNode={setHoveredNode}
+                canEdit={canEdit}
+                siblingCount={siblingCount}
+                indexAmongSiblings={indexAmongSiblings}
+                onAddChild={onAddChild}
+                onAddSibling={onAddSibling}
+                onMoveSibling={onMoveSibling}
+                onChangeParent={onChangeParent}
+                onDelete={onDelete}
+              />
+            );
+          })}
           {todayInRange && (
             <div
               ref={todayRef}
@@ -178,6 +207,14 @@ function Row({
   isSelected,
   onSelect,
   onHoverNode,
+  canEdit,
+  siblingCount,
+  indexAmongSiblings,
+  onAddChild,
+  onAddSibling,
+  onMoveSibling,
+  onChangeParent,
+  onDelete,
 }: {
   node: NodeTreeItem;
   range: { start: Date; end: Date };
@@ -186,11 +223,23 @@ function Row({
   isSelected: boolean;
   onSelect: (id: string) => void;
   onHoverNode: (hover: { id: string; title: string; x: number; y: number } | null) => void;
+  canEdit?: boolean | undefined;
+  siblingCount: number;
+  indexAmongSiblings: number;
+  onAddChild?: ((parent: NodeTreeItem) => void) | undefined;
+  onAddSibling?: ((sibling: NodeTreeItem) => void) | undefined;
+  onMoveSibling?: ((node: NodeTreeItem, direction: -1 | 1) => void) | undefined;
+  onChangeParent?: ((node: NodeTreeItem) => void) | undefined;
+  onDelete?: ((node: NodeTreeItem) => void) | undefined;
 }) {
   const isGroup = node.kind === 'GROUP';
   const start = isGroup ? node.startAtEffective : node.startAt;
   const end = isGroup ? node.endAtEffective : node.endAt;
   const progress = isGroup ? node.progressEffective : node.progress;
+
+  const treeNode = node as any;
+  const childWouldExceedDepth = treeNode.depth + 1 >= MAX_TREE_DEPTH;
+  const subtreeMaxDepth = maxDescendantDepth(treeNode);
 
   let bar: { leftPx: number; widthPx: number } | null = null;
   if (start && end) {
@@ -206,38 +255,85 @@ function Row({
 
   return (
     <div
-      className={`group flex border-b border-slate-100 dark:border-slate-800 ${
-        isSelected ? 'bg-sky-50 dark:bg-sky-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-      }`}
+      className="group/row flex border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40"
       style={{ height: ROW_HEIGHT }}
     >
-      <button
-        type="button"
-        onClick={() => onSelect(node.id)}
-        className={`sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-slate-200 px-3 text-left text-xs dark:border-slate-700 ${
+      <div
+        className={`sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-slate-200 px-3 text-left text-xs dark:border-slate-700 relative ${
           isSelected
             ? 'bg-sky-50 dark:bg-sky-950'
-            : 'bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800'
+            : 'bg-white dark:bg-slate-900 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800'
         }`}
         style={{ width: LABEL_WIDTH, paddingLeft: 12 + node.depth * 16 }}
-        title={node.title}
       >
-        <span
-          className={`shrink-0 rounded border px-1 py-0.5 text-[9px] font-semibold ${
-            isGroup
-              ? 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300'
-              : 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300'
-          }`}
+        <button
+          type="button"
+          onClick={() => onSelect(node.id)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
-          {isGroup ? 'G' : 'I'}
-        </span>
-        <span className="min-w-0 flex-1 truncate">{node.title}</span>
-        {progress !== null && (
-          <span className="shrink-0 font-mono text-[10px] text-slate-500">
-            {progress}%
+          <span
+            className={`shrink-0 rounded border px-1 py-0.5 text-[9px] font-semibold ${
+              isGroup
+                ? 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300'
+                : 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300'
+            }`}
+          >
+            {isGroup ? 'G' : 'I'}
           </span>
+          <span className="min-w-0 flex-1 truncate" title={node.title}>{node.title}</span>
+          {progress !== null && (
+            <span className="shrink-0 font-mono text-[10px] text-slate-500 mr-1">
+              {progress}%
+            </span>
+          )}
+        </button>
+
+        {canEdit && (
+          <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded bg-slate-100 px-1 py-0.5 shadow-sm group-hover/row:flex dark:bg-slate-700 z-20">
+            <IconBtn
+              title="위로"
+              disabled={indexAmongSiblings === 0}
+              onClick={() => onMoveSibling?.(node, -1)}
+            >
+              ↑
+            </IconBtn>
+            <IconBtn
+              title="아래로"
+              disabled={indexAmongSiblings === siblingCount - 1}
+              onClick={() => onMoveSibling?.(node, 1)}
+            >
+              ↓
+            </IconBtn>
+            <IconBtn
+              title={
+                childWouldExceedDepth
+                  ? `최대 깊이(${MAX_TREE_DEPTH})에 도달`
+                  : '자식 추가'
+              }
+              disabled={childWouldExceedDepth}
+              onClick={() => onAddChild?.(node)}
+            >
+              ↳
+            </IconBtn>
+            <IconBtn title="형제 추가" onClick={() => onAddSibling?.(node)}>
+              +
+            </IconBtn>
+            <IconBtn
+              title={`부모 변경 (서브트리 깊이 ${subtreeMaxDepth - node.depth + 1})`}
+              onClick={() => onChangeParent?.(node)}
+            >
+              ⇄
+            </IconBtn>
+            <IconBtn
+              title="삭제"
+              onClick={() => onDelete?.(node)}
+              className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950"
+            >
+              ✕
+            </IconBtn>
+          </div>
         )}
-      </button>
+      </div>
       <div className="relative" style={{ width: totalWidth }}>
         {bar && (
           <button
@@ -512,4 +608,30 @@ function formatTooltipVal(v: unknown): string {
   if (typeof v === 'string') return v.length > 30 ? `${v.slice(0, 30)}…` : v;
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
+}
+
+function IconBtn({
+  children,
+  title,
+  disabled,
+  onClick,
+  className = '',
+}: {
+  children: React.ReactNode;
+  title: string;
+  disabled?: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded border border-transparent px-1 py-0.5 text-[10px] hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:border-slate-700 dark:hover:bg-slate-700 ${className}`}
+    >
+      {children}
+    </button>
+  );
 }

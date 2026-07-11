@@ -9,9 +9,14 @@ import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectNewPage from './pages/ProjectNewPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
-import ProjectTimelinePage from './pages/ProjectTimelinePage';
 import ProjectMembersPage from './pages/ProjectMembersPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import { useParams } from 'react-router-dom';
+
+function ProjectTimelineRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/projects/${id}`} replace />;
+}
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const me = useMe();
@@ -144,7 +149,7 @@ export default function App() {
           path="/projects/:id/timeline"
           element={
             <RequireAuth>
-              <ProjectTimelinePage />
+              <ProjectTimelineRedirect />
             </RequireAuth>
           }
         />

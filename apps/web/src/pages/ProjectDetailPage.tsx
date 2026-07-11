@@ -11,12 +11,12 @@ import {
 import { useNodes, useDeleteNode, useMoveNode } from '../lib/nodes';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
-import NodeTree from '../components/NodeTree';
 import NodeDetail from '../components/NodeDetail';
 import NodeFormDialog from '../components/NodeFormDialog';
 import ParentPickerDialog from '../components/ParentPickerDialog';
 import NodeCommentsPanel from '../components/NodeCommentsPanel';
 import NodeHistoryPanel from '../components/NodeHistoryPanel';
+import Timeline, { type TimelineUnit } from '../components/Timeline';
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,6 +33,18 @@ export default function ProjectDetailPage() {
     null,
   );
   const [pickParentFor, setPickParentFor] = useState<NodeTreeItem | null>(null);
+  const [unit, setUnit] = useState<TimelineUnit>('week');
+  const [todayCounter, setTodayCounter] = useState(0);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  const handleSelectNode = (nodeId: string | null) => {
+    setSelectedId(nodeId);
+    if (nodeId) {
+      setIsDetailModalOpen(true);
+    } else {
+      setIsDetailModalOpen(false);
+    }
+  };
 
   const isAdmin = me.data?.globalRole === 'ADMIN';
   const myRole = project.data?.myRole ?? null;
@@ -96,7 +108,7 @@ export default function ProjectDetailPage() {
     if (!ok) return;
     try {
       await deleteNode.mutateAsync(node.id);
-      if (selectedId === node.id) setSelectedId(null);
+      if (selectedId === node.id) handleSelectNode(null);
       toast.success('노드가 삭제되었습니다.');
     } catch (err) {
       toast.error(apiErrorMessage(err));
@@ -104,7 +116,7 @@ export default function ProjectDetailPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl p-6">
+    <main className="w-full max-w-none px-6 py-6">
       <ProjectHeader
         project={project.data}
         canManage={canManageProject}
@@ -112,47 +124,115 @@ export default function ProjectDetailPage() {
         isAdmin={isAdmin}
       />
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(280px,1fr)_2fr]">
-        <section className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-          <h2 className="mb-2 text-sm font-semibold">트리</h2>
-          <NodeTree
-            items={nodes.data ?? []}
-            selectedId={selectedId}
-            canEdit={canEditNodes}
-            onSelect={setSelectedId}
-            onAddRoot={() => setCreateParent('root')}
-            onAddChild={(p) => setCreateParent(p)}
-            onAddSibling={(s) => {
-              const parentNode = s.parentId
-                ? (nodes.data ?? []).find((n) => n.id === s.parentId) ?? null
-                : null;
-              setCreateParent(parentNode ?? 'root');
-            }}
-            onMoveSibling={onMoveSibling}
-            onChangeParent={(n) => setPickParentFor(n)}
-            onDelete={onDeleteNode}
-          />
-        </section>
+      <div className="mt-6 w-full">
+        {/* 데스크톱은 2열 구성, 태블릿/모바일은 1열로 떨어지며 자연스럽게 너비 축소 */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr]">
+          {/* 좌측 콘텐츠 영역 (통합 타임라인/트리 뷰) */}
+          <section className="space-y-3 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+              <div className="flex items-center gap-1 rounded border border-slate-300 p-0.5 dark:border-slate-700">
+                {(['day', 'week', 'month', 'quarter'] as const).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setUnit(u)}
+                    className={`rounded px-2 py-1 text-xs ${
+                      unit === u
+                        ? 'bg-sky-600 text-white'
+                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {u === 'day' ? '일' : u === 'week' ? '주' : u === 'month' ? '월' : '분기'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                {canEditNodes && (
+                  <button
+                    type="button"
+                    onClick={() => setCreateParent('root')}
+                    className="rounded bg-sky-600 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-700"
+                  >
+                    + 루트 노드 추가
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setTodayCounter((n) => n + 1)}
+                  className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                >
+                  오늘로 이동
+                </button>
+                <span className="text-[11px] text-slate-500">
+                  노드 {nodes.data?.length ?? 0}개
+                </span>
+              </div>
+            </div>
 
-        <section className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-120px)] lg:overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-          {selected ? (
-            <div className="space-y-6">
+            <Timeline
+              items={nodes.data ?? []}
+              unit={unit}
+              selectedId={selectedId}
+              onSelect={handleSelectNode}
+              jumpToTodayCounter={todayCounter}
+              canEdit={canEditNodes}
+              onAddChild={(p) => setCreateParent(p)}
+              onAddSibling={(s) => {
+                const parentNode = s.parentId
+                  ? (nodes.data ?? []).find((n) => n.id === s.parentId) ?? null
+                  : null;
+                setCreateParent(parentNode ?? 'root');
+              }}
+              onMoveSibling={onMoveSibling}
+              onChangeParent={(n) => setPickParentFor(n)}
+              onDelete={onDeleteNode}
+            />
+          </section>
+
+          {/* 우측 콘텐츠 영역 (데스크톱에서만 노출되며 항상 고정 배치) */}
+          <section className="hidden lg:block sticky top-6 self-start max-h-[calc(100vh-120px)] overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+            {selected ? (
+              <div className="space-y-6">
+                <NodeDetail projectId={id} node={selected} canEdit={canEditNodes} />
+                <NodeCommentsPanel nodeId={selected.id} canPost={canEditNodes} />
+                <NodeHistoryPanel nodeId={selected.id} />
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">
+                왼쪽 일정 목록이나 타임라인 막대를 클릭하여 노드를 선택하세요.
+              </p>
+            )}
+          </section>
+        </div>
+      </div>
+
+      {/* 태블릿 및 모바일용 모달 대화상자 (상세 보기 및 편집) */}
+      {selected && isDetailModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm lg:hidden">
+          <div className="relative flex flex-col w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900 animate-in fade-in-50 zoom-in-95 duration-150">
+            <button
+              type="button"
+              onClick={() => handleSelectNode(null)}
+              className="absolute right-4 top-4 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 p-1.5 transition-colors"
+              aria-label="닫기"
+            >
+              <span className="text-xl font-bold">✕</span>
+            </button>
+            <div className="mt-2 space-y-6">
               <NodeDetail projectId={id} node={selected} canEdit={canEditNodes} />
               <NodeCommentsPanel nodeId={selected.id} canPost={canEditNodes} />
               <NodeHistoryPanel nodeId={selected.id} />
             </div>
-          ) : (
-            <p className="text-sm text-slate-500">왼쪽 트리에서 노드를 선택하세요.</p>
-          )}
-        </section>
-      </div>
+          </div>
+        </div>
+      )}
 
       {createParent !== null && (
         <NodeFormDialog
           projectId={id}
           parent={createParent === 'root' ? null : createParent}
           onClose={() => setCreateParent(null)}
-          onCreated={(n) => setSelectedId(n.id)}
+          onCreated={(n) => handleSelectNode(n.id)}
         />
       )}
       {pickParentFor && nodes.data && (
@@ -247,12 +327,6 @@ function ProjectHeader({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <Link
-          to={`/projects/${project.id}/timeline`}
-          className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-        >
-          Timeline 뷰
-        </Link>
         <Link
           to={`/projects/${project.id}/members`}
           className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
