@@ -141,16 +141,43 @@ export default function NodeDetail({ projectId, node, canEdit }: Props) {
             </Field>
           </div>
           <Field label={`진행율 — ${progress}%`}>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={progress}
-              onChange={(e) => setProgress(parseInt(e.target.value, 10))}
-              disabled={!canEdit}
-              className="w-full accent-sky-600 disabled:opacity-50"
-            />
+            <div className="flex flex-col gap-2">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={progress}
+                onChange={(e) => setProgress(parseInt(e.target.value, 10))}
+                disabled={!canEdit}
+                className="w-full accent-sky-600 disabled:opacity-50"
+              />
+              {canEdit && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setProgress((prev) => Math.max(0, prev - 10))}
+                    className="flex-1 rounded border border-slate-300 bg-white py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    -10%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProgress((prev) => Math.min(100, prev + 10))}
+                    className="flex-1 rounded border border-slate-300 bg-white py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    +10%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProgress(100)}
+                    className="rounded border border-sky-300 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300 dark:hover:bg-sky-900"
+                  >
+                    100% 완료
+                  </button>
+                </div>
+              )}
+            </div>
           </Field>
         </>
       )}

@@ -148,10 +148,10 @@ function NodeRow({
               disabled={childWouldExceedDepth}
               onClick={() => onAddChild(node)}
             >
-              +자
+              ↳
             </IconBtn>
             <IconBtn title="형제 추가" onClick={() => onAddSibling(node)}>
-              +형
+              +
             </IconBtn>
             <IconBtn
               title={`부모 변경 (서브트리 깊이 ${subtreeMaxDepth - node.depth + 1})`}

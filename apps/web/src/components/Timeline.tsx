@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react';
-import type { NodeTreeItem } from '@sam/shared';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { NodeTreeItem, NodeHistoryItem } from '@sam/shared';
 import { buildTree } from './NodeTree';
+import { useNodeHistory } from '../lib/history';
+import { apiErrorMessage } from '../lib/errors';
 
 export type TimelineUnit = 'day' | 'week' | 'month' | 'quarter';
 
@@ -69,6 +71,13 @@ export default function Timeline({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const todayRef = useRef<HTMLDivElement>(null);
 
+  const [hoveredNode, setHoveredNode] = useState<{
+    id: string;
+    title: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
   useEffect(() => {
     if (!scrollerRef.current || !range) return;
     const today = todayUtc();
@@ -136,6 +145,7 @@ export default function Timeline({
               totalWidth={totalWidth}
               isSelected={selectedId === n.id}
               onSelect={onSelect}
+              onHoverNode={setHoveredNode}
             />
           ))}
           {todayInRange && (
@@ -148,6 +158,14 @@ export default function Timeline({
           )}
         </div>
       </div>
+      {hoveredNode && (
+        <HistoryTooltip
+          nodeId={hoveredNode.id}
+          nodeTitle={hoveredNode.title}
+          x={hoveredNode.x}
+          y={hoveredNode.y}
+        />
+      )}
     </div>
   );
 }
@@ -159,6 +177,7 @@ function Row({
   totalWidth,
   isSelected,
   onSelect,
+  onHoverNode,
 }: {
   node: NodeTreeItem;
   range: { start: Date; end: Date };
@@ -166,6 +185,7 @@ function Row({
   totalWidth: number;
   isSelected: boolean;
   onSelect: (id: string) => void;
+  onHoverNode: (hover: { id: string; title: string; x: number; y: number } | null) => void;
 }) {
   const isGroup = node.kind === 'GROUP';
   const start = isGroup ? node.startAtEffective : node.startAt;
@@ -219,6 +239,25 @@ function Row({
           <button
             type="button"
             onClick={() => onSelect(node.id)}
+            onMouseEnter={(e) => {
+              onHoverNode({
+                id: node.id,
+                title: node.title,
+                x: e.clientX,
+                y: e.clientY,
+              });
+            }}
+            onMouseMove={(e) => {
+              onHoverNode({
+                id: node.id,
+                title: node.title,
+                x: e.clientX,
+                y: e.clientY,
+              });
+            }}
+            onMouseLeave={() => {
+              onHoverNode(null);
+            }}
             className={`absolute top-1 bottom-1 overflow-hidden rounded ${
               isGroup
                 ? 'border border-violet-300 bg-violet-100/70 dark:border-violet-700 dark:bg-violet-900/40'
@@ -347,4 +386,126 @@ function computeHeaderCells(
     }
   }
   return cells;
+}
+
+function HistoryTooltip({
+  nodeId,
+  nodeTitle,
+  x,
+  y,
+}: {
+  nodeId: string;
+  nodeTitle: string;
+  x: number;
+  y: number;
+}) {
+  const { data: history, isLoading, isError, error } = useNodeHistory(nodeId);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ left: x + 15, top: y + 15 });
+
+  useEffect(() => {
+    if (!tooltipRef.current) return;
+    const width = tooltipRef.current.clientWidth;
+    const height = tooltipRef.current.clientHeight;
+    let left = x + 15;
+    let top = y + 15;
+
+    if (left + width > window.innerWidth) {
+      left = x - width - 15;
+    }
+    if (top + height > window.innerHeight) {
+      top = y - height - 15;
+    }
+
+    setCoords({ left, top });
+  }, [x, y, history]);
+
+  return (
+    <div
+      ref={tooltipRef}
+      className="pointer-events-none fixed z-50 max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-xs text-slate-100 shadow-xl backdrop-blur-sm transition-all duration-75"
+      style={{ left: coords.left, top: coords.top }}
+    >
+      <div className="font-semibold text-slate-200 border-b border-slate-700 pb-1.5 mb-1.5">
+        {nodeTitle}
+      </div>
+      {isLoading && <p className="text-slate-400">마지막 이력 불러오는 중...</p>}
+      {isError && <p className="text-rose-400">{apiErrorMessage(error)}</p>}
+      {history && history.length === 0 && (
+        <p className="text-slate-400">변경 이력이 없습니다.</p>
+      )}
+      {history && history.length > 0 && (
+        <div>
+          <LatestHistoryDetail item={history[0]!} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LatestHistoryDetail({ item }: { item: NodeHistoryItem }) {
+  const diff = item.diff as Record<string, unknown>;
+  const entries = Object.entries(diff).filter(
+    ([, v]) =>
+      v !== null &&
+      typeof v === 'object' &&
+      'from' in (v as object) &&
+      'to' in (v as object),
+  ) as Array<[string, { from: unknown; to: unknown }]>;
+
+  const dateStr = new Date(item.occurredAt).toLocaleString();
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1.5">
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+          item.action === 'CREATE' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+          item.action === 'UPDATE' ? 'bg-sky-950 text-sky-300 border border-sky-800' :
+          item.action === 'MOVE' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+          item.action === 'DELETE' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
+          'bg-violet-950 text-violet-300 border border-violet-800'
+        }`}>
+          {item.action}
+        </span>
+        <span className="font-semibold text-slate-300">
+          {item.actorDisplayName}
+        </span>
+        <span className="text-slate-500 text-[10px]">
+          @{item.actorUsername}
+        </span>
+      </div>
+      <div className="text-[10px] text-slate-400">{dateStr}</div>
+      <div className="mt-1.5 border-t border-slate-800/80 pt-1.5">
+        {entries.length === 0 ? (
+          item.action === 'DELETE' ? (
+            <p className="text-slate-400">노드가 삭제되었습니다.</p>
+          ) : (
+            <p className="text-slate-500">(변경 내용 없음)</p>
+          )
+        ) : (
+          <ul className="space-y-0.5 max-h-32 overflow-y-auto">
+            {entries.map(([field, fromTo]) => (
+              <li key={field} className="text-[11px] truncate">
+                <span className="text-slate-500">{field}:</span>{' '}
+                <span className="text-rose-400 line-through">
+                  {formatTooltipVal(fromTo.from)}
+                </span>{' '}
+                ➔{' '}
+                <span className="text-emerald-400">
+                  {formatTooltipVal(fromTo.to)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatTooltipVal(v: unknown): string {
+  if (v === null || v === undefined) return '∅';
+  if (typeof v === 'string') return v.length > 30 ? `${v.slice(0, 30)}…` : v;
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
 }
