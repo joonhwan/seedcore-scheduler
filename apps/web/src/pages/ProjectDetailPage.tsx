@@ -112,6 +112,20 @@ export default function ProjectDetailPage() {
     [nodes.data, selectedId],
   );
 
+  useEffect(() => {
+    const parent = document.getElementById('app-main-content');
+    if (parent) {
+      parent.classList.remove('overflow-y-auto');
+      parent.classList.add('overflow-hidden');
+    }
+    return () => {
+      if (parent) {
+        parent.classList.remove('overflow-hidden');
+        parent.classList.add('overflow-y-auto');
+      }
+    };
+  }, []);
+
   if (project.isLoading || nodes.isLoading) {
     return <div className="p-6 text-sm text-slate-500">로딩…</div>;
   }
@@ -170,19 +184,7 @@ export default function ProjectDetailPage() {
     }
   }
 
-  useEffect(() => {
-    const parent = document.getElementById('app-main-content');
-    if (parent) {
-      parent.classList.remove('overflow-y-auto');
-      parent.classList.add('overflow-hidden');
-    }
-    return () => {
-      if (parent) {
-        parent.classList.remove('overflow-hidden');
-        parent.classList.add('overflow-y-auto');
-      }
-    };
-  }, []);
+
 
   return (
     <main className="flex h-full w-full flex-col overflow-hidden px-6 py-6">

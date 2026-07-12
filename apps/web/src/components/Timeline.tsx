@@ -225,11 +225,10 @@ export default function Timeline({
 
     const minStartVal = parseYmd(minStartStr);
     const maxEndVal = parseYmd(maxEndStr);
-    const today = todayUtc();
 
-    // 오늘 날짜를 포함하여 활성 범위(active range) 계산
-    const activeStart = new Date(Math.min(minStartVal.getTime(), today.getTime()));
-    const activeEnd = new Date(Math.max(maxEndVal.getTime(), today.getTime()));
+    // 오늘 날짜를 제외하고 프로젝트 일정의 최소 시작일과 최대 종료일을 기준으로 활성 범위(active range) 계산
+    const activeStart = minStartVal;
+    const activeEnd = maxEndVal;
     const activeDays = dayDiff(activeEnd, activeStart) + 1;
 
     const containerWidth = scrollerRef.current.clientWidth;
