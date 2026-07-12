@@ -38,6 +38,7 @@ export default function ProjectDetailPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isDetailDirty, setIsDetailDirty] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
+  const [showToolbar, setShowToolbar] = useState(true);
 
   const detailFormRef = useRef<HTMLFormElement>(null);
   const isSaveAndCloseActionRef = useRef(false);
@@ -187,7 +188,7 @@ export default function ProjectDetailPage() {
 
 
   return (
-    <main className="flex h-full w-full flex-col overflow-hidden px-6 py-6">
+    <main className="flex h-full w-full flex-col overflow-hidden px-4 py-3">
       <ProjectHeader
         project={project.data}
         canManage={canManageProject}
@@ -195,48 +196,50 @@ export default function ProjectDetailPage() {
         isAdmin={isAdmin}
       />
 
-      <div className="mt-6 flex-1 min-h-0 w-full flex flex-col">
+      <div className="mt-2.5 flex-1 min-h-0 w-full flex flex-col">
         {/* 단일 열 전체 영역 구성 */}
-        <section className="flex-1 min-h-0 flex flex-col space-y-3 min-w-0">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-            <div className="flex items-center gap-1 rounded border border-slate-300 p-0.5 dark:border-slate-700">
-              {(['day', 'week', 'month', 'quarter'] as const).map((u) => (
+        <section className="flex-1 min-h-0 flex flex-col space-y-1.5 min-w-0">
+          {showToolbar && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-1.5 dark:border-slate-700 bg-white dark:bg-slate-900 transition-colors animate-in slide-in-from-top-1 duration-100">
+              <div className="flex items-center gap-0.5 rounded border border-slate-300 p-0.5 dark:border-slate-700">
+                {(['day', 'week', 'month', 'quarter'] as const).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setUnit(u)}
+                    className={`rounded px-1.5 py-0.5 text-[11px] ${
+                      unit === u
+                        ? 'bg-sky-600 text-white font-medium'
+                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {u === 'day' ? '일' : u === 'week' ? '주' : u === 'month' ? '월' : '분기'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                {canEditNodes && (
+                  <button
+                    type="button"
+                    onClick={() => setCreateParent('root')}
+                    className="rounded bg-sky-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-sky-700 transition-colors"
+                  >
+                    + 루트 노드 추가
+                  </button>
+                )}
                 <button
-                  key={u}
                   type="button"
-                  onClick={() => setUnit(u)}
-                  className={`rounded px-2 py-1 text-xs ${
-                    unit === u
-                      ? 'bg-sky-600 text-white'
-                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                  }`}
+                  onClick={() => setTodayCounter((n) => n + 1)}
+                  className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 transition-colors"
                 >
-                  {u === 'day' ? '일' : u === 'week' ? '주' : u === 'month' ? '월' : '분기'}
+                  오늘로 이동
                 </button>
-              ))}
+                <span className="text-[10px] text-slate-500 font-medium">
+                  일정 {nodes.data?.length ?? 0}개
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              {canEditNodes && (
-                <button
-                  type="button"
-                  onClick={() => setCreateParent('root')}
-                  className="rounded bg-sky-600 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-700"
-                >
-                  + 루트 노드 추가
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setTodayCounter((n) => n + 1)}
-                className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              >
-                오늘로 이동
-              </button>
-              <span className="text-[11px] text-slate-500">
-                노드 {nodes.data?.length ?? 0}개
-              </span>
-            </div>
-          </div>
+          )}
 
           <div className="flex-1 min-h-0 w-full flex flex-col">
             <Timeline
@@ -257,6 +260,8 @@ export default function ProjectDetailPage() {
               onMoveSibling={onMoveSibling}
               onChangeParent={(n) => setPickParentFor(n)}
               onDelete={onDeleteNode}
+              showToolbar={showToolbar}
+              onToggleToolbar={() => setShowToolbar(!showToolbar)}
             />
           </div>
         </section>
@@ -377,6 +382,12 @@ function ProjectHeader({
   const navigate = useNavigate();
 
   async function setStatus(status: ProjectStatus) {
+    if (status === 'ARCHIVED') {
+      const ok = window.confirm(
+        "정말 이 프로젝트를 보관 처리하시겠습니까?\n\n※ 보관된 후에도 화면 우측 상단의 '복원'(되돌리기 화살표 모양 아이콘) 버튼을 클릭하면 언제든지 다시 활성 상태로 원래대로 복구하실 수 있습니다."
+      );
+      if (!ok) return;
+    }
     try {
       await updateProject.mutateAsync({
         status,
@@ -405,63 +416,73 @@ function ProjectHeader({
   const showDelete = isAdmin && adminMode && project.status === 'ARCHIVED';
 
   return (
-    <header className="flex flex-col gap-3 border-b border-slate-200 pb-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+    <header className="flex flex-col gap-1.5 border-b border-slate-200 pb-2 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <Link to="/" className="text-xs text-slate-500 hover:underline">
-          ← 프로젝트 목록
-        </Link>
-        <h1 className="mt-1 flex items-center gap-2 text-xl font-bold">
+        <h1 className="flex items-center gap-1.5 text-lg font-bold">
           <span>{project.name}</span>
-          <span
-            className={`rounded border px-2 py-0.5 text-[10px] font-medium ${
-              project.status === 'ACTIVE'
-                ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                : 'border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
-            }`}
-          >
-            {project.status === 'ACTIVE' ? '활성' : '보관'}
-          </span>
+          {project.status === 'ACTIVE' ? (
+            <span title="활성 프로젝트" className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4 text-emerald-600 dark:text-emerald-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </span>
+          ) : (
+            <span title="보관중인 프로젝트" className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4 text-slate-500 dark:text-slate-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+              </svg>
+            </span>
+          )}
         </h1>
         {project.description && (
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{project.description}</p>
+          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{project.description}</p>
         )}
-        <p className="mt-1 text-xs text-slate-500">
-          내 역할: {project.myRole ?? '비멤버 (ADMIN 우회)'} · 멤버 {project.memberCount}명
-        </p>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
         <Link
           to={`/projects/${project.id}/members`}
-          className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+          className="p-1.5 rounded-md border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+          title={`멤버 관리 (내 역할: ${project.myRole ?? '비멤버 (ADMIN 우회)'} · 멤버 ${project.memberCount}명)`}
         >
-          멤버 관리
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+          </svg>
         </Link>
         {canManage && project.status === 'ACTIVE' && (
           <button
             type="button"
             onClick={() => setStatus('ARCHIVED')}
-            className="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+            className="p-1.5 rounded-md border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:border-amber-800/80 dark:bg-amber-950/40 dark:hover:bg-amber-950/70 dark:text-amber-300 transition-colors"
+            title="프로젝트 보관 처리"
           >
-            보관 처리
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+            </svg>
           </button>
         )}
         {canManage && project.status === 'ARCHIVED' && (
           <button
             type="button"
             onClick={() => setStatus('ACTIVE')}
-            className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+            className="p-1.5 rounded-md border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 dark:border-emerald-800/80 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/70 dark:text-emerald-300 transition-colors"
+            title="프로젝트 활성 상태로 복원"
           >
-            복원
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+            </svg>
           </button>
         )}
         {showDelete && (
           <button
             type="button"
             onClick={onDelete}
-            className="rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs text-rose-800 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200"
+            className="p-1.5 rounded-md border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 dark:border-rose-800/80 dark:bg-rose-950/40 dark:hover:bg-rose-950/70 dark:text-rose-300 transition-colors"
+            title="프로젝트 영구 삭제"
           >
-            영구 삭제
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+            </svg>
           </button>
         )}
       </div>

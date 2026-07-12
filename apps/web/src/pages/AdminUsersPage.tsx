@@ -42,10 +42,7 @@ export default function AdminUsersPage() {
 
   return (
     <main className="mx-auto max-w-5xl p-6">
-      <Link to="/" className="text-xs text-slate-500 hover:underline">
-        ← 프로젝트 목록
-      </Link>
-      <div className="mt-1 flex items-center justify-between">
+      <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">사용자 관리</h1>
         <button
           type="button"

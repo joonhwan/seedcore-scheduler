@@ -52,56 +52,83 @@ function Header() {
   const isAdmin = me.data?.globalRole === 'ADMIN';
 
   return (
-    <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3 dark:border-slate-700">
-      <Link to="/" className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-200">
-        <img src="/logo_b.png" alt="시드코어" className="h-6 w-auto dark:invert" />
-        <span>일정관리 시스템</span>
+    <header className="flex items-center justify-between border-b border-slate-200 px-4 py-1.5 dark:border-slate-700 bg-white dark:bg-slate-900 transition-colors shrink-0">
+      <Link to="/" className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200" title="홈(프로젝트 목록) 화면 이동">
+        <img src="/logo_b.png" alt="시드코어" className="h-5 w-auto dark:invert" />
+        <span className="text-sm">일정관리 시스템</span>
       </Link>
-      <div className="flex items-center gap-3 text-sm">
+      <div className="flex items-center gap-3 text-xs">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="p-1 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+          title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+          aria-label="테마 전환"
+        >
+          {theme === 'dark' ? (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m0 13.5V21M4.22 4.22l1.58 1.58m12.42 12.42l1.58 1.58M3 12h2.25m13.5 0H21M4.22 19.78l1.58-1.58m12.42-12.42l1.58-1.58M12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+            </svg>
+          )}
+        </button>
         {me.data && (
           <>
             {isAdmin && (
               <Link
                 to="/admin/users"
-                className="text-slate-600 hover:underline dark:text-slate-400"
+                className="p-1 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+                title="사용자 관리"
               >
-                사용자 관리
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                </svg>
               </Link>
             )}
             {isAdmin && (
-              <label className="flex cursor-pointer items-center gap-2 select-none">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-amber-500"
-                  checked={adminMode.on}
-                  onChange={() => adminMode.toggle()}
-                />
-                <span className={adminMode.on ? 'font-semibold text-amber-700 dark:text-amber-300' : 'text-slate-600 dark:text-slate-400'}>
-                  관리자 모드
-                </span>
-              </label>
+              <div 
+                className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/40 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800/80 transition-colors cursor-pointer select-none"
+                onClick={() => adminMode.toggle()}
+                title={adminMode.on ? "관리자 모드 해제" : "관리자 모드 활성화"}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill={adminMode.on ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-3.5 h-3.5 ${adminMode.on ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                </svg>
+                <button
+                  type="button"
+                  className={`relative inline-flex h-3.5 w-6 shrink-0 cursor-pointer rounded-full border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    adminMode.on ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'
+                  }`}
+                  role="switch"
+                  aria-checked={adminMode.on}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      adminMode.on ? 'translate-x-2.5' : 'translate-x-0.5'
+                    } mt-[1px]`}
+                  />
+                </button>
+              </div>
             )}
-            <span className="text-slate-600 dark:text-slate-400">
+            <span className="text-slate-500 dark:text-slate-400 border-l border-slate-200 dark:border-slate-700 pl-3">
               {me.data.displayName}
               {isAdmin ? ' (ADMIN)' : ''}
             </span>
             <button
               type="button"
               onClick={() => logout.mutate()}
-              className="rounded-md border border-slate-300 px-3 py-1 dark:border-slate-700"
+              className="p-1 rounded-md text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:text-slate-400 dark:hover:text-rose-400 dark:hover:bg-rose-950/30 transition-colors"
+              title="로그아웃"
             >
-              로그아웃
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
+              </svg>
             </button>
           </>
         )}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="rounded-md border border-slate-300 px-3 py-1 dark:border-slate-700"
-          aria-label="테마 전환"
-        >
-          {theme === 'dark' ? 'Light' : 'Dark'}
-        </button>
       </div>
     </header>
   );
