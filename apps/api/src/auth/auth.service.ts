@@ -75,6 +75,8 @@ export class AuthService {
       throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS' });
     }
 
+    // [계정 잠금 비활성화] 사용자 계정잠금 기능이 제거됨에 따라 lockedUntil 체크를 스킵합니다.
+    /*
     if (user.lockedUntil && user.lockedUntil > now) {
       await this.audit.log({
         actorId: user.id,
@@ -88,6 +90,7 @@ export class AuthService {
         lockedUntil: user.lockedUntil.toISOString(),
       });
     }
+    */
 
     let valid = false;
     try {
@@ -98,25 +101,24 @@ export class AuthService {
 
     if (!valid) {
       const nextCount = user.failedLoginCount + 1;
-      const shouldLock = nextCount >= FAILED_LOCK_THRESHOLD;
+      // [계정 잠금 비활성화] 사용자 계정잠금 기능 제거로 인해 shouldLock은 항상 false, lockedUntil은 null로 업데이트합니다.
+      const shouldLock = false;
       await this.prisma.user.update({
         where: { id: user.id },
         data: {
           failedLoginCount: nextCount,
-          lockedUntil: shouldLock
-            ? new Date(now.getTime() + LOCK_DURATION_MS)
-            : user.lockedUntil,
+          lockedUntil: null,
         },
       });
       await this.audit.log({
         actorId: user.id,
-        action: shouldLock ? 'LOGIN_LOCKED' : 'LOGIN_FAILURE',
+        action: 'LOGIN_FAILURE',
         ip: ctx.ip,
         userAgent: ctx.userAgent,
         payload: {
           username,
           failedCount: nextCount,
-          locked: shouldLock,
+          locked: false,
         },
       });
       throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS' });

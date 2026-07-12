@@ -109,6 +109,7 @@ export default function ProjectTimelinePage() {
           <Timeline
             items={nodes.data ?? []}
             unit={unit}
+            onUnitChange={setUnit}
             selectedId={selectedId}
             onSelect={setSelectedId}
             jumpToTodayCounter={todayCounter}
