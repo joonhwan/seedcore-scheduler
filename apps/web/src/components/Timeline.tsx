@@ -13,6 +13,7 @@ interface Props {
   onUnitChange?: ((unit: TimelineUnit) => void) | undefined;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onEdit?: ((id: string) => void) | undefined;
   jumpToTodayCounter: number; // 변경 시 "오늘로 이동" 트리거
   canEdit?: boolean | undefined;
   onAddChild?: ((parent: NodeTreeItem) => void) | undefined;
@@ -70,6 +71,7 @@ export default function Timeline({
   onUnitChange,
   selectedId,
   onSelect,
+  onEdit,
   jumpToTodayCounter,
   canEdit,
   onAddChild,
@@ -80,7 +82,31 @@ export default function Timeline({
   onAddRoot,
 }: Props) {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
-  const flat = useMemo(() => flattenTree(items, collapsedIds), [items, collapsedIds]);
+  const flat = useMemo(() => {
+    const list = flattenTree(items, collapsedIds);
+    const emptyNode: TreeNode = {
+      id: 'empty-row-placeholder',
+      title: '(새 일정 추가...)',
+      kind: 'ITEM',
+      depth: 0,
+      sortOrder: 999999,
+      projectId: '',
+      parentId: null,
+      startAt: null,
+      endAt: null,
+      progress: 0,
+      description: null,
+      createdById: '',
+      updatedById: '',
+      startAtEffective: null,
+      endAtEffective: null,
+      progressEffective: null,
+      createdAt: '',
+      updatedAt: '',
+      children: [],
+    };
+    return [...list, emptyNode];
+  }, [items, collapsedIds]);
 
   const toggleCollapse = (id: string) => {
     setCollapsedIds((prev) => {
@@ -102,6 +128,80 @@ export default function Timeline({
   const expandAll = () => {
     setCollapsedIds(new Set());
   };
+
+  // 화살표 키 키보드 단축키 바인딩
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // input, textarea 등 입력 필드에 포커스가 있을 때는 단축키 처리 제외
+      const activeEl = document.activeElement;
+      if (activeEl) {
+        const tagName = activeEl.tagName.toLowerCase();
+        if (
+          tagName === 'input' ||
+          tagName === 'textarea' ||
+          tagName === 'select' ||
+          activeEl.getAttribute('contenteditable') === 'true'
+        ) {
+          return;
+        }
+      }
+
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault(); // 스크롤 방지
+        if (flat.length === 0) return;
+
+        if (!selectedId) {
+          if (e.key === 'ArrowUp') {
+            const lastNode = flat[flat.length - 1];
+            if (lastNode) onSelect(lastNode.id);
+          } else {
+            const firstNode = flat[0];
+            if (firstNode) onSelect(firstNode.id);
+          }
+        } else {
+          const idx = flat.findIndex((n) => n.id === selectedId);
+          if (idx !== -1) {
+            if (e.key === 'ArrowUp') {
+              if (idx > 0) {
+                const prevNode = flat[idx - 1];
+                if (prevNode) onSelect(prevNode.id);
+              }
+            } else {
+              if (idx < flat.length - 1) {
+                const nextNode = flat[idx + 1];
+                if (nextNode) onSelect(nextNode.id);
+              }
+            }
+          }
+        }
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (selectedId) {
+          const selectedNode = items.find((n) => n.id === selectedId);
+          if (selectedNode && selectedNode.kind === 'GROUP') {
+            e.preventDefault();
+            if (e.key === 'ArrowLeft') {
+              setCollapsedIds((prev) => {
+                const next = new Set(prev);
+                next.add(selectedId);
+                return next;
+              });
+            } else {
+              setCollapsedIds((prev) => {
+                const next = new Set(prev);
+                next.delete(selectedId);
+                return next;
+              });
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [flat, selectedId, onSelect, items, collapseAll, expandAll]);
 
   const range = useMemo(() => computeRange(items), [items]);
 
@@ -346,13 +446,7 @@ export default function Timeline({
     }
   }, [jumpToTodayCounter, range, ppd, totalDays]);
 
-  if (!range) {
-    return (
-      <div className="rounded border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">
-        일자가 입력된 노드가 없어 Timeline 을 그릴 수 없습니다.
-      </div>
-    );
-  }
+  // range가 없는 빈화면 분기 처리 제거
 
   const headerCells = computeHeaderCells(range, activeUnit, ppd);
   const today = todayUtc();
@@ -560,6 +654,7 @@ export default function Timeline({
                   totalWidth={totalWidth}
                   isSelected={selectedId === n.id}
                   onSelect={onSelect}
+                  onEdit={onEdit}
                   onHoverNode={setHoveredNode}
                   canEdit={canEdit}
                   siblingCount={siblingCount}
@@ -571,6 +666,7 @@ export default function Timeline({
                   onMoveSibling={onMoveSibling}
                   onChangeParent={onChangeParent}
                   onDelete={onDelete}
+                  onAddRoot={onAddRoot}
                 />
               );
             })}
@@ -604,6 +700,7 @@ function Row({
   totalWidth,
   isSelected,
   onSelect,
+  onEdit,
   onHoverNode,
   canEdit,
   siblingCount,
@@ -615,6 +712,7 @@ function Row({
   onMoveSibling,
   onChangeParent,
   onDelete,
+  onAddRoot,
 }: {
   node: TreeNode;
   range: { start: Date; end: Date };
@@ -622,6 +720,7 @@ function Row({
   totalWidth: number;
   isSelected: boolean;
   onSelect: (id: string) => void;
+  onEdit?: ((id: string) => void) | undefined;
   onHoverNode: (hover: { id: string; title: string; x: number; y: number } | null) => void;
   canEdit?: boolean | undefined;
   siblingCount: number;
@@ -633,11 +732,13 @@ function Row({
   onMoveSibling?: ((node: NodeTreeItem, direction: -1 | 1) => void) | undefined;
   onChangeParent?: ((node: NodeTreeItem) => void) | undefined;
   onDelete?: ((node: NodeTreeItem) => void) | undefined;
+  onAddRoot?: (() => void) | undefined;
 }) {
   const isGroup = node.kind === 'GROUP';
   const start = isGroup ? node.startAtEffective : node.startAt;
   const end = isGroup ? node.endAtEffective : node.endAt;
   const progress = isGroup ? node.progressEffective : node.progress;
+  const isEmptyRow = node.id === 'empty-row-placeholder';
 
   const childWouldExceedDepth = node.depth + 1 >= MAX_TREE_DEPTH;
   const subtreeMaxDepth = maxDescendantDepth(node);
@@ -694,12 +795,34 @@ function Row({
         <button
           type="button"
           onClick={() => onSelect(node.id)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          onDoubleClick={() => {
+            if (isEmptyRow) {
+              onAddRoot?.();
+            } else {
+              onEdit?.(node.id);
+            }
+          }}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left select-none"
         >
           <span className="shrink-0 flex items-center justify-center">
-            {isGroup ? <FolderIcon className="w-4 h-4" /> : <ItemIcon className="w-4 h-4" />}
+            {isEmptyRow ? (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-400 dark:text-slate-500">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            ) : isGroup ? (
+              <FolderIcon className="w-4 h-4" />
+            ) : (
+              <ItemIcon className="w-4 h-4" />
+            )}
           </span>
-          <span className="min-w-0 flex-1 truncate" title={node.title}>{node.title}</span>
+          <span
+            className={`min-w-0 flex-1 truncate ${
+              isEmptyRow ? 'text-slate-400 dark:text-slate-500 italic' : ''
+            }`}
+            title={isEmptyRow ? '새 일정을 추가하려면 더블클릭하거나 단축키(Ctrl-I)를 입력하세요.' : node.title}
+          >
+            {node.title}
+          </span>
           {progress !== null && (
             <span className="shrink-0 font-mono text-[10px] text-slate-500 mr-1">
               {progress}%
@@ -707,7 +830,7 @@ function Row({
           )}
         </button>
 
-        {canEdit && (
+        {canEdit && !isEmptyRow && (
           <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded bg-slate-100 px-1 py-0.5 shadow-sm group-hover/row:flex dark:bg-slate-700 z-20">
             <IconBtn
               title="위로"
@@ -758,6 +881,13 @@ function Row({
           <button
             type="button"
             onClick={() => onSelect(node.id)}
+            onDoubleClick={() => {
+              if (isEmptyRow) {
+                onAddRoot?.();
+              } else {
+                onEdit?.(node.id);
+              }
+            }}
             onMouseEnter={(e) => {
               onHoverNode({
                 id: node.id,
@@ -798,7 +928,7 @@ function Row({
   );
 }
 
-function computeRange(items: NodeTreeItem[]): { start: Date; end: Date } | null {
+function computeRange(items: NodeTreeItem[]): { start: Date; end: Date } {
   let minStart: string | null = null;
   let maxEnd: string | null = null;
   for (const n of items) {
@@ -807,11 +937,22 @@ function computeRange(items: NodeTreeItem[]): { start: Date; end: Date } | null 
     if (s && (minStart === null || s < minStart)) minStart = s;
     if (e && (maxEnd === null || e > maxEnd)) maxEnd = e;
   }
-  if (!minStart || !maxEnd) return null;
-  const start = parseYmd(minStart);
-  const end = parseYmd(maxEnd);
-  start.setUTCFullYear(start.getUTCFullYear() - 1);
-  end.setUTCFullYear(end.getUTCFullYear() + 1);
+
+  let start: Date;
+  let end: Date;
+
+  if (minStart && maxEnd) {
+    start = parseYmd(minStart);
+    end = parseYmd(maxEnd);
+    start.setUTCFullYear(start.getUTCFullYear() - 1);
+    end.setUTCFullYear(end.getUTCFullYear() + 1);
+  } else {
+    // 날짜가 입력된 노드가 하나도 없는 경우(빈 프로젝트 포함), 오늘을 기준으로 +- 6개월 임시 범위 제공
+    const today = todayUtc();
+    start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 6, 1));
+    end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 6, 1));
+  }
+
   return { start, end };
 }
 

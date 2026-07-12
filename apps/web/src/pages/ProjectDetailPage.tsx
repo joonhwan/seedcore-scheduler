@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useIsMutating } from '@tanstack/react-query';
-import type { NodeTreeItem, ProjectDetail, ProjectStatus } from '@sam/shared';
+import { MAX_TREE_DEPTH, type NodeTreeItem, type ProjectDetail, type ProjectStatus } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
 import {
@@ -15,8 +15,8 @@ import { toast } from '../lib/toast';
 import NodeDetail from '../components/NodeDetail';
 import NodeFormDialog from '../components/NodeFormDialog';
 import ParentPickerDialog from '../components/ParentPickerDialog';
-import NodeCommentsPanel from '../components/NodeCommentsPanel';
-import NodeHistoryPanel from '../components/NodeHistoryPanel';
+import CommentInputForm from '../components/CommentInputForm';
+import ActivityFeedPanel from '../components/ActivityFeedPanel';
 import Timeline, { type TimelineUnit } from '../components/Timeline';
 
 export default function ProjectDetailPage() {
@@ -37,50 +37,84 @@ export default function ProjectDetailPage() {
   const [createParent, setCreateParent] = useState<NodeTreeItem | null | 'root'>(
     null,
   );
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [pickParentFor, setPickParentFor] = useState<NodeTreeItem | null>(null);
   const [unit, setUnit] = useState<TimelineUnit>('week');
   const [todayCounter, setTodayCounter] = useState(0);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isDetailDirty, setIsDetailDirty] = useState(false);
+  const [isCommentDirty, setIsCommentDirty] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
 
-  const detailFormRef = useRef<HTMLFormElement>(null);
+  const detailRef = useRef<any>(null);
+  const commentsRef = useRef<any>(null);
   const isSaveAndCloseActionRef = useRef(false);
 
   const handleSelectNode = (nodeId: string | null) => {
     setSelectedId(nodeId);
     isSaveAndCloseActionRef.current = false;
-    if (nodeId) {
-      setIsDetailModalOpen(true);
-    } else {
+    if (!nodeId) {
       setIsDetailModalOpen(false);
       setIsDetailDirty(false);
+      setIsCommentDirty(false);
       setShowConfirmClose(false);
     }
   };
 
-  const attemptCloseDetail = () => {
-    if (isDetailDirty) {
-      setShowConfirmClose(true);
+  const handleEditNode = (nodeId: string) => {
+    setSelectedId(nodeId);
+    isSaveAndCloseActionRef.current = false;
+    setIsDetailModalOpen(true);
+  };
+
+  const handleHeaderAddNode = () => {
+    if (!selected || selectedId === 'empty-row-placeholder') {
+      setCreateParent('root');
+    } else if (selected.kind === 'GROUP') {
+      if (selected.depth + 1 >= MAX_TREE_DEPTH) {
+        toast.error(`최대 깊이(${MAX_TREE_DEPTH}단계)를 초과하여 하위 일정을 생성할 수 없습니다.`);
+        return;
+      }
+      setCreateParent(selected);
     } else {
-      handleSelectNode(null);
+      const parentNode = selected.parentId
+        ? (nodes.data ?? []).find((n) => n.id === selected.parentId) ?? null
+        : null;
+      setCreateParent(parentNode ?? 'root');
     }
   };
 
-  const handleSaveAndClose = () => {
+  const attemptCloseDetail = () => {
+    const isModalDirty = isDetailDirty || isCommentDirty;
+    if (isModalDirty) {
+      setShowConfirmClose(true);
+    } else {
+      setIsDetailModalOpen(false);
+    }
+  };
+
+  const handleSaveAndClose = async () => {
     isSaveAndCloseActionRef.current = true;
-    if (detailFormRef.current) {
-      detailFormRef.current.requestSubmit();
+    try {
+      // 1. 일정 상세 정보 저장 (변경된 경우에만)
+      if (detailRef.current && detailRef.current.isDirty()) {
+        await detailRef.current.save();
+      }
+
+      // 2. 댓글 작성 (내용이 있는 경우에만)
+      if (commentsRef.current && commentsRef.current.hasContent()) {
+        await commentsRef.current.submitComment();
+      }
+
+      setIsDetailModalOpen(false);
+      isSaveAndCloseActionRef.current = false;
+    } catch (err: any) {
+      toast.error(err.message || apiErrorMessage(err));
     }
     setShowConfirmClose(false);
   };
 
-  const handleSaveSuccess = () => {
-    if (isSaveAndCloseActionRef.current) {
-      handleSelectNode(null);
-    }
-    isSaveAndCloseActionRef.current = false;
-  };
+  const handleSaveSuccess = () => {};
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -130,6 +164,55 @@ export default function ProjectDetailPage() {
       }
     };
   }, []);
+
+  // Ctrl 단축키 처리 (Ctrl-Enter: 편집, Ctrl-I: 추가, Ctrl-D: 삭제)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 상세 편집 모달이 열려있거나 포커스가 입력 필드에 있을 때는 단축키 처리 제외
+      if (isDetailModalOpen) return;
+
+      const activeEl = document.activeElement;
+      if (activeEl) {
+        const tagName = activeEl.tagName.toLowerCase();
+        if (
+          tagName === 'input' ||
+          tagName === 'textarea' ||
+          tagName === 'select' ||
+          activeEl.getAttribute('contenteditable') === 'true'
+        ) {
+          return;
+        }
+      }
+
+      if (e.key === 'Enter') {
+        if (selected) {
+          e.preventDefault();
+          handleEditNode(selected.id);
+        }
+      } else if (e.ctrlKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'i') {
+          if (canEditNodes) {
+            e.preventDefault();
+            handleHeaderAddNode();
+          }
+        } else if (key === 'd') {
+          if (selected && canEditNodes) {
+            e.preventDefault();
+            onDeleteNode(selected);
+          }
+        }
+      } else if (e.key === '?' || (e.key === 'h' && !e.ctrlKey)) {
+        e.preventDefault();
+        setIsHelpOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selected, canEditNodes, isDetailModalOpen, handleHeaderAddNode, onDeleteNode, handleEditNode]);
 
   if (project.isLoading || nodes.isLoading) {
     return <div className="p-6 text-sm text-slate-500">로딩…</div>;
@@ -199,6 +282,9 @@ export default function ProjectDetailPage() {
         adminMode={adminMode}
         isAdmin={isAdmin}
         nodes={nodes.data ?? []}
+        canEdit={canEditNodes}
+        onAddNode={handleHeaderAddNode}
+        onToggleHelp={() => setIsHelpOpen((prev) => !prev)}
       />
 
       <div className="mt-2.5 flex-1 min-h-0 w-full flex flex-col">
@@ -211,6 +297,7 @@ export default function ProjectDetailPage() {
               onUnitChange={setUnit}
               selectedId={selectedId}
               onSelect={handleSelectNode}
+              onEdit={handleEditNode}
               jumpToTodayCounter={todayCounter}
               canEdit={canEditNodes}
               onAddChild={(p) => setCreateParent(p)}
@@ -232,7 +319,7 @@ export default function ProjectDetailPage() {
       {/* 노드 상세 및 편집용 모달 대화상자 (모든 해상도에서 공통 사용) */}
       {selected && isDetailModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
-          <div className="relative flex flex-col w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900 animate-in fade-in-50 zoom-in-95 duration-150">
+          <div className="relative flex flex-col w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900 animate-in fade-in-50 zoom-in-95 duration-150">
             <button
               type="button"
               onClick={attemptCloseDetail}
@@ -241,18 +328,51 @@ export default function ProjectDetailPage() {
             >
               <span className="text-xl font-bold">✕</span>
             </button>
-            <div className="mt-2 space-y-6">
-              <NodeDetail
-                projectId={id}
-                node={selected}
-                canEdit={canEditNodes}
-                onDirtyChange={setIsDetailDirty}
-                formRef={detailFormRef}
-                onSaveSuccess={handleSaveSuccess}
-              />
-              <NodeCommentsPanel nodeId={selected.id} canPost={canEditNodes} />
-              <NodeHistoryPanel nodeId={selected.id} />
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800/80 items-start">
+              {/* 좌측 열: NodeDetail & CommentInputForm */}
+              <div className="space-y-4">
+                <NodeDetail
+                  ref={detailRef}
+                  projectId={id}
+                  node={selected}
+                  canEdit={canEditNodes}
+                  onDirtyChange={setIsDetailDirty}
+                  onSaveSuccess={handleSaveSuccess}
+                />
+                <CommentInputForm
+                  ref={commentsRef}
+                  nodeId={selected.id}
+                  canPost={canEditNodes}
+                  onDirtyChange={setIsCommentDirty}
+                  onSaveAndClose={handleSaveAndClose}
+                />
+              </div>
+              {/* 우측 열: 통합 피드 & 변경 이력 */}
+              <div className="space-y-6 md:pl-6 pt-6 md:pt-0">
+                <ActivityFeedPanel nodeId={selected.id} canEdit={canEditNodes} />
+              </div>
             </div>
+
+            {/* 통합 하단 저장/취소 버튼 바 */}
+            {canEditNodes && (
+              <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800/80">
+                <button
+                  type="button"
+                  onClick={attemptCloseDetail}
+                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAndClose}
+                  disabled={!(isDetailDirty || isCommentDirty)}
+                  className="rounded-md bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-60 transition-colors"
+                >
+                  저장
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -273,7 +393,8 @@ export default function ProjectDetailPage() {
                 onClick={() => {
                   setShowConfirmClose(false);
                   setIsDetailDirty(false); // 더티 플래그 강제 리셋
-                  handleSelectNode(null); // 편집 모달 닫기
+                  setIsCommentDirty(false); // 댓글 더티 리셋
+                  setIsDetailModalOpen(false); // 편집 모달 닫기
                 }}
                 className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
               >
@@ -303,7 +424,7 @@ export default function ProjectDetailPage() {
           projectId={id}
           parent={createParent === 'root' ? null : createParent}
           onClose={() => setCreateParent(null)}
-          onCreated={(n) => handleSelectNode(n.id)}
+          onCreated={() => {}}
         />
       )}
       {pickParentFor && nodes.data && (
@@ -328,6 +449,101 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       )}
+
+      {/* 화면 하단 미세 단축키 도움말 가이드 */}
+      <footer className="mt-1 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 px-1 select-none shrink-0 border-t border-slate-100 pt-2 dark:border-slate-800/80">
+        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
+          <span>🖱️ <b>더블클릭/Enter</b>: 편집</span>
+          <span>➕ <b>Ctrl+I</b>: 일정 추가</span>
+          <span>❌ <b>Ctrl+D</b>: 일정 삭제</span>
+          <span>↕️ <b>위/아래 방향키</b>: 탐색</span>
+          <span>↔️ <b>좌우 방향키(그룹선택시)</b>: 접기/펴기</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsHelpOpen(true)}
+          className="text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 font-semibold flex items-center gap-0.5 shrink-0"
+        >
+          도움말 보기 (?)
+        </button>
+      </footer>
+
+      {/* 키보드 단축키 및 사용법 도움말 모달 */}
+      {isHelpOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm animate-in fade-in-50 duration-100">
+          <div className="relative flex flex-col w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 animate-in zoom-in-95 duration-150 text-slate-800 dark:text-slate-200">
+            <button
+              type="button"
+              onClick={() => setIsHelpOpen(false)}
+              className="absolute right-4 top-4 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 p-1.5 transition-colors"
+              aria-label="도움말 닫기"
+            >
+              <span className="text-xl font-bold">✕</span>
+            </button>
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-sky-600 dark:text-sky-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+              </svg>
+              키보드 단축키 & 사용 가이드
+            </h3>
+            <div className="mt-4 space-y-3.5 text-xs text-slate-600 dark:text-slate-400 font-normal">
+              <div className="grid grid-cols-3 gap-2 border-b border-slate-100 pb-2 dark:border-slate-800 font-semibold text-slate-700 dark:text-slate-300">
+                <div>동작</div>
+                <div className="col-span-2">단축키 / 조작법</div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <div className="font-medium text-slate-800 dark:text-slate-200">일정 선택</div>
+                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">마우스 클릭</kbd></div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <div className="font-medium text-slate-800 dark:text-slate-200">일정 편집</div>
+                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">더블클릭</kbd> 또는 <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Enter</kbd></div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <div className="font-medium text-slate-800 dark:text-slate-200">새 일정 추가</div>
+                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Ctrl + I</kbd> 또는 상단 버튼</div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <div className="font-medium text-slate-800 dark:text-slate-200">일정 삭제</div>
+                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Ctrl + D</kbd> (확인 팝업 노출)</div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <div className="font-medium text-slate-800 dark:text-slate-200">위/아래 이동</div>
+                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">↑</kbd> / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">↓</kbd> 화살표 키</div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <div className="font-medium text-slate-800 dark:text-slate-200">그룹 접기/펴기</div>
+                <div className="col-span-2">선택된 그룹에서 <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">←</kbd>(접기) / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">→</kbd>(펴기)</div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 items-center border-t border-slate-100 dark:border-slate-800/60 pt-2">
+                <div className="font-semibold text-slate-700 dark:text-slate-300">편집창 내 동작</div>
+                <div className="col-span-2"></div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <div className="font-medium text-slate-800 dark:text-slate-200">진행률 조절</div>
+                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">Ctrl + ,</kbd>(-10%) / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">Ctrl + .</kbd>(+10%) / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">Ctrl + /</kbd>(100% 완료)</div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <div className="font-medium text-slate-800 dark:text-slate-200">댓글 작성</div>
+                <div className="col-span-2">댓글 입력창에서 <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Ctrl + Enter</kbd></div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-500 space-y-1">
+                <div>💡 <span className="font-semibold">스마트 추가</span>: 그룹 선택 시 하위 자식 노드로, 아이템 선택 시 이웃 형제 노드로 생성됩니다.</div>
+                <div>⌨️ <span className="font-semibold">추가 창 종류 전환</span>: 텍스트 입력창 포커스를 유지한 채 <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[9px]">Alt + 1</kbd>(일정) 또는 <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[9px]">Alt + 2</kbd>(그룹)로 종류를 전환할 수 있습니다.</div>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsHelpOpen(false)}
+                className="rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 px-4 py-2 text-xs font-semibold transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -348,12 +564,18 @@ function ProjectHeader({
   adminMode,
   isAdmin,
   nodes,
+  canEdit,
+  onAddNode,
+  onToggleHelp,
 }: {
   project: ProjectDetail;
   canManage: boolean;
   adminMode: boolean;
   isAdmin: boolean;
   nodes: NodeTreeItem[];
+  canEdit: boolean;
+  onAddNode: () => void;
+  onToggleHelp: () => void;
 }) {
   const updateProject = useUpdateProject(project.id);
   const deleteProject = useDeleteProject();
@@ -445,6 +667,29 @@ function ProjectHeader({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        {canEdit && onAddNode && (
+          <button
+            type="button"
+            onClick={onAddNode}
+            className="px-2.5 py-1.5 rounded-md border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 dark:border-sky-800/80 dark:bg-sky-950/40 dark:hover:bg-sky-950/70 dark:text-sky-300 transition-colors flex items-center gap-1.5 text-xs font-semibold"
+            title="새 일정 추가 (선택된 그룹의 자식 또는 아이템의 형제로 추가)"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            <span>일정 추가</span>
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onToggleHelp}
+          className="p-1.5 rounded-md border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+          title="단축키 및 사용법 도움말 (h 또는 ?)"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+          </svg>
+        </button>
         <Link
           to={`/projects/${project.id}/members`}
           className="p-1.5 rounded-md border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"

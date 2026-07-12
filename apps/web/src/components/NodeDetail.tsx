@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, forwardRef, useImperativeHandle } from 'react';
 import type { NodeTreeItem, UpdateNodeDto } from '@sam/shared';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
@@ -10,11 +10,18 @@ interface Props {
   node: NodeTreeItem;
   canEdit: boolean;
   onDirtyChange?: (dirty: boolean) => void;
-  formRef?: React.RefObject<HTMLFormElement>;
   onSaveSuccess?: () => void;
 }
 
-export default function NodeDetail({ projectId, node, canEdit, onDirtyChange, formRef, onSaveSuccess }: Props) {
+export interface NodeDetailRef {
+  save: () => Promise<void>;
+  isDirty: () => boolean;
+}
+
+export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
+  { projectId, node, canEdit, onDirtyChange, onSaveSuccess },
+  ref
+) {
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? '');
   const [startAt, setStartAt] = useState(node.startAt ?? '');
@@ -36,6 +43,42 @@ export default function NodeDetail({ projectId, node, canEdit, onDirtyChange, fo
     setIsEditingTitle(false);
   }, [node.id, node.updatedAt]);
 
+  const handleStartAtChange = (val: string) => {
+    setStartAt(val);
+    if (val && endAt && val > endAt) {
+      setEndAt(val);
+    }
+  };
+
+  const handleEndAtChange = (val: string) => {
+    setEndAt(val);
+    if (val && startAt && val < startAt) {
+      setStartAt(val);
+    }
+  };
+
+  useEffect(() => {
+    if (!canEdit || isGroup) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && (e.key === ',' || e.key === '.' || e.key === '/')) {
+        e.preventDefault();
+        if (e.key === ',') {
+          setProgress((prev) => Math.max(0, prev - 10));
+        } else if (e.key === '.') {
+          setProgress((prev) => Math.min(100, prev + 10));
+        } else if (e.key === '/') {
+          setProgress(100);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [canEdit, isGroup]);
+
   const dirty =
     title !== node.title ||
     description !== (node.description ?? '') ||
@@ -47,37 +90,47 @@ export default function NodeDetail({ projectId, node, canEdit, onDirtyChange, fo
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
 
+  useImperativeHandle(ref, () => ({
+    save: async () => {
+      if (!dirty) return;
+
+      const body: UpdateNodeDto = { expectedUpdatedAt: node.updatedAt };
+      if (title !== node.title) body.title = title.trim();
+      if (description !== (node.description ?? '')) {
+        body.description = description.trim() === '' ? null : description.trim();
+      }
+      if (!isGroup) {
+        if (startAt !== (node.startAt ?? '')) body.startAt = startAt === '' ? null : startAt;
+        if (endAt !== (node.endAt ?? '')) body.endAt = endAt === '' ? null : endAt;
+        if (progress !== node.progress) body.progress = progress;
+      }
+      if (startAt && endAt && startAt > endAt) {
+        throw new Error('시작일은 종료일보다 작거나 같아야 합니다.');
+      }
+
+      await update.mutateAsync({ id: node.id, body });
+      onSaveSuccess?.();
+    },
+    isDirty: () => dirty,
+  }));
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (!dirty) return;
 
-    const body: UpdateNodeDto = { expectedUpdatedAt: node.updatedAt };
-    if (title !== node.title) body.title = title.trim();
-    if (description !== (node.description ?? '')) {
-      body.description = description.trim() === '' ? null : description.trim();
-    }
-    if (!isGroup) {
-      if (startAt !== (node.startAt ?? '')) body.startAt = startAt === '' ? null : startAt;
-      if (endAt !== (node.endAt ?? '')) body.endAt = endAt === '' ? null : endAt;
-      if (progress !== node.progress) body.progress = progress;
-    }
-    if (startAt && endAt && startAt > endAt) {
-      setError('시작일은 종료일보다 작거나 같아야 합니다.');
-      return;
-    }
-
     try {
-      await update.mutateAsync({ id: node.id, body });
-      toast.success('저장되었습니다.');
-      onSaveSuccess?.();
-    } catch (err) {
-      setError(apiErrorMessage(err));
+      if (ref && 'current' in ref && ref.current) {
+        await ref.current.save();
+        toast.success('저장되었습니다.');
+      }
+    } catch (err: any) {
+      setError(err.message || apiErrorMessage(err));
     }
   }
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4">
       {/* 아이콘 + 제목 + 인라인 편집 구성 (우측 상단 ✕ 닫기 버튼 침범 방지를 위해 pr-10 추가) */}
       <div className="flex items-center gap-3 py-1 min-h-[40px] pr-10">
         {isEditingTitle && canEdit ? (
@@ -179,7 +232,7 @@ export default function NodeDetail({ projectId, node, canEdit, onDirtyChange, fo
               <input
                 type="date"
                 value={startAt}
-                onChange={(e) => setStartAt(e.target.value)}
+                onChange={(e) => handleStartAtChange(e.target.value)}
                 className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
                 disabled={!canEdit}
               />
@@ -188,7 +241,7 @@ export default function NodeDetail({ projectId, node, canEdit, onDirtyChange, fo
               <input
                 type="date"
                 value={endAt}
-                onChange={(e) => setEndAt(e.target.value)}
+                onChange={(e) => handleEndAtChange(e.target.value)}
                 className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
                 disabled={!canEdit}
               />
@@ -231,6 +284,11 @@ export default function NodeDetail({ projectId, node, canEdit, onDirtyChange, fo
                   </button>
                 </div>
               )}
+              {canEdit && (
+                <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-1.5 select-none">
+                  <span>단축키: Ctrl + 쉼표(,) -10%  |  Ctrl + 마침표(.) +10%  |  Ctrl + 슬래시(/) 100% 완료</span>
+                </div>
+              )}
             </div>
           </Field>
         </>
@@ -242,20 +300,11 @@ export default function NodeDetail({ projectId, node, canEdit, onDirtyChange, fo
         </div>
       )}
 
-      {canEdit && (
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={!dirty || update.isPending}
-            className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
-          >
-            {update.isPending ? '저장 중…' : '저장'}
-          </button>
-        </div>
-      )}
     </form>
   );
-}
+});
+
+export default NodeDetail;
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, useEffect } from 'react';
+import { useState, type FormEvent, useEffect, useRef } from 'react';
 import { CreateNodeDto, type NodeKind, type NodeTreeItem } from '@sam/shared';
 import { useCreateNode } from '../lib/nodes';
 import { apiErrorMessage } from '../lib/errors';
@@ -29,13 +29,29 @@ export default function NodeFormDialog({ projectId, parent, onClose, onCreated }
   const [endAt, setEndAt] = useState(todayStr);
   const [error, setError] = useState<string | null>(null);
   const create = useCreateNode(projectId);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
-  // ESC 단축키 바인딩
+  // 컴포넌트 마운트 시 제목 필드로 포커스 이동
+  useEffect(() => {
+    if (titleInputRef.current) {
+      titleInputRef.current.focus();
+    }
+  }, []);
+
+  // ESC 및 Alt-1, Alt-2 단축키 바인딩
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
         e.preventDefault();
+      } else if (e.altKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setKind('ITEM');
+        } else if (e.key === '2') {
+          e.preventDefault();
+          setKind('GROUP');
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -46,8 +62,15 @@ export default function NodeFormDialog({ projectId, parent, onClose, onCreated }
 
   const handleStartAtChange = (val: string) => {
     setStartAt(val);
-    if (val && (!endAt || endAt < val)) {
+    if (val && endAt && val > endAt) {
       setEndAt(val);
+    }
+  };
+
+  const handleEndAtChange = (val: string) => {
+    setEndAt(val);
+    if (val && startAt && val < startAt) {
+      setStartAt(val);
     }
   };
 
@@ -101,6 +124,7 @@ export default function NodeFormDialog({ projectId, parent, onClose, onCreated }
               />
               <ItemIcon className="w-4 h-4 ml-0.5" />
               <span className="text-slate-700 dark:text-slate-300">ITEM (일정)</span>
+              <kbd className="text-[9px] text-slate-400 dark:text-slate-500 border rounded px-1 bg-slate-50 dark:bg-slate-800 font-mono">Alt+1</kbd>
             </label>
             <label className="flex cursor-pointer items-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 bg-white dark:bg-slate-900">
               <input
@@ -113,12 +137,14 @@ export default function NodeFormDialog({ projectId, parent, onClose, onCreated }
               />
               <FolderIcon className="w-4 h-4 ml-0.5" />
               <span className="text-slate-700 dark:text-slate-300">GROUP (그룹)</span>
+              <kbd className="text-[9px] text-slate-400 dark:text-slate-500 border rounded px-1 bg-slate-50 dark:bg-slate-800 font-mono">Alt+2</kbd>
             </label>
           </div>
 
           <label className="block text-sm">
             <span className="block text-slate-700 dark:text-slate-300">제목 *</span>
-            <input
+             <input
+              ref={titleInputRef}
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -155,7 +181,7 @@ export default function NodeFormDialog({ projectId, parent, onClose, onCreated }
                 <input
                   type="date"
                   value={endAt}
-                  onChange={(e) => setEndAt(e.target.value)}
+                  onChange={(e) => handleEndAtChange(e.target.value)}
                   className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                 />
               </label>
