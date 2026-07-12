@@ -16,29 +16,31 @@ export default function NodeHistoryPanel({ nodeId }: Props) {
       {history.isError && (
         <p className="mt-2 text-xs text-rose-600">{apiErrorMessage(history.error)}</p>
       )}
-      <ul className="mt-2 space-y-2">
-        {history.data?.map((h) => (
-          <li
-            key={h.id}
-            className="rounded border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800/50"
-          >
-            <div className="flex items-baseline justify-between gap-2 text-slate-500">
-              <span>
-                <ActionBadge action={h.action} />{' '}
-                <span className="text-slate-700 dark:text-slate-300">
-                  {h.actorDisplayName}
-                </span>{' '}
-                <span className="text-slate-400">@{h.actorUsername}</span>
-              </span>
-              <span>{formatDateTime(h.occurredAt)}</span>
-            </div>
-            <DiffBlock action={h.action} diff={h.diff} />
-          </li>
-        ))}
-        {history.data && history.data.length === 0 && (
-          <li className="text-xs text-slate-500">이력이 없습니다.</li>
-        )}
-      </ul>
+      <div className="mt-2 max-h-[220px] overflow-y-auto pr-1 border border-slate-100 dark:border-slate-800 rounded-lg p-2 bg-slate-50/30 dark:bg-slate-900/10">
+        <ul className="space-y-2">
+          {history.data?.map((h) => (
+            <li
+              key={h.id}
+              className="rounded border border-slate-200 bg-white p-2 text-xs dark:border-slate-700/60 dark:bg-slate-800/50"
+            >
+              <div className="flex items-baseline justify-between gap-2 text-slate-500">
+                <span>
+                  <ActionBadge action={h.action} />{' '}
+                  <span className="text-slate-700 dark:text-slate-300">
+                    {h.actorDisplayName}
+                  </span>{' '}
+                  <span className="text-slate-400">@{h.actorUsername}</span>
+                </span>
+                <span>{formatDateTime(h.occurredAt)}</span>
+              </div>
+              <DiffBlock action={h.action} diff={h.diff} />
+            </li>
+          ))}
+          {history.data && history.data.length === 0 && (
+            <li className="text-xs text-slate-500 text-center py-2">이력이 없습니다.</li>
+          )}
+        </ul>
+      </div>
       {history.data && history.data.length >= 200 && (
         <p className="mt-2 text-[10px] text-slate-400">
           최근 200건만 표시됩니다.

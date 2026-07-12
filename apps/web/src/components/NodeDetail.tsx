@@ -3,20 +3,26 @@ import type { NodeTreeItem, UpdateNodeDto } from '@sam/shared';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { useUpdateNode } from '../lib/nodes';
+import { FolderIcon, ItemIcon, PencilIcon } from './Icons';
 
 interface Props {
   projectId: string;
   node: NodeTreeItem;
   canEdit: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+  formRef?: React.RefObject<HTMLFormElement>;
+  onSaveSuccess?: () => void;
 }
 
-export default function NodeDetail({ projectId, node, canEdit }: Props) {
+export default function NodeDetail({ projectId, node, canEdit, onDirtyChange, formRef, onSaveSuccess }: Props) {
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? '');
   const [startAt, setStartAt] = useState(node.startAt ?? '');
   const [endAt, setEndAt] = useState(node.endAt ?? '');
   const [progress, setProgress] = useState(node.progress);
   const [error, setError] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  
   const update = useUpdateNode(projectId);
   const isGroup = node.kind === 'GROUP';
 
@@ -27,6 +33,7 @@ export default function NodeDetail({ projectId, node, canEdit }: Props) {
     setEndAt(node.endAt ?? '');
     setProgress(node.progress);
     setError(null);
+    setIsEditingTitle(false);
   }, [node.id, node.updatedAt]);
 
   const dirty =
@@ -35,6 +42,10 @@ export default function NodeDetail({ projectId, node, canEdit }: Props) {
     (!isGroup && startAt !== (node.startAt ?? '')) ||
     (!isGroup && endAt !== (node.endAt ?? '')) ||
     (!isGroup && progress !== node.progress);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -59,29 +70,72 @@ export default function NodeDetail({ projectId, node, canEdit }: Props) {
     try {
       await update.mutateAsync({ id: node.id, body });
       toast.success('저장되었습니다.');
+      onSaveSuccess?.();
     } catch (err) {
       setError(apiErrorMessage(err));
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold">{isGroup ? 'GROUP 노드' : 'ITEM 노드'}</h2>
-        <span className="text-xs text-slate-500">depth {node.depth} · sortOrder {node.sortOrder}</span>
+    <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
+      {/* 아이콘 + 제목 + 인라인 편집 구성 (우측 상단 ✕ 닫기 버튼 침범 방지를 위해 pr-10 추가) */}
+      <div className="flex items-center gap-3 py-1 min-h-[40px] pr-10">
+        {isEditingTitle && canEdit ? (
+          <div className="flex flex-1 items-center gap-2">
+            {isGroup ? <FolderIcon className="w-6 h-6" /> : <ItemIcon className="w-6 h-6" />}
+            <input
+              className="flex-1 min-w-0 rounded border border-slate-300 bg-white px-3 py-1.5 text-base font-bold dark:border-slate-700 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={256}
+              required
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (title.trim() !== '') {
+                    setIsEditingTitle(false);
+                  } else {
+                    toast.error('제목은 필수입니다.');
+                  }
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (title.trim() === '') {
+                  toast.error('제목은 필수입니다.');
+                  return;
+                }
+                setIsEditingTitle(false);
+              }}
+              className="rounded bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 shrink-0"
+            >
+              확인
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center gap-2 min-w-0">
+            {isGroup ? <FolderIcon className="w-6 h-6" /> : <ItemIcon className="w-6 h-6" />}
+            <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 truncate max-w-[300px] sm:max-w-[350px]" title={title}>
+              {title}
+            </h2>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setIsEditingTitle(true)}
+                title="제목 편집"
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition-colors shrink-0"
+                aria-label="제목 편집"
+              >
+                <PencilIcon className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
-
-      <Field label="제목 *">
-        <input
-          className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={256}
-          required
-          disabled={!canEdit}
-        />
-      </Field>
 
       <Field label="설명">
         <textarea

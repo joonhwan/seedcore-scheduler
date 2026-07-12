@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, useEffect } from 'react';
 import { CreateNodeDto, type NodeKind, type NodeTreeItem } from '@sam/shared';
 import { useCreateNode } from '../lib/nodes';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
+import { FolderIcon, ItemIcon } from './Icons';
 
 interface Props {
   projectId: string;
@@ -11,14 +12,44 @@ interface Props {
   onCreated: (node: NodeTreeItem) => void;
 }
 
+const getTodayString = () => {
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 export default function NodeFormDialog({ projectId, parent, onClose, onCreated }: Props) {
   const [kind, setKind] = useState<NodeKind>('ITEM');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [startAt, setStartAt] = useState('');
-  const [endAt, setEndAt] = useState('');
+  const todayStr = getTodayString();
+  const [startAt, setStartAt] = useState(todayStr);
+  const [endAt, setEndAt] = useState(todayStr);
   const [error, setError] = useState<string | null>(null);
   const create = useCreateNode(projectId);
+
+  // ESC 단축키 바인딩
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
+  const handleStartAtChange = (val: string) => {
+    setStartAt(val);
+    if (val && (!endAt || endAt < val)) {
+      setEndAt(val);
+    }
+  };
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -53,74 +84,79 @@ export default function NodeFormDialog({ projectId, parent, onClose, onCreated }
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-        <h2 className="text-base font-semibold">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
           {parent ? `"${parent.title}" 의 자식 노드 추가` : '루트 노드 추가'}
         </h2>
-        <form onSubmit={onSubmit} className="mt-4 space-y-3">
-          <div className="flex gap-2 text-sm">
-            <label className="flex items-center gap-1">
+        <form onSubmit={onSubmit} className="mt-4 space-y-4">
+          {/* GROUP / ITEM 라디오 선택 영역 (아이콘 매핑) */}
+          <div className="flex gap-4 text-sm font-medium py-1">
+            <label className="flex cursor-pointer items-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 bg-white dark:bg-slate-900">
               <input
                 type="radio"
                 name="kind"
                 value="ITEM"
                 checked={kind === 'ITEM'}
                 onChange={() => setKind('ITEM')}
+                className="accent-sky-600"
               />
-              ITEM (일정)
+              <ItemIcon className="w-4 h-4 ml-0.5" />
+              <span className="text-slate-700 dark:text-slate-300">ITEM (일정)</span>
             </label>
-            <label className="flex items-center gap-1">
+            <label className="flex cursor-pointer items-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 bg-white dark:bg-slate-900">
               <input
                 type="radio"
                 name="kind"
                 value="GROUP"
                 checked={kind === 'GROUP'}
                 onChange={() => setKind('GROUP')}
+                className="accent-violet-600"
               />
-              GROUP (그룹)
+              <FolderIcon className="w-4 h-4 ml-0.5" />
+              <span className="text-slate-700 dark:text-slate-300">GROUP (그룹)</span>
             </label>
           </div>
 
           <label className="block text-sm">
-            <span className="block">제목 *</span>
+            <span className="block text-slate-700 dark:text-slate-300">제목 *</span>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               maxLength={256}
               required
-              className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
             />
           </label>
 
           <label className="block text-sm">
-            <span className="block">설명</span>
+            <span className="block text-slate-700 dark:text-slate-300">설명</span>
             <textarea
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               maxLength={4000}
-              className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
             />
           </label>
 
           {kind === 'ITEM' && (
             <div className="grid grid-cols-2 gap-2 text-sm">
               <label>
-                <span className="block">시작일</span>
+                <span className="block text-slate-700 dark:text-slate-300">시작일</span>
                 <input
                   type="date"
                   value={startAt}
-                  onChange={(e) => setStartAt(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                  onChange={(e) => handleStartAtChange(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                 />
               </label>
               <label>
-                <span className="block">종료일</span>
+                <span className="block text-slate-700 dark:text-slate-300">종료일</span>
                 <input
                   type="date"
                   value={endAt}
                   onChange={(e) => setEndAt(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                 />
               </label>
             </div>
@@ -141,7 +177,7 @@ export default function NodeFormDialog({ projectId, parent, onClose, onCreated }
             <button
               type="button"
               onClick={onClose}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700"
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900"
             >
               취소
             </button>

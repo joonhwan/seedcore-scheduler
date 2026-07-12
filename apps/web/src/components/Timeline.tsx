@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MAX_TREE_DEPTH, type NodeTreeItem, type NodeHistoryItem } from '@sam/shared';
 import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
+import { FolderIcon, ItemIcon } from './Icons';
 import { useNodeHistory } from '../lib/history';
 import { apiErrorMessage } from '../lib/errors';
 
@@ -309,7 +310,7 @@ export default function Timeline({
   const todayInRange = todayOffset >= 0 && todayOffset <= totalDays;
 
   return (
-    <div className="relative group/timeline w-full">
+    <div className="relative group/timeline w-full h-full flex flex-col overflow-hidden">
       {/* 플로팅 확대/축소/화면맞춤 조절바 - 화면 밖으로 나가면 뷰포트 맨 아래에 sticky 표시 (헤더를 가리지 않도록 top-[48px] 설정) */}
       <div className="pointer-events-none absolute inset-x-0 top-[48px] bottom-0 z-30">
         <div className="sticky bottom-4 flex justify-end pr-4">
@@ -346,7 +347,7 @@ export default function Timeline({
       <div
         ref={scrollerRef}
         onMouseDown={handleMouseDown}
-        className={`overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 max-h-[500px] lg:max-h-[calc(100vh-220px)] ${
+        className={`flex-1 min-h-0 overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 ${
           isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'
         }`}
       >
@@ -570,14 +571,8 @@ function Row({
           onClick={() => onSelect(node.id)}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
-          <span
-            className={`shrink-0 rounded border px-1 py-0.5 text-[9px] font-semibold ${
-              isGroup
-                ? 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300'
-                : 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300'
-            }`}
-          >
-            {isGroup ? 'G' : 'I'}
+          <span className="shrink-0 flex items-center justify-center">
+            {isGroup ? <FolderIcon className="w-4 h-4" /> : <ItemIcon className="w-4 h-4" />}
           </span>
           <span className="min-w-0 flex-1 truncate" title={node.title}>{node.title}</span>
           {progress !== null && (

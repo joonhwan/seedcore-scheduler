@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import type { NodeTreeItem, ProjectDetail, ProjectStatus } from '@sam/shared';
 import { useMe } from '../lib/auth';
@@ -36,15 +36,70 @@ export default function ProjectDetailPage() {
   const [unit, setUnit] = useState<TimelineUnit>('week');
   const [todayCounter, setTodayCounter] = useState(0);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isDetailDirty, setIsDetailDirty] = useState(false);
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
+
+  const detailFormRef = useRef<HTMLFormElement>(null);
+  const isSaveAndCloseActionRef = useRef(false);
 
   const handleSelectNode = (nodeId: string | null) => {
     setSelectedId(nodeId);
+    isSaveAndCloseActionRef.current = false;
     if (nodeId) {
       setIsDetailModalOpen(true);
     } else {
       setIsDetailModalOpen(false);
+      setIsDetailDirty(false);
+      setShowConfirmClose(false);
     }
   };
+
+  const attemptCloseDetail = () => {
+    if (isDetailDirty) {
+      setShowConfirmClose(true);
+    } else {
+      handleSelectNode(null);
+    }
+  };
+
+  const handleSaveAndClose = () => {
+    isSaveAndCloseActionRef.current = true;
+    if (detailFormRef.current) {
+      detailFormRef.current.requestSubmit();
+    }
+    setShowConfirmClose(false);
+  };
+
+  const handleSaveSuccess = () => {
+    if (isSaveAndCloseActionRef.current) {
+      handleSelectNode(null);
+    }
+    isSaveAndCloseActionRef.current = false;
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (selectedId && isDetailModalOpen) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          if (showConfirmClose) {
+            setShowConfirmClose(false);
+          } else {
+            attemptCloseDetail();
+          }
+        } else if (e.key === 'Enter') {
+          if (showConfirmClose) {
+            e.preventDefault();
+            handleSaveAndClose();
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedId, isDetailModalOpen, isDetailDirty, showConfirmClose]);
 
   const isAdmin = me.data?.globalRole === 'ADMIN';
   const myRole = project.data?.myRole ?? null;
@@ -115,8 +170,22 @@ export default function ProjectDetailPage() {
     }
   }
 
+  useEffect(() => {
+    const parent = document.getElementById('app-main-content');
+    if (parent) {
+      parent.classList.remove('overflow-y-auto');
+      parent.classList.add('overflow-hidden');
+    }
+    return () => {
+      if (parent) {
+        parent.classList.remove('overflow-hidden');
+        parent.classList.add('overflow-y-auto');
+      }
+    };
+  }, []);
+
   return (
-    <main className="w-full max-w-none px-6 py-6">
+    <main className="flex h-full w-full flex-col overflow-hidden px-6 py-6">
       <ProjectHeader
         project={project.data}
         canManage={canManageProject}
@@ -124,51 +193,50 @@ export default function ProjectDetailPage() {
         isAdmin={isAdmin}
       />
 
-      <div className="mt-6 w-full">
-        {/* 데스크톱은 2열 구성, 태블릿/모바일은 1열로 떨어지며 자연스럽게 너비 축소 */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr]">
-          {/* 좌측 콘텐츠 영역 (통합 타임라인/트리 뷰) */}
-          <section className="space-y-3 min-w-0">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-              <div className="flex items-center gap-1 rounded border border-slate-300 p-0.5 dark:border-slate-700">
-                {(['day', 'week', 'month', 'quarter'] as const).map((u) => (
-                  <button
-                    key={u}
-                    type="button"
-                    onClick={() => setUnit(u)}
-                    className={`rounded px-2 py-1 text-xs ${
-                      unit === u
-                        ? 'bg-sky-600 text-white'
-                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {u === 'day' ? '일' : u === 'week' ? '주' : u === 'month' ? '월' : '분기'}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-2">
-                {canEditNodes && (
-                  <button
-                    type="button"
-                    onClick={() => setCreateParent('root')}
-                    className="rounded bg-sky-600 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-700"
-                  >
-                    + 루트 노드 추가
-                  </button>
-                )}
+      <div className="mt-6 flex-1 min-h-0 w-full flex flex-col">
+        {/* 단일 열 전체 영역 구성 */}
+        <section className="flex-1 min-h-0 flex flex-col space-y-3 min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <div className="flex items-center gap-1 rounded border border-slate-300 p-0.5 dark:border-slate-700">
+              {(['day', 'week', 'month', 'quarter'] as const).map((u) => (
+                <button
+                  key={u}
+                  type="button"
+                  onClick={() => setUnit(u)}
+                  className={`rounded px-2 py-1 text-xs ${
+                    unit === u
+                      ? 'bg-sky-600 text-white'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {u === 'day' ? '일' : u === 'week' ? '주' : u === 'month' ? '월' : '분기'}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              {canEditNodes && (
                 <button
                   type="button"
-                  onClick={() => setTodayCounter((n) => n + 1)}
-                  className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  onClick={() => setCreateParent('root')}
+                  className="rounded bg-sky-600 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-700"
                 >
-                  오늘로 이동
+                  + 루트 노드 추가
                 </button>
-                <span className="text-[11px] text-slate-500">
-                  노드 {nodes.data?.length ?? 0}개
-                </span>
-              </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setTodayCounter((n) => n + 1)}
+                className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              >
+                오늘로 이동
+              </button>
+              <span className="text-[11px] text-slate-500">
+                노드 {nodes.data?.length ?? 0}개
+              </span>
             </div>
+          </div>
 
+          <div className="flex-1 min-h-0 w-full flex flex-col">
             <Timeline
               items={nodes.data ?? []}
               unit={unit}
@@ -188,41 +256,74 @@ export default function ProjectDetailPage() {
               onChangeParent={(n) => setPickParentFor(n)}
               onDelete={onDeleteNode}
             />
-          </section>
-
-          {/* 우측 콘텐츠 영역 (데스크톱에서만 노출되며 항상 고정 배치) */}
-          <section className="hidden lg:block sticky top-6 self-start max-h-[calc(100vh-120px)] overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-            {selected ? (
-              <div className="space-y-6">
-                <NodeDetail projectId={id} node={selected} canEdit={canEditNodes} />
-                <NodeCommentsPanel nodeId={selected.id} canPost={canEditNodes} />
-                <NodeHistoryPanel nodeId={selected.id} />
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500">
-                왼쪽 일정 목록이나 타임라인 막대를 클릭하여 노드를 선택하세요.
-              </p>
-            )}
-          </section>
-        </div>
+          </div>
+        </section>
       </div>
 
-      {/* 태블릿 및 모바일용 모달 대화상자 (상세 보기 및 편집) */}
+      {/* 노드 상세 및 편집용 모달 대화상자 (모든 해상도에서 공통 사용) */}
       {selected && isDetailModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm lg:hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
           <div className="relative flex flex-col w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900 animate-in fade-in-50 zoom-in-95 duration-150">
             <button
               type="button"
-              onClick={() => handleSelectNode(null)}
+              onClick={attemptCloseDetail}
               className="absolute right-4 top-4 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 p-1.5 transition-colors"
               aria-label="닫기"
             >
               <span className="text-xl font-bold">✕</span>
             </button>
             <div className="mt-2 space-y-6">
-              <NodeDetail projectId={id} node={selected} canEdit={canEditNodes} />
+              <NodeDetail
+                projectId={id}
+                node={selected}
+                canEdit={canEditNodes}
+                onDirtyChange={setIsDetailDirty}
+                formRef={detailFormRef}
+                onSaveSuccess={handleSaveSuccess}
+              />
               <NodeCommentsPanel nodeId={selected.id} canPost={canEditNodes} />
               <NodeHistoryPanel nodeId={selected.id} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 변경사항 유실 경고 모달 대화상자 */}
+      {showConfirmClose && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="relative flex flex-col w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 animate-in fade-in-50 zoom-in-95 duration-100">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              저장하지 않은 변경사항이 있습니다.
+            </h3>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              편집 중인 내용이 저장되지 않았습니다. 어떻게 진행하시겠습니까?
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmClose(false);
+                  setIsDetailDirty(false); // 더티 플래그 강제 리셋
+                  handleSelectNode(null); // 편집 모달 닫기
+                }}
+                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                그냥 닫기 (변경사항 파기)
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowConfirmClose(false)} // 닫기 취소 (대화상자만 꺼짐)
+                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                닫기 취소 (계속 편집)
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAndClose}
+                className="rounded bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700"
+              >
+                저장하고 닫기 (Enter)
+              </button>
             </div>
           </div>
         </div>

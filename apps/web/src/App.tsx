@@ -109,69 +109,71 @@ function Header() {
 
 export default function App() {
   return (
-    <>
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
       <Header />
       <AdminBanner />
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/me/password"
-          element={
-            <RequireAuth>
-              <ChangePasswordPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/"
-          element={
-            <RequireAuth>
-              <ProjectsPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/projects/new"
-          element={
-            <RequireAuth>
-              <ProjectNewPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/projects/:id"
-          element={
-            <RequireAuth>
-              <ProjectDetailPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/projects/:id/timeline"
-          element={
-            <RequireAuth>
-              <ProjectTimelineRedirect />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/projects/:id/members"
-          element={
-            <RequireAuth>
-              <ProjectMembersPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/admin/users"
-          element={
-            <RequireAuth>
-              <AdminUsersPage />
-            </RequireAuth>
-          }
-        />
-      </Routes>
+      <div id="app-main-content" className="flex-1 min-h-0 overflow-y-auto">
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/me/password"
+            element={
+              <RequireAuth>
+                <ChangePasswordPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/"
+            element={
+              <RequireAuth>
+                <ProjectsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/projects/new"
+            element={
+              <RequireAuth>
+                <ProjectNewPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/projects/:id"
+            element={
+              <RequireAuth>
+                <ProjectDetailPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/projects/:id/timeline"
+            element={
+              <RequireAuth>
+                <ProjectTimelineRedirect />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/projects/:id/members"
+            element={
+              <RequireAuth>
+                <ProjectMembersPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <RequireAuth>
+                <AdminUsersPage />
+              </RequireAuth>
+            }
+          />
+        </Routes>
+      </div>
       <ToastViewport />
-    </>
+    </div>
   );
 }
