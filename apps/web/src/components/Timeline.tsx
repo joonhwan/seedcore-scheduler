@@ -20,8 +20,7 @@ interface Props {
   onMoveSibling?: ((node: NodeTreeItem, direction: -1 | 1) => void) | undefined;
   onChangeParent?: ((node: NodeTreeItem) => void) | undefined;
   onDelete?: ((node: NodeTreeItem) => void) | undefined;
-  showToolbar?: boolean | undefined;
-  onToggleToolbar?: (() => void) | undefined;
+  onAddRoot?: (() => void) | undefined;
 }
 
 const PPD: Record<TimelineUnit, number> = {
@@ -78,8 +77,7 @@ export default function Timeline({
   onMoveSibling,
   onChangeParent,
   onDelete,
-  showToolbar = true,
-  onToggleToolbar,
+  onAddRoot,
 }: Props) {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const flat = useMemo(() => flattenTree(items, collapsedIds), [items, collapsedIds]);
@@ -169,6 +167,50 @@ export default function Timeline({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, scrollLeft: 0 });
 
+  const [hoveredX, setHoveredX] = useState<number | null>(null);
+
+  const hoveredDateStr = useMemo(() => {
+    if (hoveredX === null || !range) return null;
+    const dayOffset = Math.floor(hoveredX / ppd);
+    if (dayOffset < 0 || dayOffset >= totalDays) return null;
+    const d = new Date(range.start.getTime() + dayOffset * 86400000);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][d.getUTCDay()];
+    return `${y}-${m}-${day} (${dayOfWeek})`;
+  }, [hoveredX, range, ppd, totalDays]);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isDragging || !scrollerRef.current) {
+      setHoveredX(null);
+      return;
+    }
+
+    if (e.buttons > 0) {
+      setHoveredX(null);
+      return;
+    }
+
+    const rect = scrollerRef.current.getBoundingClientRect();
+    const clientX = e.clientX - rect.left;
+
+    if (clientX < LABEL_WIDTH) {
+      setHoveredX(null);
+    } else {
+      const chartX = clientX + scrollerRef.current.scrollLeft - LABEL_WIDTH;
+      if (chartX > totalWidth) {
+        setHoveredX(null);
+      } else {
+        setHoveredX(chartX);
+      }
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredX(null);
+  };
+
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return; // 좌클릭만 허용
     const target = e.target as HTMLElement;
@@ -183,6 +225,7 @@ export default function Timeline({
     }
     if (!scrollerRef.current) return;
 
+    setHoveredX(null);
     setIsDragging(true);
     dragStartRef.current = {
       x: e.clientX,
@@ -286,16 +329,20 @@ export default function Timeline({
 
   const lastTodayCounterRef = useRef(jumpToTodayCounter);
 
+  const scrollToToday = (behavior: ScrollBehavior = 'smooth') => {
+    if (!scrollerRef.current || !range) return;
+    const today = todayUtc();
+    const offsetDays = dayDiff(today, range.start);
+    if (offsetDays < 0 || offsetDays > totalDays) return;
+    const target = offsetDays * ppd - scrollerRef.current.clientWidth / 2 + LABEL_WIDTH / 2;
+    scrollerRef.current.scrollTo({ left: Math.max(0, target), behavior });
+  };
+
   // 사용자가 명시적으로 "오늘로 이동"을 눌렀을 때만 작동하도록 가드 처리
   useEffect(() => {
-    if (!scrollerRef.current || !range) return;
     if (jumpToTodayCounter !== lastTodayCounterRef.current) {
       lastTodayCounterRef.current = jumpToTodayCounter;
-      const today = todayUtc();
-      const offsetDays = dayDiff(today, range.start);
-      if (offsetDays < 0 || offsetDays > totalDays) return;
-      const target = offsetDays * ppd - scrollerRef.current.clientWidth / 2 + LABEL_WIDTH / 2;
-      scrollerRef.current.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+      scrollToToday('smooth');
     }
   }, [jumpToTodayCounter, range, ppd, totalDays]);
 
@@ -343,20 +390,16 @@ export default function Timeline({
             >
               화면 맞춤
             </button>
-            {onToggleToolbar && (
+            {todayInRange && (
               <>
                 <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
                 <button
                   type="button"
-                  onClick={onToggleToolbar}
-                  className={`flex h-7 w-7 items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${
-                    showToolbar ? 'text-sky-600 dark:text-sky-400' : 'text-slate-500'
-                  }`}
-                  title={showToolbar ? "상단 도구 바 접기" : "상단 도구 바 펴기"}
+                  onClick={() => scrollToToday('smooth')}
+                  className="flex h-7 px-2 items-center justify-center rounded text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+                  title="오늘 날짜 위치로 스크롤"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
-                  </svg>
+                  오늘
                 </button>
               </>
             )}
@@ -367,6 +410,8 @@ export default function Timeline({
       <div
         ref={scrollerRef}
         onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
         className={`flex-1 min-h-0 overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 ${
           isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'
         }`}
@@ -383,9 +428,28 @@ export default function Timeline({
             <div
               className="sticky left-0 z-30 shrink-0 border-r border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 flex items-center justify-between"
               style={{ width: LABEL_WIDTH }}
+              title={`총 ${items.length}개의 일정이 있습니다.`}
             >
-              <span>일정</span>
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="truncate">일정</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">
+                  ({items.length}개)
+                </span>
+              </div>
               <div className="flex items-center gap-0.5">
+                {canEdit && onAddRoot && (
+                  <button
+                    type="button"
+                    onClick={onAddRoot}
+                    className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700 transition-colors"
+                    title="최상단 항목 추가"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5 pointer-events-none">
+                      <title>최상단 항목 추가</title>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={collapseAll}
@@ -411,20 +475,38 @@ export default function Timeline({
               </div>
             </div>
             <div className="relative" style={{ width: totalWidth }}>
+              {hoveredX !== null && hoveredDateStr && (
+                <div
+                  className="pointer-events-none absolute z-40 rounded bg-sky-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-md dark:bg-sky-500 whitespace-nowrap transition-all duration-75"
+                  style={{
+                    left: hoveredX + 12,
+                    top: 8,
+                  }}
+                >
+                  {hoveredDateStr}
+                </div>
+              )}
               {headerCells.map((c, i) => (
                 <div
                   key={i}
-                  className={`absolute top-0 flex h-full items-center border-l border-slate-200 px-1.5 text-[11px] font-medium dark:border-slate-700 ${
+                  className={`absolute top-0 flex h-full border-l border-slate-200 text-[11px] font-medium dark:border-slate-700 ${
                     c.isSaturday
                       ? 'bg-blue-500/[0.04] text-blue-600 dark:bg-blue-500/[0.06] dark:text-blue-400'
                       : c.isSunday
                       ? 'bg-rose-500/[0.04] text-rose-600 dark:bg-rose-500/[0.06] dark:text-rose-400'
                       : 'text-slate-600 dark:text-slate-400'
+                  } ${
+                    c.subLabel
+                      ? 'flex-col justify-center items-center gap-0 px-0.5'
+                      : 'items-center px-1.5'
                   }`}
                   style={{ left: c.offsetPx, width: c.widthPx }}
                   title={c.tooltip || c.label}
                 >
                   <span className="truncate">{c.label}</span>
+                  {c.subLabel && (
+                    <span className="text-[9px] font-normal opacity-75">{c.subLabel}</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -432,6 +514,23 @@ export default function Timeline({
 
           {/* 행 영역 */}
           <div className="relative">
+            {hoveredX !== null && (
+              <>
+                {/* 날짜 영역 하이라이트 세로 밴드 */}
+                <div
+                  className="pointer-events-none absolute top-0 bottom-0 bg-sky-500/[0.03] dark:bg-sky-400/[0.03] z-10"
+                  style={{
+                    left: LABEL_WIDTH + Math.floor(hoveredX / ppd) * ppd,
+                    width: ppd,
+                  }}
+                />
+                {/* 마우스 포인터 위치의 정밀 세로 점선 */}
+                <div
+                  className="pointer-events-none absolute top-0 bottom-0 w-px bg-sky-400/50 dark:bg-sky-500/50 z-10 border-l border-dashed border-sky-400/80 dark:border-sky-500/80"
+                  style={{ left: LABEL_WIDTH + hoveredX }}
+                />
+              </>
+            )}
             {/* 주말 세로 하이라이트 배경선 */}
             {weekendBands.map((band, idx) => (
               <div
@@ -720,9 +819,10 @@ interface HeaderCell {
   offsetPx: number;
   widthPx: number;
   label: string;
-  tooltip?: string;
-  isSaturday?: boolean;
-  isSunday?: boolean;
+  subLabel?: string | undefined;
+  tooltip?: string | undefined;
+  isSaturday?: boolean | undefined;
+  isSunday?: boolean | undefined;
 }
 
 function computeHeaderCells(
@@ -734,15 +834,18 @@ function computeHeaderCells(
   const totalDays = dayDiff(range.end, range.start) + 1;
 
   if (unit === 'day') {
+    const dowNames = ['일', '월', '화', '수', '목', '금', '토'];
     for (let i = 0; i < totalDays; i += 1) {
       const d = new Date(range.start.getTime() + i * 86400000);
       const day = d.getUTCDate();
       const dayOfWeek = d.getUTCDay();
+      const showDow = ppd >= 30;
       cells.push({
         offsetPx: i * ppd,
         widthPx: ppd,
         label: `${day}`,
-        tooltip: `${d.getUTCMonth() + 1}/${day}`,
+        subLabel: showDow ? dowNames[dayOfWeek] : undefined,
+        tooltip: `${d.getUTCMonth() + 1}/${day} (${dowNames[dayOfWeek]})`,
         isSaturday: dayOfWeek === 6,
         isSunday: dayOfWeek === 0,
       });

@@ -75,36 +75,7 @@ export default function ProjectTimelinePage() {
         </div>
       </header>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1 rounded border border-slate-300 p-0.5 dark:border-slate-700">
-          {(['day', 'week', 'month', 'quarter'] as const).map((u) => (
-            <button
-              key={u}
-              type="button"
-              onClick={() => setUnit(u)}
-              className={`rounded px-2 py-1 text-xs ${
-                unit === u
-                  ? 'bg-sky-600 text-white'
-                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-              }`}
-            >
-              {u === 'day' ? '일' : u === 'week' ? '주' : u === 'month' ? '월' : '분기'}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => setTodayCounter((n) => n + 1)}
-          className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-        >
-          오늘로 이동
-        </button>
-        <span className="text-[11px] text-slate-500">
-          노드 {nodes.data?.length ?? 0}개 · 진행율(%) 막대 fill
-        </span>
-      </div>
-
-      <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
         <section className="lg:col-span-7">
           <Timeline
             items={nodes.data ?? []}

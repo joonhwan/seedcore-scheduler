@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useIsMutating } from '@tanstack/react-query';
 import type { NodeTreeItem, ProjectDetail, ProjectStatus } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
@@ -28,6 +29,10 @@ export default function ProjectDetailPage() {
   const deleteNode = useDeleteNode(id ?? '');
   const moveNode = useMoveNode(id ?? '');
 
+  const isMutating = useIsMutating({
+    mutationKey: ['nodes', id],
+  });
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createParent, setCreateParent] = useState<NodeTreeItem | null | 'root'>(
     null,
@@ -38,7 +43,6 @@ export default function ProjectDetailPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isDetailDirty, setIsDetailDirty] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
-  const [showToolbar, setShowToolbar] = useState(true);
 
   const detailFormRef = useRef<HTMLFormElement>(null);
   const isSaveAndCloseActionRef = useRef(false);
@@ -194,53 +198,12 @@ export default function ProjectDetailPage() {
         canManage={canManageProject}
         adminMode={adminMode}
         isAdmin={isAdmin}
+        nodes={nodes.data ?? []}
       />
 
       <div className="mt-2.5 flex-1 min-h-0 w-full flex flex-col">
         {/* 단일 열 전체 영역 구성 */}
-        <section className="flex-1 min-h-0 flex flex-col space-y-1.5 min-w-0">
-          {showToolbar && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-1.5 dark:border-slate-700 bg-white dark:bg-slate-900 transition-colors animate-in slide-in-from-top-1 duration-100">
-              <div className="flex items-center gap-0.5 rounded border border-slate-300 p-0.5 dark:border-slate-700">
-                {(['day', 'week', 'month', 'quarter'] as const).map((u) => (
-                  <button
-                    key={u}
-                    type="button"
-                    onClick={() => setUnit(u)}
-                    className={`rounded px-1.5 py-0.5 text-[11px] ${
-                      unit === u
-                        ? 'bg-sky-600 text-white font-medium'
-                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {u === 'day' ? '일' : u === 'week' ? '주' : u === 'month' ? '월' : '분기'}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-1.5">
-                {canEditNodes && (
-                  <button
-                    type="button"
-                    onClick={() => setCreateParent('root')}
-                    className="rounded bg-sky-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-sky-700 transition-colors"
-                  >
-                    + 루트 노드 추가
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setTodayCounter((n) => n + 1)}
-                  className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 transition-colors"
-                >
-                  오늘로 이동
-                </button>
-                <span className="text-[10px] text-slate-500 font-medium">
-                  일정 {nodes.data?.length ?? 0}개
-                </span>
-              </div>
-            </div>
-          )}
-
+        <section className="flex-1 min-h-0 flex flex-col min-w-0">
           <div className="flex-1 min-h-0 w-full flex flex-col">
             <Timeline
               items={nodes.data ?? []}
@@ -260,8 +223,7 @@ export default function ProjectDetailPage() {
               onMoveSibling={onMoveSibling}
               onChangeParent={(n) => setPickParentFor(n)}
               onDelete={onDeleteNode}
-              showToolbar={showToolbar}
-              onToggleToolbar={() => setShowToolbar(!showToolbar)}
+              onAddRoot={() => setCreateParent('root')}
             />
           </div>
         </section>
@@ -352,6 +314,20 @@ export default function ProjectDetailPage() {
           onClose={() => setPickParentFor(null)}
         />
       )}
+
+      {isMutating > 0 && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/30 backdrop-blur-[1.5px] cursor-wait animate-in fade-in duration-200">
+          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white/95 px-5 py-3 shadow-lg dark:border-slate-800 dark:bg-slate-900/95 animate-in fade-in zoom-in-95 duration-150">
+            <svg className="animate-spin h-5 w-5 text-sky-600 dark:text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              일정을 처리 중입니다...
+            </span>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -371,15 +347,33 @@ function ProjectHeader({
   canManage,
   adminMode,
   isAdmin,
+  nodes,
 }: {
   project: ProjectDetail;
   canManage: boolean;
   adminMode: boolean;
   isAdmin: boolean;
+  nodes: NodeTreeItem[];
 }) {
   const updateProject = useUpdateProject(project.id);
   const deleteProject = useDeleteProject();
   const navigate = useNavigate();
+
+  const projectProgress = useMemo(() => {
+    const rootNodes = nodes.filter((n) => !n.parentId);
+    if (rootNodes.length === 0) return null;
+
+    let sum = 0;
+    let count = 0;
+    for (const n of rootNodes) {
+      const val = n.kind === 'GROUP' ? n.progressEffective : n.progress;
+      if (val !== null && val !== undefined) {
+        sum += val;
+        count += 1;
+      }
+    }
+    return count > 0 ? Math.round(sum / count) : null;
+  }, [nodes]);
 
   async function setStatus(status: ProjectStatus) {
     if (status === 'ARCHIVED') {
@@ -418,19 +412,30 @@ function ProjectHeader({
   return (
     <header className="flex flex-col gap-1.5 border-b border-slate-200 pb-2 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="flex items-center gap-1.5 text-lg font-bold">
+        <h1 className="flex items-center gap-2 text-lg font-bold">
           <span>{project.name}</span>
+          {projectProgress !== null && (
+            <span className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/80" title="프로젝트 전체 진행률">
+              진행률 {projectProgress}%
+            </span>
+          )}
           {project.status === 'ACTIVE' ? (
-            <span title="활성 프로젝트" className="flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4 text-emerald-600 dark:text-emerald-400">
+            <span className="group flex items-center gap-1 text-emerald-600 dark:text-emerald-400 cursor-help" title="활성 프로젝트">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
+              <span className="max-w-0 overflow-hidden text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 group-hover:max-w-[100px] transition-all duration-300 ease-in-out whitespace-nowrap opacity-0 group-hover:opacity-100">
+                활성 상태
+              </span>
             </span>
           ) : (
-            <span title="보관중인 프로젝트" className="flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4 text-slate-500 dark:text-slate-400">
+            <span className="group flex items-center gap-1 text-slate-500 dark:text-slate-400 cursor-help" title="보관중인 프로젝트">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
               </svg>
+              <span className="max-w-0 overflow-hidden text-[10px] font-semibold text-slate-500 dark:text-slate-400 group-hover:max-w-[100px] transition-all duration-300 ease-in-out whitespace-nowrap opacity-0 group-hover:opacity-100">
+                보관 처리됨
+              </span>
             </span>
           )}
         </h1>

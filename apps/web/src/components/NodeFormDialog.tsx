@@ -21,7 +21,7 @@ const getTodayString = () => {
 };
 
 export default function NodeFormDialog({ projectId, parent, onClose, onCreated }: Props) {
-  const [kind, setKind] = useState<NodeKind>('ITEM');
+  const [kind, setKind] = useState<NodeKind>(parent ? 'ITEM' : 'GROUP');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const todayStr = getTodayString();
@@ -85,7 +85,7 @@ export default function NodeFormDialog({ projectId, parent, onClose, onCreated }
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-          {parent ? `"${parent.title}" 의 자식 노드 추가` : '루트 노드 추가'}
+          {parent ? `"${parent.title}" 의 자식 노드 추가` : '최상단 항목 추가'}
         </h2>
         <form onSubmit={onSubmit} className="mt-4 space-y-4">
           {/* GROUP / ITEM 라디오 선택 영역 (아이콘 매핑) */}

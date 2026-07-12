@@ -27,6 +27,7 @@ function invalidateProject(qc: ReturnType<typeof useQueryClient>, projectId: str
 export function useCreateNode(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: ['nodes', projectId, 'create'],
     mutationFn: (input: CreateNodeDto) =>
       api.post<NodeTreeItem>(`/projects/${projectId}/nodes`, input),
     onSuccess: () => invalidateProject(qc, projectId),
@@ -36,6 +37,7 @@ export function useCreateNode(projectId: string) {
 export function useUpdateNode(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: ['nodes', projectId, 'update'],
     mutationFn: ({ id, body }: { id: string; body: UpdateNodeDto }) =>
       api.patch<NodeTreeItem>(`/nodes/${id}`, body),
     onSuccess: (_data, vars) => {
@@ -48,6 +50,7 @@ export function useUpdateNode(projectId: string) {
 export function useMoveNode(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: ['nodes', projectId, 'move'],
     mutationFn: ({ id, body }: { id: string; body: MoveNodeDto }) =>
       api.post<NodeTreeItem>(`/nodes/${id}/move`, body),
     onSuccess: (_data, vars) => {
@@ -60,6 +63,7 @@ export function useMoveNode(projectId: string) {
 export function useDeleteNode(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: ['nodes', projectId, 'delete'],
     mutationFn: (id: string) => api.delete<void>(`/nodes/${id}`),
     onSuccess: () => invalidateProject(qc, projectId),
   });
