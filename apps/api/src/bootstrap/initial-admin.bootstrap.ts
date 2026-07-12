@@ -31,16 +31,8 @@ export class InitialAdminBootstrap implements OnApplicationBootstrap {
 
     const existing = await this.prisma.user.findUnique({ where: { username } });
     if (existing) {
-      const hash = await this.auth.hashPassword(password);
-      await this.prisma.user.update({
-        where: { username },
-        data: {
-          passwordHash: hash,
-          passwordMustChange: true,
-        },
-      });
-      this.logger.warn(
-        `INITIAL_ADMIN_USERNAME='${username}' already exists — Password has been reset and synchronized with INITIAL_ADMIN_PASSWORD.`,
+      this.logger.log(
+        `Initial admin '${username}' already exists — Skipping password seeding to preserve current password.`,
       );
       return;
     }

@@ -38,3 +38,7 @@
 # Unnecessary markdown documentation
 **/*.md
 docs-customer/
+
+# Environmental variable files
+**/.env
+**/.env.*
