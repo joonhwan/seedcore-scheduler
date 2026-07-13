@@ -740,6 +740,7 @@ function ProjectHeader({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          {/* CSV 가져오기/내보내기 기능 임시 숨김 처리 (요구사항 반영)
           {canEdit && (
             <button
               type="button"
@@ -764,6 +765,7 @@ function ProjectHeader({
             </svg>
             <span className="hidden md:inline">내보내기</span>
           </button>
+          */}
           {canEdit && onAddNode && (
             <button
               type="button"
