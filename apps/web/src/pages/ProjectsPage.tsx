@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import type { ProjectListItem, ProjectStatus } from '@sam/shared';
 import { useMe } from '../lib/auth';
@@ -12,6 +12,97 @@ export default function ProjectsPage() {
   const { on: adminMode } = useAdminMode();
   const projects = useProjects();
   const deleteProject = useDeleteProject();
+
+  // Local Storage 키 명칭
+  const STORAGE_KEY = 'sam_project_list_column_widths';
+
+  // 기본 컬럼 폭 (하드코딩 디폴트)
+  const defaultWidths = {
+    name: 240,
+    description: 380,
+    status: 90,
+    memberCount: 90,
+    myRole: 130,
+    createdAt: 130,
+    updatedAt: 130,
+    manage: 90,
+  };
+
+  // 컬럼 폭 상태 관리 (Local Storage 로드 우선)
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...defaultWidths, ...parsed };
+      }
+    } catch (e) {
+      console.error('Failed to load column widths', e);
+    }
+    return defaultWidths;
+  });
+
+  // 드래그 상태 관리
+  const resizingColumn = useRef<string | null>(null);
+  const startX = useRef<number>(0);
+  const startWidth = useRef<number>(0);
+
+  const handleMouseDown = (e: React.MouseEvent, columnKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingColumn.current = columnKey;
+    startX.current = e.clientX;
+    startWidth.current = columnWidths[columnKey] || defaultWidths[columnKey as keyof typeof defaultWidths];
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!resizingColumn.current) return;
+    const deltaX = e.clientX - startX.current;
+    const newWidth = Math.max(60, startWidth.current + deltaX);
+    
+    setColumnWidths((prev) => ({
+      ...prev,
+      [resizingColumn.current!]: newWidth,
+    }));
+  };
+
+  const handleMouseUp = () => {
+    if (resizingColumn.current) {
+      setColumnWidths((prev) => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(prev));
+        return prev;
+      });
+    }
+    resizingColumn.current = null;
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  };
+
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
+  // 테이블 전체 폭 계산
+  const totalTableWidth = useMemo(() => {
+    let sum =
+      (columnWidths.name || defaultWidths.name) +
+      (columnWidths.description || defaultWidths.description) +
+      (columnWidths.status || defaultWidths.status) +
+      (columnWidths.memberCount || defaultWidths.memberCount) +
+      (columnWidths.myRole || defaultWidths.myRole) +
+      (columnWidths.createdAt || defaultWidths.createdAt) +
+      (columnWidths.updatedAt || defaultWidths.updatedAt);
+    if (adminMode) {
+      sum += (columnWidths.manage || defaultWidths.manage);
+    }
+    return sum;
+  }, [columnWidths, adminMode]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'ARCHIVED'>('ALL');
@@ -223,44 +314,129 @@ export default function ProjectsPage() {
       {projects.data && filtered.length > 0 && (
         <div className="mt-6">
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-sm">
+            <table
+              className="divide-y divide-slate-200 dark:divide-slate-800 text-sm"
+              style={{ tableLayout: 'fixed', width: `${totalTableWidth}px` }}
+            >
               <thead className="bg-slate-50 dark:bg-slate-800/50">
                 <tr>
-                  <th scope="col" onClick={() => handleSort('name')} className="cursor-pointer select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                    <div className="flex items-center justify-center gap-1.5">
+                  <th
+                    scope="col"
+                    className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    style={{ width: `${columnWidths.name}px` }}
+                  >
+                    <div
+                      onClick={() => handleSort('name')}
+                      className="cursor-pointer flex items-center justify-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100"
+                    >
                       프로젝트 이름 {renderSortIcon('name')}
                     </div>
+                    <div
+                      onMouseDown={(e) => handleMouseDown(e, 'name')}
+                      className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-slate-300 dark:bg-slate-700 opacity-0 group-hover/th:opacity-100 hover:!bg-sky-500 hover:opacity-100 active:!bg-sky-600 active:opacity-100 transition-opacity"
+                    />
                   </th>
-                  <th scope="col" className="px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200">
-                    설명
+                  <th
+                    scope="col"
+                    className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    style={{ width: `${columnWidths.description}px` }}
+                  >
+                    <div className="flex items-center justify-center gap-1.5">
+                      설명
+                    </div>
+                    <div
+                      onMouseDown={(e) => handleMouseDown(e, 'description')}
+                      className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-slate-300 dark:bg-slate-700 opacity-0 group-hover/th:opacity-100 hover:!bg-sky-500 hover:opacity-100 active:!bg-sky-600 active:opacity-100 transition-opacity"
+                    />
                   </th>
-                  <th scope="col" onClick={() => handleSort('status')} className="cursor-pointer select-none px-3 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">
-                    <div className="flex items-center justify-center gap-1">
+                  <th
+                    scope="col"
+                    className="relative select-none px-3 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    style={{ width: `${columnWidths.status}px` }}
+                  >
+                    <div
+                      onClick={() => handleSort('status')}
+                      className="cursor-pointer flex items-center justify-center gap-1 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
+                    >
                       상태 {renderSortIcon('status')}
                     </div>
+                    <div
+                      onMouseDown={(e) => handleMouseDown(e, 'status')}
+                      className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-slate-300 dark:bg-slate-700 opacity-0 group-hover/th:opacity-100 hover:!bg-sky-500 hover:opacity-100 active:!bg-sky-600 active:opacity-100 transition-opacity"
+                    />
                   </th>
-                  <th scope="col" onClick={() => handleSort('memberCount')} className="cursor-pointer select-none px-3 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap">
-                    <div className="flex items-center justify-center gap-1">
+                  <th
+                    scope="col"
+                    className="relative select-none px-3 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    style={{ width: `${columnWidths.memberCount}px` }}
+                  >
+                    <div
+                      onClick={() => handleSort('memberCount')}
+                      className="cursor-pointer flex items-center justify-center gap-1 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
+                    >
                       멤버 {renderSortIcon('memberCount')}
                     </div>
+                    <div
+                      onMouseDown={(e) => handleMouseDown(e, 'memberCount')}
+                      className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-slate-300 dark:bg-slate-700 opacity-0 group-hover/th:opacity-100 hover:!bg-sky-500 hover:opacity-100 active:!bg-sky-600 active:opacity-100 transition-opacity"
+                    />
                   </th>
-                  <th scope="col" onClick={() => handleSort('myRole')} className="cursor-pointer select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                    <div className="flex items-center justify-center gap-1.5">
+                  <th
+                    scope="col"
+                    className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    style={{ width: `${columnWidths.myRole}px` }}
+                  >
+                    <div
+                      onClick={() => handleSort('myRole')}
+                      className="cursor-pointer flex items-center justify-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100"
+                    >
                       역할 {renderSortIcon('myRole')}
                     </div>
+                    <div
+                      onMouseDown={(e) => handleMouseDown(e, 'myRole')}
+                      className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-slate-300 dark:bg-slate-700 opacity-0 group-hover/th:opacity-100 hover:!bg-sky-500 hover:opacity-100 active:!bg-sky-600 active:opacity-100 transition-opacity"
+                    />
                   </th>
-                  <th scope="col" onClick={() => handleSort('createdAt')} className="cursor-pointer select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                    <div className="flex items-center justify-center gap-1.5">
+                  <th
+                    scope="col"
+                    className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    style={{ width: `${columnWidths.createdAt}px` }}
+                  >
+                    <div
+                      onClick={() => handleSort('createdAt')}
+                      className="cursor-pointer flex items-center justify-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100"
+                    >
                       생성일 {renderSortIcon('createdAt')}
                     </div>
+                    <div
+                      onMouseDown={(e) => handleMouseDown(e, 'createdAt')}
+                      className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-slate-300 dark:bg-slate-700 opacity-0 group-hover/th:opacity-100 hover:!bg-sky-500 hover:opacity-100 active:!bg-sky-600 active:opacity-100 transition-opacity"
+                    />
                   </th>
-                  <th scope="col" onClick={() => handleSort('updatedAt')} className="cursor-pointer select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                    <div className="flex items-center justify-center gap-1.5">
+                  <th
+                    scope="col"
+                    className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    style={{ width: `${columnWidths.updatedAt}px` }}
+                  >
+                    <div
+                      onClick={() => handleSort('updatedAt')}
+                      className="cursor-pointer flex items-center justify-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100"
+                    >
                       수정일 {renderSortIcon('updatedAt')}
                     </div>
+                    {adminMode && (
+                      <div
+                        onMouseDown={(e) => handleMouseDown(e, 'updatedAt')}
+                        className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-slate-300 dark:bg-slate-700 opacity-0 group-hover/th:opacity-100 hover:!bg-sky-500 hover:opacity-100 active:!bg-sky-600 active:opacity-100 transition-opacity"
+                      />
+                    )}
                   </th>
                   {adminMode && (
-                    <th scope="col" className="px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                    <th
+                      scope="col"
+                      className="px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap"
+                      style={{ width: `${columnWidths.manage}px` }}
+                    >
                       관리
                     </th>
                   )}
@@ -269,31 +445,57 @@ export default function ProjectsPage() {
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
                 {paginated.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                    <td className="whitespace-nowrap px-4 py-4 font-semibold text-slate-950 dark:text-slate-50">
-                      <Link to={`/projects/${p.id}`} className="text-sky-600 hover:text-sky-700 hover:underline dark:text-sky-400 dark:hover:text-sky-300">
+                    <td
+                      className="whitespace-nowrap px-4 py-4 font-semibold text-slate-950 dark:text-slate-50 truncate"
+                      style={{ width: `${columnWidths.name}px`, maxWidth: `${columnWidths.name}px` }}
+                    >
+                      <Link to={`/projects/${p.id}`} className="text-sky-600 hover:text-sky-700 hover:underline dark:text-sky-400 dark:hover:text-sky-300 truncate block" title={p.name}>
                         {p.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-4 text-slate-600 dark:text-slate-400 max-w-md truncate" title={p.description ?? ''}>
+                    <td
+                      className="px-4 py-4 text-slate-600 dark:text-slate-400 truncate"
+                      style={{ width: `${columnWidths.description}px`, maxWidth: `${columnWidths.description}px` }}
+                      title={p.description ?? ''}
+                    >
                       {p.description ?? '-'}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-4 text-center">
+                    <td
+                      className="whitespace-nowrap px-3 py-4 text-center"
+                      style={{ width: `${columnWidths.status}px`, maxWidth: `${columnWidths.status}px` }}
+                    >
                       <StatusBadge status={p.status} />
                     </td>
-                    <td className="whitespace-nowrap px-3 py-4 text-center text-slate-600 dark:text-slate-400">
+                    <td
+                      className="whitespace-nowrap px-3 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
+                      style={{ width: `${columnWidths.memberCount}px`, maxWidth: `${columnWidths.memberCount}px` }}
+                    >
                       {p.memberCount}명
                     </td>
-                    <td className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400">
+                    <td
+                      className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
+                      style={{ width: `${columnWidths.myRole}px`, maxWidth: `${columnWidths.myRole}px` }}
+                      title={p.myRole ?? '비멤버 (ADMIN)'}
+                    >
                       {p.myRole ?? '비멤버 (ADMIN)'}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400">
+                    <td
+                      className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
+                      style={{ width: `${columnWidths.createdAt}px`, maxWidth: `${columnWidths.createdAt}px` }}
+                    >
                       {p.createdAt.slice(0, 10)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400">
+                    <td
+                      className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
+                      style={{ width: `${columnWidths.updatedAt}px`, maxWidth: `${columnWidths.updatedAt}px` }}
+                    >
                       {p.updatedAt.slice(0, 10)}
                     </td>
                     {adminMode && (
-                      <td className="whitespace-nowrap px-4 py-4 text-center">
+                      <td
+                        className="whitespace-nowrap px-4 py-4 text-center"
+                        style={{ width: `${columnWidths.manage}px`, maxWidth: `${columnWidths.manage}px` }}
+                      >
                         {p.status === 'ARCHIVED' ? (
                           <button
                             type="button"
