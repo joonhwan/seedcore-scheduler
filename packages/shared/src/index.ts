@@ -125,6 +125,7 @@ export const AuditAction = z.enum([
   'PROJECT_ARCHIVE',
   'PROJECT_RESTORE',
   'PROJECT_DELETE',
+  'PROJECT_IMPORT_CSV',
   'MEMBER_ADD',
   'MEMBER_REMOVE',
   'NODE_CREATE',
@@ -135,6 +136,11 @@ export const AuditAction = z.enum([
 export type AuditAction = z.infer<typeof AuditAction>;
 
 // ─── 프로젝트 DTO ──────────────────────────────────────────────────────────
+export const ImportCsvDto = z.object({
+  csvText: z.string(),
+});
+export type ImportCsvDto = z.infer<typeof ImportCsvDto>;
+
 export const CreateProjectDto = z.object({
   name: z.string().min(1).max(128),
   description: z.string().max(2000).optional(),

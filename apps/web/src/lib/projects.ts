@@ -63,3 +63,14 @@ export function useDeleteProject() {
     onSuccess: () => qc.invalidateQueries({ queryKey: projectsKey }),
   });
 }
+
+export function useImportCsv(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { csvText: string }) =>
+      api.post<any>(`/projects/${projectId}/import-csv`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['projects', projectId, 'nodes'] });
+    },
+  });
+}

@@ -8,6 +8,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import {
   MAX_TREE_DEPTH,
+  ImportCsvDto,
   type CreateNodeDto,
   type MoveNodeDto,
   type NodeAction,
@@ -574,6 +575,329 @@ export class NodesService {
         diffJson: JSON.stringify(args.diff),
       },
     });
+  }
+
+  async importCsv(
+    projectId: string,
+    body: ImportCsvDto,
+    ctx: ActorContext,
+  ): Promise<NodeTreeItem[]> {
+    await this.assertProjectExists(projectId);
+    await this.assertWriteAccess(projectId, ctx);
+
+    const csvText = body.csvText;
+    const lines = csvText.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+
+    if (lines.length === 0) {
+      throw new BadRequestException({ error: 'EMPTY_CSV', message: 'CSV 데이터가 비어 있습니다.' });
+    }
+
+    // 1. CSV 라인 파싱 및 열 분할
+    const parseCsvLine = (line: string): string[] => {
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result.map(val => {
+        let clean = val;
+        if (clean.startsWith('"') && clean.endsWith('"')) {
+          clean = clean.slice(1, -1);
+        }
+        return clean.replace(/""/g, '"').trim();
+      });
+    };
+
+    const parsedLines = lines.map(line => parseCsvLine(line));
+
+    // 2. 유동적 컬럼 분석 (날짜 열 찾기)
+    let startDateColIdx = 5;
+    let endDateColIdx = 6;
+    let progressColIdx = 7;
+
+    const datePattern = /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$/;
+    const colMatchCounts: Record<number, number> = {};
+
+    // 각 열 별로 날짜 패턴에 맞는 데이터 수 카운트
+    parsedLines.forEach(cols => {
+      cols.forEach((col, idx) => {
+        if (datePattern.test(col)) {
+          colMatchCounts[idx] = (colMatchCounts[idx] || 0) + 1;
+        }
+      });
+    });
+
+    const colIndices = Object.keys(colMatchCounts)
+      .map(Number)
+      .sort((a, b) => (colMatchCounts[b] || 0) - (colMatchCounts[a] || 0));
+
+    if (colIndices.length >= 2) {
+      const first = colIndices[0];
+      const second = colIndices[1];
+      if (first !== undefined && second !== undefined) {
+        const detected = [first, second].sort((a, b) => a - b);
+        startDateColIdx = detected[0] ?? 5;
+        endDateColIdx = detected[1] ?? 6;
+        progressColIdx = endDateColIdx + 1;
+      }
+    }
+
+    // 트리 깊이 컬럼 수 (최소 1개, 최대 5개 제한)
+    const maxDepth = Math.max(1, Math.min(5, startDateColIdx));
+
+    // 3. 임시 노드 생성 및 보정 규칙 적용
+    interface TmpNode {
+      tempId: string;
+      title: string;
+      depth: number;
+      rawStartAt: string;
+      rawEndAt: string;
+      rawProgress: string;
+      kind: 'GROUP' | 'ITEM';
+      parentId: string | null;
+      sortOrder: number;
+    }
+
+    const tmpNodes: TmpNode[] = [];
+    let isFirstNode = true;
+    let lastAssignedDepth = -1;
+
+    for (let rowIndex = 0; rowIndex < parsedLines.length; rowIndex++) {
+      const cols = parsedLines[rowIndex];
+      if (!cols) continue;
+
+      // 트리 깊이 컬럼 중 최초로 텍스트가 발견되는 컬럼 탐색
+      let foundDepth = -1;
+      let foundTitle = '';
+
+      for (let d = 0; d < maxDepth; d++) {
+        const cell = cols[d];
+        if (cell && cell.trim().length > 0) {
+          foundDepth = d;
+          foundTitle = cell.trim();
+          break;
+        }
+      }
+
+      // 만약 트리 이름이 전혀 기재되지 않은 행이라면 무시(Skip)
+      if (foundDepth === -1 || !foundTitle) {
+        continue;
+      }
+
+      // 보정 1: 첫 번째 행의 깊이가 0이 아닐 때 강제 0으로 지정
+      if (isFirstNode) {
+        foundDepth = 0;
+        isFirstNode = false;
+      }
+
+      // 보정 2: 깊이가 2단계 이상 도약할 때 보정 (한 단계 아래로만 내려가도록 함)
+      if (foundDepth > lastAssignedDepth + 1) {
+        foundDepth = lastAssignedDepth + 1;
+      }
+
+      lastAssignedDepth = foundDepth;
+
+      const rawStartAt = (startDateColIdx < cols.length ? cols[startDateColIdx] : '') || '';
+      const rawEndAt = (endDateColIdx < cols.length ? cols[endDateColIdx] : '') || '';
+      const rawProgress = (progressColIdx < cols.length ? cols[progressColIdx] : '') || '';
+
+      tmpNodes.push({
+        tempId: `temp-${rowIndex}-${randomUUID().slice(0, 8)}`,
+        title: foundTitle,
+        depth: foundDepth,
+        rawStartAt,
+        rawEndAt,
+        rawProgress,
+        kind: 'ITEM', // 후속 판정
+        parentId: null,
+        sortOrder: 1,
+      });
+    }
+
+    if (tmpNodes.length === 0) {
+      throw new BadRequestException({ error: 'NO_VALID_NODES', message: '가져올 수 있는 유효한 일정 노드가 없습니다.' });
+    }
+
+    // 4. 부모 자식 관계 수립 및 GROUP/ITEM 성격 판정
+    for (let i = 0; i < tmpNodes.length; i++) {
+      const current = tmpNodes[i];
+      if (!current) continue;
+      if (current.depth > 0) {
+        // 자기 위로 거슬러 올라가며 Depth = current.depth - 1 인 최초의 노드를 찾음
+        let foundParent = false;
+        for (let j = i - 1; j >= 0; j--) {
+          const possibleParent = tmpNodes[j];
+          if (possibleParent && possibleParent.depth === current.depth - 1) {
+            current.parentId = possibleParent.tempId;
+            foundParent = true;
+            break;
+          }
+        }
+        // 혹시라도 매칭 부모를 못 찾았다면 (비정상 케이스) 최상위 루트로 강제 보정
+        if (!foundParent) {
+          current.depth = 0;
+        }
+      }
+    }
+
+    // 자식 보유 여부를 파악해서 GROUP / ITEM 결정
+    for (let i = 0; i < tmpNodes.length; i++) {
+      const current = tmpNodes[i];
+      if (!current) continue;
+      const hasChildren = tmpNodes.some(n => n && n.parentId === current.tempId);
+      current.kind = hasChildren ? 'GROUP' : 'ITEM';
+    }
+
+    // 5. ITEM 노드 필드 보정 (날짜/진척율 정규화)
+    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const parseDateStr = (dateStr: string): string => {
+      if (!dateStr) return '';
+      // 구분자 통일
+      const clean = dateStr.replace(/[/.]/g, '-').trim();
+      const match = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (match) {
+        const y = match[1]!;
+        const m = match[2]!.padStart(2, '0');
+        const d = match[3]!.padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+      return '';
+    };
+
+    const parseProgressVal = (progStr: string): number => {
+      if (!progStr) return 0;
+      const match = progStr.match(/\d+/);
+      if (match && match[0]) {
+        const val = parseInt(match[0], 10);
+        return Math.min(100, Math.max(0, val));
+      }
+      return 0;
+    };
+
+    tmpNodes.forEach(node => {
+      if (!node) return;
+      if (node.kind === 'GROUP') {
+        node.rawStartAt = '';
+        node.rawEndAt = '';
+        node.rawProgress = '0';
+      } else {
+        let start = parseDateStr(node.rawStartAt);
+        let end = parseDateStr(node.rawEndAt);
+
+        if (!start && !end) {
+          start = todayStr;
+          end = todayStr;
+        } else if (!start) {
+          start = end;
+        } else if (!end) {
+          end = start;
+        }
+
+        // 역전 방지
+        if (start > end) {
+          end = start;
+        }
+
+        node.rawStartAt = start;
+        node.rawEndAt = end;
+        node.rawProgress = String(parseProgressVal(node.rawProgress));
+      }
+    });
+
+    // 6. DB 반영 (한 트랜잭션 내에서 처리)
+    const tempToRealIdMap: Record<string, string> = {};
+    const now = new Date();
+
+    const createdRows = await this.prisma.$transaction(async (tx) => {
+      // 기존 노드들 일괄 삭제
+      await tx.scheduleNode.deleteMany({ where: { projectId } });
+
+      // 부모별 sortOrder를 독립적으로 세기 위한 카운터 맵
+      const sortOrderCounters: Record<string, number> = {};
+
+      const nodesToInsert: ScheduleNode[] = [];
+
+      for (const tNode of tmpNodes) {
+        if (!tNode) continue;
+        const realId = randomUUID();
+        tempToRealIdMap[tNode.tempId] = realId;
+
+        const parentKey = tNode.parentId ? tempToRealIdMap[tNode.parentId] : 'ROOT';
+        if (!parentKey) continue;
+        const currentSort = (sortOrderCounters[parentKey] || 0) + 1;
+        sortOrderCounters[parentKey] = currentSort;
+
+        const realParentId = tNode.parentId ? (tempToRealIdMap[tNode.parentId] || null) : null;
+
+        const startAt = tNode.kind === 'GROUP' ? null : tNode.rawStartAt;
+        const endAt = tNode.kind === 'GROUP' ? null : tNode.rawEndAt;
+        const progress = tNode.kind === 'GROUP' ? 0 : parseInt(tNode.rawProgress, 10);
+
+        const node = await tx.scheduleNode.create({
+          data: {
+            id: realId,
+            projectId,
+            parentId: realParentId,
+            kind: tNode.kind,
+            title: tNode.title,
+            description: null,
+            startAt,
+            endAt,
+            progress,
+            sortOrder: currentSort,
+            depth: tNode.depth,
+            createdById: ctx.actorId,
+            updatedById: ctx.actorId,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+
+        nodesToInsert.push(node);
+      }
+
+      // 히스토리 일괄 기록 (프로젝트 단위 벌크 생성)
+      await tx.nodeHistory.create({
+        data: {
+          id: randomUUID(),
+          nodeId: null,
+          nodeIdSnapshot: projectId,
+          projectIdSnapshot: projectId,
+          actorId: ctx.actorId,
+          action: 'CREATE',
+          diffJson: JSON.stringify({
+            bulk_import: { from: null, to: `Imported ${nodesToInsert.length} nodes from CSV` },
+          }),
+        },
+      });
+
+      return nodesToInsert;
+    });
+
+    // 프로젝트 업데이트 이력 추가
+    await this.audit.log({
+      actorId: ctx.actorId,
+      action: 'PROJECT_IMPORT_CSV',
+      targetType: 'project',
+      targetId: projectId,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      payload: { count: createdRows.length },
+    });
+
+    // 전체 리스트 반환
+    return buildTreeItems(createdRows);
   }
 
   private toSingleTreeItem(node: ScheduleNode): NodeTreeItem {

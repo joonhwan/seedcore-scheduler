@@ -1,13 +1,14 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useIsMutating } from '@tanstack/react-query';
-import { MAX_TREE_DEPTH, type NodeTreeItem, type ProjectDetail, type ProjectStatus } from '@sam/shared';
+import { MAX_TREE_DEPTH, ImportCsvDto, type NodeTreeItem, type ProjectDetail, type ProjectStatus } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
 import {
   useProject,
   useDeleteProject,
   useUpdateProject,
+  useImportCsv,
 } from '../lib/projects';
 import { useNodes, useDeleteNode, useMoveNode } from '../lib/nodes';
 import { apiErrorMessage } from '../lib/errors';
@@ -579,11 +580,16 @@ function ProjectHeader({
 }) {
   const updateProject = useUpdateProject(project.id);
   const deleteProject = useDeleteProject();
+  const importCsv = useImportCsv(project.id);
   const navigate = useNavigate();
 
   // 삭제 모달 상태
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+  // 가져오기 모달 상태
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [csvInputText, setCsvInputText] = useState('');
 
   const projectProgress = useMemo(() => {
     const rootNodes = nodes.filter((n) => !n.parentId);
@@ -636,6 +642,65 @@ function ProjectHeader({
     }
   }
 
+  // CSV 내보내기 (Export)
+  const handleExportCsv = () => {
+    const header = ['일정1', '일정2', '일정3', '일정4', '일정5', '시작일', '종료일', '진척율'];
+    const rows = nodes.map((n) => {
+      const isItem = n.kind === 'ITEM';
+      const start = isItem ? (n.startAt ?? '') : (n.startAtEffective ?? '');
+      const end = isItem ? (n.endAt ?? '') : (n.endAtEffective ?? '');
+      const progress = isItem ? (n.progress ?? 0) : (n.progressEffective ?? 0);
+
+      const line = ['', '', '', '', '', start, end, `${progress}%`];
+
+      if (n.depth >= 0 && n.depth <= 4) {
+        line[n.depth] = n.title;
+      }
+
+      return line.map((val) => {
+        const clean = val.replace(/"/g, '""');
+        return `"${clean}"`;
+      }).join(',');
+    });
+
+    const csvContent = [header.join(','), ...rows].join('\n');
+    // Excel 에서 한글 깨짐 방지를 위해 BOM(\ufeff) 추가
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${project.name}_일정_export.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('일정이 CSV 파일로 내보내졌습니다.');
+  };
+
+  // CSV 가져오기 실행
+  const handleImportCsvExecute = async () => {
+    if (!csvInputText.trim()) return;
+    try {
+      await importCsv.mutateAsync({ csvText: csvInputText });
+      toast.success('CSV 일정을 성공적으로 가져왔습니다.');
+      setIsImportModalOpen(false);
+      setCsvInputText('');
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    }
+  };
+
+  // CSV 파일 첨부 처리
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      setCsvInputText(text);
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
   const showDelete = isAdmin && adminMode && project.status === 'ARCHIVED';
 
   return (
@@ -675,6 +740,30 @@ function ProjectHeader({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setIsImportModalOpen(true)}
+              className="p-1.5 rounded-md border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center gap-1 text-xs font-semibold"
+              title="CSV 파일에서 일정 일괄 가져오기 (덮어쓰기)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              <span className="hidden md:inline">가져오기</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            className="p-1.5 rounded-md border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center gap-1 text-xs font-semibold"
+            title="현재 프로젝트 일정을 CSV 파일로 내보내기"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            <span className="hidden md:inline">내보내기</span>
+          </button>
           {canEdit && onAddNode && (
             <button
               type="button"
@@ -798,7 +887,74 @@ function ProjectHeader({
         </div>
       )}
 
-      {(updateProject.isPending || deleteProject.isPending) && (
+      {/* CSV 일정 가져오기 모달 */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm animate-in fade-in-50 duration-100">
+          <div className="relative flex flex-col w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 animate-in zoom-in-95 duration-150 text-slate-800 dark:text-slate-200">
+            <h3 className="text-base font-bold text-sky-600 dark:text-sky-400">
+              CSV 일정 가져오기 (Import)
+            </h3>
+            
+            <div className="mt-3 rounded-lg border border-rose-300 bg-rose-50/50 p-3.5 text-xs dark:border-rose-900/40 dark:bg-rose-950/20">
+              <p className="font-semibold text-rose-800 dark:text-rose-400">
+                ⚠️ 경고: 기존 프로젝트의 모든 일정이 초기화(삭제)되고, CSV 데이터로 완전히 덮어씁니다.
+              </p>
+              <p className="mt-1 text-slate-600 dark:text-slate-400">
+                가져오기 형식: 총 8개 컬럼 구조이며, `일정1 ~ 일정5` 중 한 곳에 이름을 넣으십시오.
+                (예: `일정1,일정2,일정3,일정4,일정5,시작일,종료일,진척율`)
+              </p>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                CSV 파일 선택
+              </label>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileChange}
+                className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200 dark:file:bg-slate-800 dark:file:text-slate-350 cursor-pointer"
+              />
+            </div>
+
+            <div className="mt-4 flex-1 flex flex-col">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                CSV 데이터 텍스트 직접 입력 / 확인
+              </label>
+              <textarea
+                value={csvInputText}
+                onChange={(e) => setCsvInputText(e.target.value)}
+                placeholder="일정1,일정2,일정3,일정4,일정5,시작일,종료일,진척율 형태로 입력 또는 붙여넣기"
+                rows={10}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-mono focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 resize-y"
+              />
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setCsvInputText('');
+                }}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                disabled={!csvInputText.trim() || importCsv.isPending}
+                onClick={handleImportCsvExecute}
+                className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-50 transition-colors"
+              >
+                일정 가져오기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(updateProject.isPending || deleteProject.isPending || importCsv.isPending) && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/30 backdrop-blur-[1.5px] cursor-wait animate-in fade-in duration-200">
           <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white/95 px-5 py-3 shadow-lg dark:border-slate-800 dark:bg-slate-900/95 animate-in fade-in zoom-in-95 duration-150">
             <svg className="animate-spin h-5 w-5 text-sky-600 dark:text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

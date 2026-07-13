@@ -14,6 +14,7 @@ import {
   CreateNodeDto,
   MoveNodeDto,
   UpdateNodeDto,
+  ImportCsvDto,
   type NodeTreeItem,
 } from '@sam/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -72,6 +73,15 @@ export class NodesController {
     @Req() req: AuthenticatedRequest,
   ): Promise<void> {
     await this.nodes.hardDelete(id, this.ctx(req));
+  }
+
+  @Post('projects/:projectId/import-csv')
+  importCsv(
+    @Param('projectId') projectId: string,
+    @Body(new ZodValidationPipe(ImportCsvDto)) body: ImportCsvDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<NodeTreeItem[]> {
+    return this.nodes.importCsv(projectId, body, this.ctx(req));
   }
 
   private ctx(req: AuthenticatedRequest) {
