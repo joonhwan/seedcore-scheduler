@@ -4,6 +4,7 @@ import { useCreateNode } from '../lib/nodes';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { FolderIcon, ItemIcon } from './Icons';
+import AutocompleteInput from './AutocompleteInput';
 
 interface Props {
   projectId: string;
@@ -143,11 +144,11 @@ export default function NodeFormDialog({ projectId, parent, onClose, onCreated }
 
           <label className="block text-sm">
             <span className="block text-slate-700 dark:text-slate-300">제목 *</span>
-             <input
-              ref={titleInputRef}
-              type="text"
+            <AutocompleteInput
+              kind={kind}
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={setTitle}
+              inputRef={titleInputRef}
               maxLength={256}
               required
               className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 text-slate-800 dark:text-slate-100"

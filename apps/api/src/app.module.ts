@@ -12,6 +12,7 @@ import { MembersModule } from './members/members.module';
 import { NodesModule } from './nodes/nodes.module';
 import { BackupModule } from './backup/backup.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
+import { AutocompleteModule } from './autocomplete/autocomplete.module';
 import { AuthGuard } from './auth/auth.guard';
 
 @Module({
@@ -28,6 +29,7 @@ import { AuthGuard } from './auth/auth.guard';
     NodesModule,
     BackupModule,
     BootstrapModule,
+    AutocompleteModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
 })

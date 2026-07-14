@@ -166,3 +166,16 @@ model Session {
   @@index([expiresAt])
   @@map("sessions")
 }
+
+model AutocompleteTerm {
+  id        String   @id
+  title     String
+  kind      String   // 'GROUP' | 'ITEM'
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([title, kind])
+  @@map("autocomplete_terms")
+}
+

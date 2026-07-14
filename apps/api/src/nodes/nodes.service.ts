@@ -18,6 +18,7 @@ import {
 import { Prisma, type ScheduleNode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AutocompleteService } from '../autocomplete/autocomplete.service';
 import { buildTreeItems } from './tree-aggregation';
 
 interface ActorContext {
@@ -33,6 +34,7 @@ export class NodesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly autocomplete: AutocompleteService,
   ) {}
 
   /**
@@ -144,6 +146,8 @@ export class NodesService {
       });
     }
 
+    await this.autocomplete.collect(created.title, created.kind as 'GROUP' | 'ITEM');
+
     return this.toSingleTreeItem(created);
   }
 
@@ -251,6 +255,10 @@ export class NodesService {
         userAgent: ctx.userAgent,
         payload: { sub: 'NODE_UPDATE' },
       });
+    }
+
+    if (body.title !== undefined && body.title !== target.title) {
+      await this.autocomplete.collect(updated.title, updated.kind as 'GROUP' | 'ITEM');
     }
 
     return this.toSingleTreeItem(updated);

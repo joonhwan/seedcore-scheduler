@@ -132,6 +132,9 @@ export const AuditAction = z.enum([
   'NODE_UPDATE',
   'NODE_MOVE',
   'NODE_DELETE',
+  'AUTOCOMPLETE_CREATE',
+  'AUTOCOMPLETE_UPDATE',
+  'AUTOCOMPLETE_DELETE',
 ]);
 export type AuditAction = z.infer<typeof AuditAction>;
 
@@ -315,3 +318,26 @@ export const ConflictResponse = z.object({
   currentUpdatedAt: z.string(),
 });
 export type ConflictResponse = z.infer<typeof ConflictResponse>;
+
+// ─── 자동완성 DTO ──────────────────────────────────────────────────────────
+export const AutocompleteTermDto = z.object({
+  id: z.string(),
+  title: z.string().min(1).max(256),
+  kind: NodeKind,
+  isSystem: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AutocompleteTermDto = z.infer<typeof AutocompleteTermDto>;
+
+export const CreateAutocompleteTermDto = z.object({
+  title: z.string().min(1).max(256),
+  kind: NodeKind,
+});
+export type CreateAutocompleteTermDto = z.infer<typeof CreateAutocompleteTermDto>;
+
+export const UpdateAutocompleteTermDto = z.object({
+  title: z.string().min(1).max(256),
+});
+export type UpdateAutocompleteTermDto = z.infer<typeof UpdateAutocompleteTermDto>;
+

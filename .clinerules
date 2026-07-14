@@ -1,0 +1,4 @@
+# SAM Scheduler - AI Agent Custom Rules
+
+## DB Schema Change Notifications
+- **데이터베이스 변경 시 사용자 알림**: 향후 Prisma 스키마(`schema.prisma`), 데이터베이스 테이블 구조, 또는 마이그레이션 파일 추가/변경 등 **DB 관련 변경사항이 발생할 경우**, 작업을 마친 후 사용자에게 구체적인 DB 변경 내용과 파이프라인 반영 여부를 반드시 상세하게 설명하고 공유해야 합니다.

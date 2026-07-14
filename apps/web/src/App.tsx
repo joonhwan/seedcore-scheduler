@@ -11,6 +11,7 @@ import ProjectNewPage from './pages/ProjectNewPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import ProjectMembersPage from './pages/ProjectMembersPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import AdminAutocompletePage from './pages/AdminAutocompletePage';
 import { useParams } from 'react-router-dom';
 
 function ProjectTimelineRedirect() {
@@ -85,6 +86,17 @@ function Header() {
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                </svg>
+              </Link>
+            )}
+            {isAdmin && (
+              <Link
+                to="/admin/autocomplete"
+                className="p-1 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+                title="자동완성 관리"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 21m0 0l-.813-5.096L3 15.187m6 5.813a2 2 0 100-4 2 2 0 000 4zM19.071 4.929a10 10 0 11-14.142 14.142 10 10 0 0114.142-14.142z" />
                 </svg>
               </Link>
             )}
@@ -195,6 +207,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <AdminUsersPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/autocomplete"
+            element={
+              <RequireAuth>
+                <AdminAutocompletePage />
               </RequireAuth>
             }
           />

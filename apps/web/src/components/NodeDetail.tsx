@@ -4,6 +4,7 @@ import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { useUpdateNode } from '../lib/nodes';
 import { FolderIcon, ItemIcon, PencilIcon } from './Icons';
+import AutocompleteInput from './AutocompleteInput';
 
 interface Props {
   projectId: string;
@@ -136,11 +137,10 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
         {isEditingTitle && canEdit ? (
           <div className="flex flex-1 items-center gap-2">
             {isGroup ? <FolderIcon className="w-6 h-6" /> : <ItemIcon className="w-6 h-6" />}
-            <input
-              className="flex-1 min-w-0 rounded border border-slate-300 bg-white px-3 py-1.5 text-base font-bold dark:border-slate-700 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-              type="text"
+            <AutocompleteInput
+              kind={node.kind as 'GROUP' | 'ITEM'}
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={setTitle}
               maxLength={256}
               required
               autoFocus
@@ -154,6 +154,7 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
                   }
                 }
               }}
+              className="flex-1 min-w-0 rounded border border-slate-300 bg-white px-3 py-1.5 text-base font-bold dark:border-slate-700 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
             />
             <button
               type="button"
