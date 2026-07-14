@@ -493,7 +493,7 @@ export default function Timeline({
       {/* 플로팅 확대/축소/화면맞춤 조절바 - 화면 밖으로 나가면 뷰포트 맨 아래에 sticky 표시 (헤더를 가리지 않도록 top-[48px] 설정) */}
       <div className="pointer-events-none absolute inset-x-0 top-[48px] bottom-0 z-30">
         <div className="sticky bottom-4 flex justify-end pr-4">
-          <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-slate-200 bg-white/95 p-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-slate-200 bg-white/95 p-1 shadow-lg dark:border-slate-700 dark:bg-slate-800 opacity-50 hover:opacity-100 transition-opacity duration-200">
             <button
               type="button"
               onClick={() => handleZoom(false)}
