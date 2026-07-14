@@ -32,7 +32,6 @@ const PPD: Record<TimelineUnit, number> = {
 };
 
 const ROW_HEIGHT = 32;
-const LABEL_WIDTH = 280;
 const HEADER_HEIGHT = 44;
 const PADDING_DAYS = 3;
 
@@ -81,6 +80,42 @@ export default function Timeline({
   onDelete,
   onAddRoot,
 }: Props) {
+  const [labelWidth, setLabelWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('sam_gantt_label_width');
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= 150 && parsed <= 600) {
+        return parsed;
+      }
+    }
+    return 280;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sam_gantt_label_width', labelWidth.toString());
+  }, [labelWidth]);
+
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = labelWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const newWidth = Math.max(150, Math.min(600, startWidth + dx));
+      setLabelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const flat = useMemo(() => {
     const list = flattenTree(items, collapsedIds);
@@ -295,10 +330,10 @@ export default function Timeline({
     const rect = scrollerRef.current.getBoundingClientRect();
     const clientX = e.clientX - rect.left;
 
-    if (clientX < LABEL_WIDTH) {
+    if (clientX < labelWidth) {
       setHoveredX(null);
     } else {
-      const chartX = clientX + scrollerRef.current.scrollLeft - LABEL_WIDTH;
+      const chartX = clientX + scrollerRef.current.scrollLeft - labelWidth;
       if (chartX > totalWidth) {
         setHoveredX(null);
       } else {
@@ -379,7 +414,7 @@ export default function Timeline({
     const activeDays = dayDiff(activeEnd, activeStart) + 1;
 
     const containerWidth = scrollerRef.current.clientWidth;
-    const availableWidth = Math.max(containerWidth - LABEL_WIDTH - 40, 200); // 40px 여백
+    const availableWidth = Math.max(containerWidth - labelWidth - 40, 200); // 40px 여백
 
     // 활성 범위가 화면에 가득 차도록 ppd(Pixels Per Day) 계산
     const calculatedPpd = availableWidth / activeDays;
@@ -401,7 +436,7 @@ export default function Timeline({
     if (!scrollerRef.current) return;
     const scroller = scrollerRef.current;
     // 현재 화면 중앙 기준 일수(days) 계산
-    const centerOffset = scroller.scrollLeft + (scroller.clientWidth - LABEL_WIDTH) / 2;
+    const centerOffset = scroller.scrollLeft + (scroller.clientWidth - labelWidth) / 2;
     const daysAtCenter = centerOffset / ppd;
 
     const multiplier = zoomIn ? 1.3 : 1 / 1.3;
@@ -410,7 +445,7 @@ export default function Timeline({
 
     // 줌 후에도 화면 중앙 기준 일치되도록 스크롤 복원
     const newCenterOffset = daysAtCenter * newPpd;
-    const newScrollLeft = newCenterOffset - (scroller.clientWidth - LABEL_WIDTH) / 2;
+    const newScrollLeft = newCenterOffset - (scroller.clientWidth - labelWidth) / 2;
 
     setTimeout(() => {
       if (scrollerRef.current) {
@@ -434,7 +469,7 @@ export default function Timeline({
     const today = todayUtc();
     const offsetDays = dayDiff(today, range.start);
     if (offsetDays < 0 || offsetDays > totalDays) return;
-    const target = offsetDays * ppd - scrollerRef.current.clientWidth / 2 + LABEL_WIDTH / 2;
+    const target = offsetDays * ppd - scrollerRef.current.clientWidth / 2 + labelWidth / 2;
     scrollerRef.current.scrollTo({ left: Math.max(0, target), behavior });
   };
 
@@ -501,6 +536,13 @@ export default function Timeline({
         </div>
       </div>
 
+      {/* 트리 폭 조절 드래그 핸들 */}
+      <div
+        onMouseDown={handleResizeMouseDown}
+        className="absolute top-0 bottom-0 z-30 w-2 -ml-1 cursor-col-resize hover:bg-sky-500/30 active:bg-sky-600 transition-colors"
+        style={{ left: labelWidth }}
+      />
+
       <div
         ref={scrollerRef}
         onMouseDown={handleMouseDown}
@@ -512,7 +554,7 @@ export default function Timeline({
       >
         <div
           className="relative"
-          style={{ width: LABEL_WIDTH + totalWidth }}
+          style={{ width: labelWidth + totalWidth }}
         >
           {/* Sticky 상단 헤더 (label corner + 일자 헤더) */}
           <div
@@ -521,7 +563,7 @@ export default function Timeline({
           >
             <div
               className="sticky left-0 z-30 shrink-0 border-r border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 flex items-center justify-between"
-              style={{ width: LABEL_WIDTH }}
+              style={{ width: labelWidth }}
               title={`총 ${items.length}개의 일정이 있습니다.`}
             >
               <div className="flex items-center gap-1 min-w-0">
@@ -614,14 +656,14 @@ export default function Timeline({
                 <div
                   className="pointer-events-none absolute top-0 bottom-0 bg-sky-500/[0.03] dark:bg-sky-400/[0.03] z-10"
                   style={{
-                    left: LABEL_WIDTH + Math.floor(hoveredX / ppd) * ppd,
+                    left: labelWidth + Math.floor(hoveredX / ppd) * ppd,
                     width: ppd,
                   }}
                 />
                 {/* 마우스 포인터 위치의 정밀 세로 점선 */}
                 <div
                   className="pointer-events-none absolute top-0 bottom-0 w-px bg-sky-400/50 dark:bg-sky-500/50 z-10 border-l border-dashed border-sky-400/80 dark:border-sky-500/80"
-                  style={{ left: LABEL_WIDTH + hoveredX }}
+                  style={{ left: labelWidth + hoveredX }}
                 />
               </>
             )}
@@ -634,7 +676,7 @@ export default function Timeline({
                     ? 'bg-rose-500/[0.03] dark:bg-rose-500/[0.05]'
                     : 'bg-blue-500/[0.03] dark:bg-blue-500/[0.05]'
                 }`}
-                style={{ left: LABEL_WIDTH + band.leftPx, width: band.widthPx }}
+                style={{ left: labelWidth + band.leftPx, width: band.widthPx }}
               />
             ))}
             {flat.map((n) => {
@@ -652,6 +694,7 @@ export default function Timeline({
                   range={range}
                   ppd={ppd}
                   totalWidth={totalWidth}
+                  labelWidth={labelWidth}
                   isSelected={selectedId === n.id}
                   onSelect={onSelect}
                   onEdit={onEdit}
@@ -673,9 +716,8 @@ export default function Timeline({
             {todayInRange && (
               <div
                 ref={todayRef}
-                className="pointer-events-none absolute top-0 bottom-0 w-px bg-rose-500/70"
-                style={{ left: LABEL_WIDTH + todayOffset * ppd }}
-                aria-label="오늘"
+                className="pointer-events-none absolute top-0 bottom-0 w-px bg-rose-500 z-10"
+                style={{ left: labelWidth + todayOffset * ppd }}
               />
             )}
           </div>
@@ -698,6 +740,7 @@ function Row({
   range,
   ppd,
   totalWidth,
+  labelWidth,
   isSelected,
   onSelect,
   onEdit,
@@ -718,6 +761,7 @@ function Row({
   range: { start: Date; end: Date };
   ppd: number;
   totalWidth: number;
+  labelWidth: number;
   isSelected: boolean;
   onSelect: (id: string) => void;
   onEdit?: ((id: string) => void) | undefined;
@@ -766,7 +810,7 @@ function Row({
             ? 'bg-sky-50 dark:bg-sky-950'
             : 'bg-white dark:bg-slate-900 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800'
         }`}
-        style={{ width: LABEL_WIDTH, paddingLeft: 8 + node.depth * 16 }}
+        style={{ width: labelWidth, paddingLeft: 8 + node.depth * 16 }}
       >
         {/* 접기/펼치기 토글 버튼 */}
         <div className="w-5 shrink-0 flex items-center justify-center">
