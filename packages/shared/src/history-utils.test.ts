@@ -70,4 +70,13 @@ describe('classifyChange', () => {
   it('MOVE → MOVE', () => {
     expect(classifyChange('MOVE', {})).toBe('MOVE');
   });
+  it('UPDATE + 진행률 값 동일 → PROGRESS_SET', () => {
+    expect(classifyChange('UPDATE', { progress: { from: 50, to: 50 } })).toBe('PROGRESS_SET');
+  });
+  it('RESTORE → RESTORE', () => {
+    expect(classifyChange('RESTORE', {})).toBe('RESTORE');
+  });
+  it('UPDATE + 분류되지 않는 diff → OTHER', () => {
+    expect(classifyChange('UPDATE', {})).toBe('OTHER');
+  });
 });

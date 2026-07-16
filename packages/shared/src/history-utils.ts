@@ -53,6 +53,7 @@ export function classifyChange(action: string, diff: DiffMap): ChangeKind {
     case 'MOVE':
       return 'MOVE';
     case 'UPDATE': {
+      // 한 UPDATE 에서 여러 필드가 동시에 바뀌면 우선순위는 progress > period(기간) > title 순.
       const p = getProgressChange(diff);
       if (p) {
         if (p.to === p.from) return 'PROGRESS_SET';
