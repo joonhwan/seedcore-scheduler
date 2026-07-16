@@ -20,6 +20,8 @@ interface Props {
   onEdit?: ((id: string) => void) | undefined;
   jumpToTodayCounter: number; // 변경 시 "오늘로 이동" 트리거
   canEdit?: boolean | undefined;
+  canCreate?: boolean | undefined; // 생성은 편집보다 강한 권한(MANAGER/관리자 모드)
+  canDelete?: boolean | undefined; // 삭제는 편집보다 강한 권한(MANAGER/관리자 모드)
   onAddChild?: ((parent: NodeTreeItem) => void) | undefined;
   onAddSibling?: ((sibling: NodeTreeItem) => void) | undefined;
   onMoveSibling?: ((node: NodeTreeItem, direction: -1 | 1) => void) | undefined;
@@ -86,6 +88,8 @@ function TimelineComponent({
   onEdit,
   jumpToTodayCounter,
   canEdit,
+  canCreate,
+  canDelete,
   onAddChild,
   onAddSibling,
   onMoveSibling,
@@ -745,13 +749,15 @@ function TimelineComponent({
           >
             100% 완료
           </button>
-          <button
-            type="button"
-            onClick={onBulkDelete}
-            className="rounded bg-rose-600 px-2 py-1 text-xs font-semibold text-white hover:bg-rose-700 transition-colors"
-          >
-            삭제
-          </button>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={onBulkDelete}
+              className="rounded bg-rose-600 px-2 py-1 text-xs font-semibold text-white hover:bg-rose-700 transition-colors"
+            >
+              삭제
+            </button>
+          )}
           <button
             type="button"
             onClick={onClearSelection}
@@ -792,7 +798,7 @@ function TimelineComponent({
                 </span>
               </div>
               <div className="flex items-center gap-0.5">
-                {canEdit && onAddNode && (
+                {canCreate && onAddNode && (
                   <button
                     type="button"
                     onClick={onAddNode}
@@ -924,6 +930,8 @@ function TimelineComponent({
                   onEdit={onEdit}
                   onHoverNode={setHoveredNode}
                   canEdit={canEdit}
+                  canCreate={canCreate}
+                  canDelete={canDelete}
                   onBarDragStart={startBarDrag}
                   previewStart={previewStart}
                   previewEnd={previewEnd}
@@ -947,7 +955,7 @@ function TimelineComponent({
             {todayInRange && (
               <div
                 ref={todayRef}
-                className="pointer-events-none absolute top-0 bottom-0 w-px bg-rose-500 z-10"
+                className="pointer-events-none absolute top-0 bottom-0 w-px bg-rose-500"
                 style={{ left: labelWidth + todayOffset * ppd }}
               />
             )}
@@ -980,6 +988,8 @@ function Row({
   onEdit,
   onHoverNode,
   canEdit,
+  canCreate,
+  canDelete,
   siblingCount,
   indexAmongSiblings,
   isCollapsed,
@@ -1008,6 +1018,8 @@ function Row({
   onEdit?: ((id: string) => void) | undefined;
   onHoverNode: (hover: { id: string; title: string; x: number; y: number } | null) => void;
   canEdit?: boolean | undefined;
+  canCreate?: boolean | undefined;
+  canDelete?: boolean | undefined;
   siblingCount: number;
   indexAmongSiblings: number;
   isCollapsed: boolean;
@@ -1123,7 +1135,7 @@ function Row({
           onDoubleClick={() => {
             if (selectionMode) return;
             if (isEmptyRow) {
-              onAddRoot?.();
+              if (canCreate) onAddRoot?.();
             } else {
               onEdit?.(node.id);
             }
@@ -1172,33 +1184,39 @@ function Row({
             >
               ↓
             </IconBtn>
-            <IconBtn
-              title={
-                childWouldExceedDepth
-                  ? `최대 깊이(${MAX_TREE_DEPTH})에 도달`
-                  : '자식 추가'
-              }
-              disabled={childWouldExceedDepth}
-              onClick={() => onAddChild?.(node)}
-            >
-              ↳
-            </IconBtn>
-            <IconBtn title="형제 추가" onClick={() => onAddSibling?.(node)}>
-              +
-            </IconBtn>
+            {canCreate && (
+              <IconBtn
+                title={
+                  childWouldExceedDepth
+                    ? `최대 깊이(${MAX_TREE_DEPTH})에 도달`
+                    : '자식 추가'
+                }
+                disabled={childWouldExceedDepth}
+                onClick={() => onAddChild?.(node)}
+              >
+                ↳
+              </IconBtn>
+            )}
+            {canCreate && (
+              <IconBtn title="형제 추가" onClick={() => onAddSibling?.(node)}>
+                +
+              </IconBtn>
+            )}
             <IconBtn
               title={`부모 변경 (서브트리 깊이 ${subtreeMaxDepth - node.depth + 1})`}
               onClick={() => onChangeParent?.(node)}
             >
               ⇄
             </IconBtn>
-            <IconBtn
-              title="삭제"
-              onClick={() => onDelete?.(node)}
-              className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950"
-            >
-              ✕
-            </IconBtn>
+            {canDelete && (
+              <IconBtn
+                title="삭제"
+                onClick={() => onDelete?.(node)}
+                className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950"
+              >
+                ✕
+              </IconBtn>
+            )}
           </div>
         )}
       </div>
@@ -1214,7 +1232,7 @@ function Row({
             onClick={() => onSelect(node.id)}
             onDoubleClick={() => {
               if (isEmptyRow) {
-                onAddRoot?.();
+                if (canCreate) onAddRoot?.();
               } else {
                 onEdit?.(node.id);
               }

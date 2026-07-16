@@ -58,7 +58,7 @@ export class NodesService {
     ctx: ActorContext,
   ): Promise<NodeTreeItem> {
     await this.assertProjectExists(projectId);
-    await this.assertWriteAccess(projectId, ctx);
+    await this.assertCreateAccess(projectId, ctx);
 
     let parentDepth = -1;
     if (body.parentId) {
@@ -445,7 +445,7 @@ export class NodesService {
       where: { id: nodeId },
     });
     if (!target) throw new NotFoundException({ error: 'NODE_NOT_FOUND' });
-    await this.assertWriteAccess(target.projectId, ctx);
+    await this.assertDeleteAccess(target.projectId, ctx);
 
     const allRows = await this.prisma.scheduleNode.findMany({
       where: { projectId: target.projectId },
@@ -560,6 +560,44 @@ export class NodesService {
       select: { role: true },
     });
     if (!m) throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
+  }
+
+  /**
+   * 노드 생성 권한: 프로젝트 MANAGER 또는 ADMIN+adminMode 만 허용.
+   * 일반 MEMBER 는 수정/이동은 가능하나 생성은 불가하다.
+   */
+  private async assertCreateAccess(
+    projectId: string,
+    ctx: ActorContext,
+  ): Promise<void> {
+    if (ctx.globalRole === 'ADMIN' && ctx.adminMode) return;
+    const m = await this.prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId: ctx.actorId } },
+      select: { role: true },
+    });
+    if (!m) throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
+    if (m.role !== 'MANAGER') {
+      throw new ForbiddenException({ error: 'NODE_CREATE_FORBIDDEN' });
+    }
+  }
+
+  /**
+   * 노드 삭제 권한: 프로젝트 MANAGER 또는 ADMIN+adminMode 만 허용.
+   * 일반 MEMBER 는 수정/이동은 가능하나 삭제는 불가하다.
+   */
+  private async assertDeleteAccess(
+    projectId: string,
+    ctx: ActorContext,
+  ): Promise<void> {
+    if (ctx.globalRole === 'ADMIN' && ctx.adminMode) return;
+    const m = await this.prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId: ctx.actorId } },
+      select: { role: true },
+    });
+    if (!m) throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
+    if (m.role !== 'MANAGER') {
+      throw new ForbiddenException({ error: 'NODE_DELETE_FORBIDDEN' });
+    }
   }
 
   private async writeHistory(

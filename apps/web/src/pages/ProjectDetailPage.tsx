@@ -83,6 +83,11 @@ export default function ProjectDetailPage() {
   };
 
   const handleHeaderAddNode = () => {
+    // 일정 추가는 MANAGER/관리자 모드만 가능 (일반 MEMBER 차단).
+    if (!canCreateNodes) {
+      toast.error('일정 추가는 프로젝트 매니저 또는 관리자만 할 수 있습니다.');
+      return;
+    }
     if (!selected || selectedId === 'empty-row-placeholder') {
       setCreateParent('root');
       setCreateInsertAfter(null);
@@ -163,6 +168,9 @@ export default function ProjectDetailPage() {
   const canManageProject = myRole === 'MANAGER' || (isAdmin && adminMode);
   const canEditNodes =
     myRole === 'MANAGER' || myRole === 'MEMBER' || (isAdmin && adminMode);
+  // 일정 추가/삭제는 편집(수정/이동)보다 강한 권한 — MANAGER 또는 관리자 모드만 허용.
+  const canCreateNodes = myRole === 'MANAGER' || (isAdmin && adminMode);
+  const canDeleteNodes = myRole === 'MANAGER' || (isAdmin && adminMode);
 
   const selected = useMemo(
     () => (nodes.data && selectedId ? nodes.data.find((n) => n.id === selectedId) ?? null : null),
@@ -217,12 +225,12 @@ export default function ProjectDetailPage() {
       } else if (e.ctrlKey) {
         const key = e.key.toLowerCase();
         if (key === 'i') {
-          if (canEditNodes) {
+          if (canCreateNodes) {
             e.preventDefault();
             handleHeaderAddNode();
           }
         } else if (key === 'd') {
-          if (selected && canEditNodes) {
+          if (selected && canDeleteNodes) {
             e.preventDefault();
             onDeleteNode(selected);
           }
@@ -237,7 +245,7 @@ export default function ProjectDetailPage() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selected, canEditNodes, isDetailModalOpen, pendingBarChange, selectionMode, handleHeaderAddNode, onDeleteNode, handleEditNode]);
+  }, [selected, canEditNodes, canCreateNodes, canDeleteNodes, isDetailModalOpen, pendingBarChange, selectionMode, handleHeaderAddNode, onDeleteNode, handleEditNode]);
 
   if (project.isLoading || nodes.isLoading) {
     return <div className="p-6 text-sm text-slate-500">로딩…</div>;
@@ -355,6 +363,12 @@ export default function ProjectDetailPage() {
   };
 
   async function runBulkDelete() {
+    // 삭제 권한이 없으면(MANAGER/관리자 모드 아님) 실행 자체를 막는다.
+    if (!canDeleteNodes) {
+      setBulkAction(null);
+      toast.error('일정 삭제는 프로젝트 매니저 또는 관리자만 할 수 있습니다.');
+      return;
+    }
     const items = nodes.data ?? [];
     const targets = collectDeleteTargets(selectedNodeIds, items);
     try {
@@ -440,6 +454,8 @@ export default function ProjectDetailPage() {
               onEdit={handleEditNode}
               jumpToTodayCounter={todayCounter}
               canEdit={canEditNodes}
+              canCreate={canCreateNodes}
+              canDelete={canDeleteNodes}
               onAddChild={(p) => {
                 setCreateParent(p);
                 setCreateInsertAfter(null);
