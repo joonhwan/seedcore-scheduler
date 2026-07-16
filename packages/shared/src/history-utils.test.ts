@@ -10,6 +10,7 @@ import {
   type RawCommentRow,
   type NodeMeta,
 } from './history-utils';
+import { ProjectHistoryQuery } from './index';
 
 describe('getProgressChange', () => {
   it('progress 의 from/to 가 숫자면 그대로 반환', () => {
@@ -196,5 +197,28 @@ describe('buildProjectHistory', () => {
     expect(res.items).toHaveLength(3);
     expect(res.truncated).toBe(true);
     expect(res.items[0]!.type === 'HISTORY' && res.items[0]!.occurredAt).toBe('2026-07-05T00:00:00.000Z'); // 최신부터
+  });
+});
+
+describe('ProjectHistoryQuery', () => {
+  it('빈 입력이면 기본값 topic=ALL, range=1m', () => {
+    const parsed = ProjectHistoryQuery.parse({});
+    expect(parsed.topic).toBe('ALL');
+    expect(parsed.range).toBe('1m');
+  });
+  it('custom 인데 from/to 없으면 실패', () => {
+    expect(ProjectHistoryQuery.safeParse({ range: 'custom' }).success).toBe(false);
+  });
+  it('custom + from > to 이면 실패', () => {
+    expect(
+      ProjectHistoryQuery.safeParse({ range: 'custom', from: '2026-07-10', to: '2026-07-01' }).success,
+    ).toBe(false);
+  });
+  it('custom + 올바른 from/to 는 성공', () => {
+    const r = ProjectHistoryQuery.safeParse({ range: 'custom', from: '2026-07-01', to: '2026-07-10' });
+    expect(r.success).toBe(true);
+  });
+  it('알 수 없는 topic 은 실패', () => {
+    expect(ProjectHistoryQuery.safeParse({ topic: 'NOPE' }).success).toBe(false);
   });
 });

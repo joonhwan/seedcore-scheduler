@@ -341,3 +341,55 @@ export const UpdateAutocompleteTermDto = z.object({
 });
 export type UpdateAutocompleteTermDto = z.infer<typeof UpdateAutocompleteTermDto>;
 
+// ─── 프로젝트 이력 조회 ─────────────────────────────────────────────────────
+import {
+  HISTORY_TOPICS,
+  HISTORY_RANGES,
+} from './history-utils';
+
+// history-utils 의 순수 함수·데이터 타입을 그대로 재노출 (백엔드·프론트 공용)
+export * from './history-utils';
+
+export const HistoryTopic = z.enum(HISTORY_TOPICS);
+export type HistoryTopic = z.infer<typeof HistoryTopic>;
+
+export const HistoryRange = z.enum(HISTORY_RANGES);
+export type HistoryRange = z.infer<typeof HistoryRange>;
+
+export const ProjectHistoryQuery = z
+  .object({
+    topic: HistoryTopic.default('ALL'),
+    range: HistoryRange.default('1m'),
+    from: IsoDate.optional(), // range='custom' 일 때만
+    to: IsoDate.optional(),
+  })
+  .refine((v) => v.range !== 'custom' || (!!v.from && !!v.to), {
+    message: 'custom 범위는 from/to 가 필요합니다',
+    path: ['from'],
+  })
+  .refine((v) => !(v.from && v.to) || v.from <= v.to, {
+    message: 'from 은 to 보다 작거나 같아야 합니다',
+    path: ['to'],
+  });
+export type ProjectHistoryQuery = z.infer<typeof ProjectHistoryQuery>;
+
+export const ProjectHistoryEntry = z.discriminatedUnion('type', [
+  NodeHistoryItem.extend({
+    type: z.literal('HISTORY'),
+    nodeTitle: z.string(),
+    nodeDeleted: z.boolean(),
+  }),
+  NodeCommentItem.extend({
+    type: z.literal('COMMENT'),
+    nodeTitle: z.string(),
+    nodeDeleted: z.boolean(),
+  }),
+]);
+export type ProjectHistoryEntry = z.infer<typeof ProjectHistoryEntry>;
+
+export const ProjectHistoryResponse = z.object({
+  items: z.array(ProjectHistoryEntry),
+  truncated: z.boolean(),
+});
+export type ProjectHistoryResponse = z.infer<typeof ProjectHistoryResponse>;
+
