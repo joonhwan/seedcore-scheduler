@@ -4,6 +4,11 @@ import {
   isProgressDown,
   isPeriodChange,
   classifyChange,
+  selectHistoryByTopic,
+  buildProjectHistory,
+  type RawHistoryRow,
+  type RawCommentRow,
+  type NodeMeta,
 } from './history-utils';
 
 describe('getProgressChange', () => {
@@ -78,5 +83,118 @@ describe('classifyChange', () => {
   });
   it('UPDATE + 분류되지 않는 diff → OTHER', () => {
     expect(classifyChange('UPDATE', {})).toBe('OTHER');
+  });
+});
+
+function hist(partial: Partial<RawHistoryRow> & { id: string }): RawHistoryRow {
+  return {
+    nodeIdSnapshot: 'n1',
+    projectIdSnapshot: 'p1',
+    actorId: 'u1',
+    actorUsername: 'user1',
+    actorDisplayName: '사용자1',
+    action: 'UPDATE',
+    diff: {},
+    occurredAt: '2026-07-10T00:00:00.000Z',
+    ...partial,
+  };
+}
+function cmt(partial: Partial<RawCommentRow> & { id: string }): RawCommentRow {
+  return {
+    nodeId: 'n1',
+    authorId: 'u1',
+    authorUsername: 'user1',
+    authorDisplayName: '사용자1',
+    body: '댓글',
+    createdAt: '2026-07-11T00:00:00.000Z',
+    updatedAt: '2026-07-11T00:00:00.000Z',
+    ...partial,
+  };
+}
+
+describe('selectHistoryByTopic', () => {
+  const rows: RawHistoryRow[] = [
+    hist({ id: 'a', action: 'UPDATE', diff: { progress: { from: 80, to: 50 } } }),
+    hist({ id: 'b', action: 'UPDATE', diff: { progress: { from: 50, to: 80 } } }),
+    hist({ id: 'c', action: 'DELETE', diff: {} }),
+    hist({ id: 'd', action: 'UPDATE', diff: { endAt: { from: '2026-01-01', to: '2026-02-01' } } }),
+  ];
+  it('PROGRESS_DOWN 은 진행률 내림만', () => {
+    expect(selectHistoryByTopic(rows, 'PROGRESS_DOWN').map(r => r.id)).toEqual(['a']);
+  });
+  it('DELETED 은 삭제만', () => {
+    expect(selectHistoryByTopic(rows, 'DELETED').map(r => r.id)).toEqual(['c']);
+  });
+  it('PERIOD_CHANGE 는 기간 변경만', () => {
+    expect(selectHistoryByTopic(rows, 'PERIOD_CHANGE').map(r => r.id)).toEqual(['d']);
+  });
+  it('ALL 은 전부', () => {
+    expect(selectHistoryByTopic(rows, 'ALL')).toHaveLength(4);
+  });
+  it('COMMENTS 는 이력 없음', () => {
+    expect(selectHistoryByTopic(rows, 'COMMENTS')).toHaveLength(0);
+  });
+});
+
+describe('buildProjectHistory', () => {
+  const meta = new Map<string, NodeMeta>([
+    ['n1', { title: '살아있는 일정', deleted: false }],
+    ['n2', { title: '지워진 일정', deleted: true }],
+  ]);
+
+  it('ALL 은 이력과 댓글을 시간 역순으로 병합', () => {
+    const res = buildProjectHistory({
+      history: [hist({ id: 'a', occurredAt: '2026-07-10T00:00:00.000Z' })],
+      comments: [cmt({ id: 'c1', createdAt: '2026-07-11T00:00:00.000Z' })],
+      meta,
+      topic: 'ALL',
+      limit: 500,
+    });
+    expect(res.items.map(i => i.type)).toEqual(['COMMENT', 'HISTORY']); // 최신(댓글)이 먼저
+    expect(res.truncated).toBe(false);
+  });
+
+  it('COMMENTS 는 댓글만', () => {
+    const res = buildProjectHistory({
+      history: [hist({ id: 'a' })],
+      comments: [cmt({ id: 'c1' })],
+      meta,
+      topic: 'COMMENTS',
+      limit: 500,
+    });
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0]!.type).toBe('COMMENT');
+  });
+
+  it('삭제된 노드는 nodeDeleted=true 와 복원 제목을 싣는다', () => {
+    const res = buildProjectHistory({
+      history: [hist({ id: 'a', nodeIdSnapshot: 'n2', action: 'DELETE' })],
+      comments: [],
+      meta,
+      topic: 'DELETED',
+      limit: 500,
+    });
+    expect(res.items[0]).toMatchObject({ type: 'HISTORY', nodeDeleted: true, nodeTitle: '지워진 일정' });
+  });
+
+  it('meta 에 없는 노드는 nodeDeleted=true + 기본 제목', () => {
+    const res = buildProjectHistory({
+      history: [hist({ id: 'a', nodeIdSnapshot: 'nX' })],
+      comments: [],
+      meta,
+      topic: 'ALL',
+      limit: 500,
+    });
+    expect(res.items[0]).toMatchObject({ nodeDeleted: true, nodeTitle: '(제목 없음)' });
+  });
+
+  it('limit 초과 시 잘라내고 truncated=true', () => {
+    const history = Array.from({ length: 5 }, (_, i) =>
+      hist({ id: `h${i}`, occurredAt: `2026-07-0${i + 1}T00:00:00.000Z` }),
+    );
+    const res = buildProjectHistory({ history, comments: [], meta, topic: 'ALL', limit: 3 });
+    expect(res.items).toHaveLength(3);
+    expect(res.truncated).toBe(true);
+    expect(res.items[0]!.type === 'HISTORY' && res.items[0]!.occurredAt).toBe('2026-07-05T00:00:00.000Z'); // 최신부터
   });
 });
