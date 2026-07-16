@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../lib/errors';
 import { applyDrag, pxToDays, parseYmd, dayDiff, type DragMode } from '../lib/ganttMath';
 import { recomputeEffective, diffAffectedGroups } from '../lib/ganttAggregate';
 import type { BarChangeProposal } from '../lib/ganttTypes';
+import { computeCheckStates, type CheckState } from '../lib/bulkSelection';
 
 export type TimelineUnit = 'day' | 'week' | 'month' | 'quarter';
 
@@ -28,7 +29,15 @@ interface Props {
   onAddNode?: (() => void) | undefined; // 선택 노드 기준 스마트 추가(Ctrl-I 와 동일)
   onBarChange?: ((proposal: BarChangeProposal) => void) | undefined;
   previewProposal?: BarChangeProposal | null | undefined;
+  // 다중 선택(선택 모드)
+  selectedNodeIds?: Set<string> | undefined;
+  onToggleNodeSelect?: ((id: string) => void) | undefined;
+  onBulkComplete?: (() => void) | undefined;
+  onBulkDelete?: (() => void) | undefined;
+  onClearSelection?: (() => void) | undefined;
 }
+
+const EMPTY_SELECTION: Set<string> = new Set();
 
 // 부모(헤더 툴바)에서 호출하는 줌/화면맞춤 제어 핸들
 export interface TimelineHandle {
@@ -86,7 +95,16 @@ function TimelineComponent({
   onAddNode,
   onBarChange,
   previewProposal,
+  selectedNodeIds,
+  onToggleNodeSelect,
+  onBulkComplete,
+  onBulkDelete,
+  onClearSelection,
 }: Props, ref: ForwardedRef<TimelineHandle>) {
+  const selection = selectedNodeIds ?? EMPTY_SELECTION;
+  const selectionMode = selection.size > 0;
+  const showCheckbox = !!canEdit && !!onToggleNodeSelect;
+  const checkStateMap = useMemo(() => computeCheckStates(items, selection), [items, selection]);
   const [labelWidth, setLabelWidth] = useState<number>(() => {
     const saved = localStorage.getItem('sam_gantt_label_width');
     if (saved) {
@@ -229,6 +247,8 @@ function TimelineComponent({
         }
       }
 
+      if (selectionMode) return; // 선택 모드에서는 키보드 탐색 차단
+
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault(); // 스크롤 방지
         if (flat.length === 0) return;
@@ -284,7 +304,7 @@ function TimelineComponent({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [flat, selectedId, onSelect, items, collapseAll, expandAll]);
+  }, [flat, selectedId, onSelect, items, collapseAll, expandAll, selectionMode]);
 
   // 드래그로 막대가 기존 범위를 넘어가면 previewItems 기준으로 range 가 넓어진다(±1년 여유).
   const range = useMemo(() => computeRange(previewItems), [previewItems]);
@@ -399,6 +419,7 @@ function TimelineComponent({
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (selectionMode) return; // 선택 모드에서는 배경 패닝 차단
     if (e.button !== 0) return; // 좌클릭만 허용
     const target = e.target as HTMLElement;
     // 버튼, 링크, 입력창 등의 인터랙티브 요소는 드래그 스크롤 대상에서 제외
@@ -445,7 +466,7 @@ function TimelineComponent({
 
   // 막대 위 mousedown 에서 호출 — 드래그 시작
   const startBarDrag = (node: NodeTreeItem, mode: DragMode, e: React.MouseEvent) => {
-    if (!canEdit || node.kind !== 'ITEM' || !node.startAt || !node.endAt) return;
+    if (!canEdit || selectionMode || node.kind !== 'ITEM' || !node.startAt || !node.endAt) return;
     e.stopPropagation(); // 배경 패닝/상위 전파 방지
     setBarDrag({
       nodeId: node.id,
@@ -626,6 +647,36 @@ function TimelineComponent({
     fitToScreen,
   }));
 
+  // 키보드 수평 줌: +/= 확대, - 축소 (입력 필드 포커스 시 제외)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (selectionMode) return; // 선택 모드에서는 줌 차단
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const activeEl = document.activeElement;
+      if (activeEl) {
+        const tag = activeEl.tagName.toLowerCase();
+        if (
+          tag === 'input' ||
+          tag === 'textarea' ||
+          tag === 'select' ||
+          activeEl.getAttribute('contenteditable') === 'true'
+        ) {
+          return;
+        }
+      }
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        handleZoom(true);
+      } else if (e.key === '-') {
+        e.preventDefault();
+        handleZoom(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // handleZoom 은 ppd/labelWidth 를 참조하므로 이 값들이 바뀌면 최신 클로저로 다시 등록한다.
+  }, [ppd, labelWidth, selectionMode]);
+
   // 페이지 로딩 시(최초 데이터가 매핑되었을 때) 화면 맞춤 자동 실행
   useEffect(() => {
     if (items.length > 0 && !hasFitOnLoad && scrollerRef.current) {
@@ -677,6 +728,39 @@ function TimelineComponent({
         className="absolute top-0 bottom-0 z-30 w-2 -ml-1 cursor-col-resize hover:bg-sky-500/30 active:bg-sky-600 transition-colors"
         style={{ left: labelWidth }}
       />
+
+      {/* 선택 모드 액션 바 (스플리터 오른쪽, 차트 상단) */}
+      {selectionMode && (
+        <div
+          className="absolute z-40 flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-1.5 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+          style={{ left: labelWidth + 8, top: HEADER_HEIGHT + 8 }}
+        >
+          <span className="px-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
+            {selection.size}개 선택
+          </span>
+          <button
+            type="button"
+            onClick={onBulkComplete}
+            className="rounded bg-sky-600 px-2 py-1 text-xs font-semibold text-white hover:bg-sky-700 transition-colors"
+          >
+            100% 완료
+          </button>
+          <button
+            type="button"
+            onClick={onBulkDelete}
+            className="rounded bg-rose-600 px-2 py-1 text-xs font-semibold text-white hover:bg-rose-700 transition-colors"
+          >
+            삭제
+          </button>
+          <button
+            type="button"
+            onClick={onClearSelection}
+            className="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+          >
+            선택 해제
+          </button>
+        </div>
+      )}
 
       <div
         ref={scrollerRef}
@@ -843,6 +927,10 @@ function TimelineComponent({
                   onBarDragStart={startBarDrag}
                   previewStart={previewStart}
                   previewEnd={previewEnd}
+                  selectionMode={selectionMode}
+                  checkState={checkStateMap.get(n.id) ?? 'unchecked'}
+                  showCheckbox={showCheckbox}
+                  onToggleSelect={onToggleNodeSelect}
                   siblingCount={siblingCount}
                   indexAmongSiblings={indexAmongSiblings}
                   isCollapsed={collapsedIds.has(n.id)}
@@ -905,6 +993,10 @@ function Row({
   onBarDragStart,
   previewStart,
   previewEnd,
+  selectionMode,
+  checkState,
+  showCheckbox,
+  onToggleSelect,
 }: {
   node: TreeNode;
   range: { start: Date; end: Date };
@@ -929,6 +1021,10 @@ function Row({
   onBarDragStart?: ((node: NodeTreeItem, mode: DragMode, e: React.MouseEvent) => void) | undefined;
   previewStart?: string | null | undefined;
   previewEnd?: string | null | undefined;
+  selectionMode: boolean;
+  checkState: CheckState;
+  showCheckbox: boolean;
+  onToggleSelect?: ((id: string) => void) | undefined;
 }) {
   const isGroup = node.kind === 'GROUP';
   const start = isGroup ? node.startAtEffective : node.startAt;
@@ -977,6 +1073,24 @@ function Row({
         }`}
         style={{ width: labelWidth, paddingLeft: 8 + node.depth * 16 }}
       >
+        {/* 다중 선택 체크박스 (hover 또는 선택 모드/선택됨일 때 표시) */}
+        {showCheckbox && !isEmptyRow && (
+          <input
+            type="checkbox"
+            checked={checkState === 'checked'}
+            ref={(el) => {
+              if (el) el.indeterminate = checkState === 'indeterminate';
+            }}
+            onChange={() => onToggleSelect?.(node.id)}
+            onClick={(e) => e.stopPropagation()}
+            className={`shrink-0 w-3.5 h-3.5 accent-sky-600 cursor-pointer transition-opacity ${
+              selectionMode || checkState !== 'unchecked'
+                ? 'opacity-100'
+                : 'opacity-0 group-hover/row:opacity-100'
+            }`}
+            aria-label="항목 선택"
+          />
+        )}
         {/* 접기/펼치기 토글 버튼 */}
         <div className="w-5 shrink-0 flex items-center justify-center">
           {isGroup && node.children.length > 0 && (
@@ -1003,8 +1117,11 @@ function Row({
 
         <button
           type="button"
-          onClick={() => onSelect(node.id)}
+          onClick={() => {
+            if (!selectionMode) onSelect(node.id);
+          }}
           onDoubleClick={() => {
+            if (selectionMode) return;
             if (isEmptyRow) {
               onAddRoot?.();
             } else {
@@ -1028,7 +1145,7 @@ function Row({
             className={`min-w-0 flex-1 truncate ${
               isEmptyRow ? 'text-slate-400 dark:text-slate-500 italic' : ''
             }`}
-            title={isEmptyRow ? '새 일정을 추가하려면 더블클릭하거나 단축키(Ctrl-I)를 입력하세요.' : node.title}
+            title={isEmptyRow ? '이 항목을 선택한 후 Ctrl+I 를 누르거나 더블클릭하면 최상단 일정이 추가됩니다.' : node.title}
           >
             {node.title}
           </span>
@@ -1039,7 +1156,7 @@ function Row({
           )}
         </button>
 
-        {canEdit && !isEmptyRow && (
+        {canEdit && !isEmptyRow && !selectionMode && (
           <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded bg-slate-100 px-1 py-0.5 shadow-sm group-hover/row:flex dark:bg-slate-700 z-20">
             <IconBtn
               title="위로"
@@ -1122,7 +1239,11 @@ function Row({
               onHoverNode(null);
             }}
             className={`absolute top-1 bottom-1 overflow-hidden rounded ${
-              canEdit && !isGroup && !isEmptyRow ? 'cursor-move' : ''
+              selectionMode
+                ? 'opacity-40 pointer-events-none'
+                : canEdit && !isGroup && !isEmptyRow
+                ? 'cursor-move'
+                : ''
             } ${
               isGroup
                 ? 'border border-violet-300 bg-violet-100/70 dark:border-violet-700 dark:bg-violet-900/40'

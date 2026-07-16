@@ -20,8 +20,10 @@ import CommentInputForm from '../components/CommentInputForm';
 import ActivityFeedPanel from '../components/ActivityFeedPanel';
 import Timeline, { type TimelineUnit, type TimelineHandle } from '../components/Timeline';
 import BarChangeConfirmDialog from '../components/BarChangeConfirmDialog';
+import BulkActionConfirmDialog, { type BulkCompleteMode } from '../components/BulkActionConfirmDialog';
 import type { BarChangeProposal } from '../lib/ganttTypes';
 import { addDays } from '../lib/ganttMath';
+import { collectDeleteTargets, collectCompleteTargets, hasGroupSelected, collectSubtreeIds } from '../lib/bulkSelection';
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -53,6 +55,10 @@ export default function ProjectDetailPage() {
   const [pendingBarChange, setPendingBarChange] = useState<BarChangeProposal | null>(null);
   // 형제 추가 시 이 노드 바로 뒤에 삽입(생성 후 move). null 이면 부모 맨 끝(기존 동작).
   const [createInsertAfter, setCreateInsertAfter] = useState<NodeTreeItem | null>(null);
+  // 다중 선택(선택 모드)
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<'delete' | 'complete' | null>(null);
+  const selectionMode = selectedNodeIds.size > 0;
 
   const detailRef = useRef<any>(null);
   const commentsRef = useRef<any>(null);
@@ -187,8 +193,8 @@ export default function ProjectDetailPage() {
   // Ctrl 단축키 처리 (Ctrl-Enter: 편집, Ctrl-I: 추가, Ctrl-D: 삭제)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 상세 편집 모달이나 막대 변경 확인 모달이 열려있거나 포커스가 입력 필드에 있을 때는 단축키 처리 제외
-      if (isDetailModalOpen || pendingBarChange) return;
+      // 상세 편집 모달·막대 확인 모달·선택 모드이거나 포커스가 입력 필드에 있을 때는 단축키 처리 제외
+      if (isDetailModalOpen || pendingBarChange || selectionMode) return;
 
       const activeEl = document.activeElement;
       if (activeEl) {
@@ -231,7 +237,7 @@ export default function ProjectDetailPage() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selected, canEditNodes, isDetailModalOpen, pendingBarChange, handleHeaderAddNode, onDeleteNode, handleEditNode]);
+  }, [selected, canEditNodes, isDetailModalOpen, pendingBarChange, selectionMode, handleHeaderAddNode, onDeleteNode, handleEditNode]);
 
   if (project.isLoading || nodes.isLoading) {
     return <div className="p-6 text-sm text-slate-500">로딩…</div>;
@@ -326,24 +332,99 @@ export default function ProjectDetailPage() {
     setPendingBarChange(null);
   }
 
+  // ── 다중 선택(선택 모드) ──
+  const toggleNodeSelect = (id: string) => {
+    const items = nodes.data ?? [];
+    const node = items.find((n) => n.id === id);
+    setSelectedNodeIds((prev) => {
+      const next = new Set(prev);
+      if (node && node.kind === 'GROUP') {
+        // 그룹 토글: 그룹 자신 + 모든 자손을 함께 선택/해제
+        const subtree = collectSubtreeIds(id, items);
+        const isFull = next.has(id); // 그룹 자신이 선택돼 있으면(=전체 선택) 전부 해제
+        for (const sid of subtree) {
+          if (isFull) next.delete(sid);
+          else next.add(sid);
+        }
+      } else {
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  };
+
+  async function runBulkDelete() {
+    const items = nodes.data ?? [];
+    const targets = collectDeleteTargets(selectedNodeIds, items);
+    try {
+      for (const id of targets) {
+        await deleteNode.mutateAsync(id);
+      }
+      toast.success(`${targets.length}개 일정을 삭제했습니다.`);
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setSelectedNodeIds(new Set());
+      setBulkAction(null);
+    }
+  }
+
+  async function runBulkComplete(mode: BulkCompleteMode) {
+    const items = nodes.data ?? [];
+    const byId = new Map(items.map((n) => [n.id, n]));
+    const targets = collectCompleteTargets(selectedNodeIds, items, mode);
+    try {
+      let count = 0;
+      for (const id of targets) {
+        const node = byId.get(id);
+        if (!node || node.progress === 100) continue; // 이미 100%면 건너뜀
+        await updateNode.mutateAsync({
+          id,
+          body: { progress: 100, expectedUpdatedAt: node.updatedAt },
+        });
+        count += 1;
+      }
+      toast.success(`${count}개 일정을 100% 완료로 설정했습니다.`);
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setSelectedNodeIds(new Set());
+      setBulkAction(null);
+    }
+  }
+
+  function handleBulkConfirm(mode: BulkCompleteMode) {
+    if (bulkAction === 'delete') void runBulkDelete();
+    else if (bulkAction === 'complete') void runBulkComplete(mode);
+  }
+
+  function handleBulkCancel() {
+    // 취소 시 선택을 모두 해제해 선택 모드에서 빠져나간다.
+    setSelectedNodeIds(new Set());
+    setBulkAction(null);
+  }
+
 
 
   return (
     <main className="flex h-full w-full flex-col overflow-hidden px-4 py-3">
-      <ProjectHeader
-        project={project.data}
-        canManage={canManageProject}
-        adminMode={adminMode}
-        isAdmin={isAdmin}
-        nodes={nodes.data ?? []}
-        canEdit={canEditNodes}
-        onAddNode={handleHeaderAddNode}
-        onToggleHelp={() => setIsHelpOpen((prev) => !prev)}
-        onZoomIn={() => timelineRef.current?.zoomIn()}
-        onZoomOut={() => timelineRef.current?.zoomOut()}
-        onFitToScreen={() => timelineRef.current?.fitToScreen()}
-        onJumpToday={() => setTodayCounter((c) => c + 1)}
-      />
+      <div className={selectionMode ? 'pointer-events-none opacity-40 transition-opacity' : 'transition-opacity'}>
+        <ProjectHeader
+          project={project.data}
+          canManage={canManageProject}
+          adminMode={adminMode}
+          isAdmin={isAdmin}
+          nodes={nodes.data ?? []}
+          canEdit={canEditNodes}
+          onAddNode={handleHeaderAddNode}
+          onToggleHelp={() => setIsHelpOpen((prev) => !prev)}
+          onZoomIn={() => timelineRef.current?.zoomIn()}
+          onZoomOut={() => timelineRef.current?.zoomOut()}
+          onFitToScreen={() => timelineRef.current?.fitToScreen()}
+          onJumpToday={() => setTodayCounter((c) => c + 1)}
+        />
+      </div>
 
       <div className="mt-2.5 flex-1 min-h-0 w-full flex flex-col">
         {/* 단일 열 전체 영역 구성 */}
@@ -380,6 +461,11 @@ export default function ProjectDetailPage() {
               onAddNode={handleHeaderAddNode}
               onBarChange={setPendingBarChange}
               previewProposal={pendingBarChange}
+              selectedNodeIds={selectedNodeIds}
+              onToggleNodeSelect={canEditNodes ? toggleNodeSelect : undefined}
+              onBulkComplete={() => setBulkAction('complete')}
+              onBulkDelete={() => setBulkAction('delete')}
+              onClearSelection={() => setSelectedNodeIds(new Set())}
             />
           </div>
         </section>
@@ -493,6 +579,16 @@ export default function ProjectDetailPage() {
           proposal={pendingBarChange}
           onConfirm={applyBarChange}
           onCancel={cancelBarChange}
+        />
+      )}
+
+      {bulkAction && (
+        <BulkActionConfirmDialog
+          action={bulkAction}
+          count={selectedNodeIds.size}
+          hasGroup={hasGroupSelected(selectedNodeIds, nodes.data ?? [])}
+          onCancel={handleBulkCancel}
+          onConfirm={handleBulkConfirm}
         />
       )}
 
@@ -850,7 +946,7 @@ function ProjectHeader({
             <button
               type="button"
               onClick={onZoomOut}
-              title="축소"
+              title="축소 (단축키: -)"
               className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
             >
               －
@@ -858,7 +954,7 @@ function ProjectHeader({
             <button
               type="button"
               onClick={onZoomIn}
-              title="확대"
+              title="확대 (단축키: +, =)"
               className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
             >
               ＋
@@ -916,7 +1012,7 @@ function ProjectHeader({
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
-              <span>일정 추가</span>
+              <span>일정추가</span>
             </button>
           )}
           <button

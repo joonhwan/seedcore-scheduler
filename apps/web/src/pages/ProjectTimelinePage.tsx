@@ -69,7 +69,7 @@ export default function ProjectTimelinePage() {
             <button
               type="button"
               onClick={() => timelineRef.current?.zoomOut()}
-              title="축소"
+              title="축소 (단축키: -)"
               className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
             >
               －
@@ -77,7 +77,7 @@ export default function ProjectTimelinePage() {
             <button
               type="button"
               onClick={() => timelineRef.current?.zoomIn()}
-              title="확대"
+              title="확대 (단축키: +, =)"
               className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
             >
               ＋
