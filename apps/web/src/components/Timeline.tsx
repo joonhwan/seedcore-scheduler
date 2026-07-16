@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, type ForwardedRef } from 'react';
 import { MAX_TREE_DEPTH, type NodeTreeItem, type NodeHistoryItem } from '@sam/shared';
 import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
 import { FolderIcon, ItemIcon } from './Icons';
 import { useNodeHistory } from '../lib/history';
 import { apiErrorMessage } from '../lib/errors';
+import { applyDrag, pxToDays, parseYmd, dayDiff, type DragMode } from '../lib/ganttMath';
+import { recomputeEffective, diffAffectedGroups } from '../lib/ganttAggregate';
+import type { BarChangeProposal } from '../lib/ganttTypes';
 
 export type TimelineUnit = 'day' | 'week' | 'month' | 'quarter';
 
@@ -22,6 +25,16 @@ interface Props {
   onChangeParent?: ((node: NodeTreeItem) => void) | undefined;
   onDelete?: ((node: NodeTreeItem) => void) | undefined;
   onAddRoot?: (() => void) | undefined;
+  onAddNode?: (() => void) | undefined; // 선택 노드 기준 스마트 추가(Ctrl-I 와 동일)
+  onBarChange?: ((proposal: BarChangeProposal) => void) | undefined;
+  previewProposal?: BarChangeProposal | null | undefined;
+}
+
+// 부모(헤더 툴바)에서 호출하는 줌/화면맞춤 제어 핸들
+export interface TimelineHandle {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  fitToScreen: () => void;
 }
 
 const PPD: Record<TimelineUnit, number> = {
@@ -35,18 +48,9 @@ const ROW_HEIGHT = 32;
 const HEADER_HEIGHT = 44;
 const PADDING_DAYS = 3;
 
-function parseYmd(s: string): Date {
-  const [y, m, d] = s.split('-').map(Number);
-  return new Date(Date.UTC(y!, (m! - 1), d!));
-}
-
 function todayUtc(): Date {
   const n = new Date();
   return new Date(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()));
-}
-
-function dayDiff(a: Date, b: Date): number {
-  return Math.round((a.getTime() - b.getTime()) / 86400000);
 }
 
 function flattenTree(items: NodeTreeItem[], collapsedIds: Set<string>): TreeNode[] {
@@ -64,7 +68,7 @@ function flattenTree(items: NodeTreeItem[], collapsedIds: Set<string>): TreeNode
   return out;
 }
 
-export default function Timeline({
+function TimelineComponent({
   items,
   unit,
   onUnitChange,
@@ -79,7 +83,10 @@ export default function Timeline({
   onChangeParent,
   onDelete,
   onAddRoot,
-}: Props) {
+  onAddNode,
+  onBarChange,
+  previewProposal,
+}: Props, ref: ForwardedRef<TimelineHandle>) {
   const [labelWidth, setLabelWidth] = useState<number>(() => {
     const saved = localStorage.getItem('sam_gantt_label_width');
     if (saved) {
@@ -117,11 +124,46 @@ export default function Timeline({
   };
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+
+  // 막대 드래그 편집 상태 (배경 패닝용 isDragging 과 별개)
+  const [barDrag, setBarDrag] = useState<{
+    nodeId: string;
+    mode: DragMode;
+    startClientX: number;
+    startScrollLeft: number; // 드래그 시작 시점 scrollLeft (자동 스크롤 보정용)
+    deltaDays: number;
+  } | null>(null);
+  // move 드래그 직후 발생하는 click(선택)을 한 번 무시하기 위한 플래그
+  const justDraggedRef = useRef(false);
+
+  // 드래그 중(barDrag) 또는 확정 대기 중(previewProposal)이면 대상 ITEM 의 날짜를 바꾼 뒤
+  // effective 를 다시 계산한 미리보기 items 를 만든다. 아니면 원본 items 그대로.
+  const previewItems = useMemo(() => {
+    if (barDrag) {
+      const orig = items.find((n) => n.id === barDrag.nodeId);
+      if (!orig || !orig.startAt || !orig.endAt) return items;
+      const next = applyDrag(orig.startAt, orig.endAt, barDrag.mode, barDrag.deltaDays);
+      const mutated = items.map((n) =>
+        n.id === barDrag.nodeId ? { ...n, startAt: next.startAt, endAt: next.endAt } : n,
+      );
+      return recomputeEffective(mutated);
+    }
+    if (previewProposal) {
+      const mutated = items.map((n) =>
+        n.id === previewProposal.node.id
+          ? { ...n, startAt: previewProposal.newStartAt, endAt: previewProposal.newEndAt }
+          : n,
+      );
+      return recomputeEffective(mutated);
+    }
+    return items;
+  }, [items, barDrag, previewProposal]);
+
   const flat = useMemo(() => {
     const list = flattenTree(items, collapsedIds);
     const emptyNode: TreeNode = {
       id: 'empty-row-placeholder',
-      title: '(새 일정 추가...)',
+      title: '(최상단 일정 추가...)',
       kind: 'ITEM',
       depth: 0,
       sortOrder: 999999,
@@ -142,6 +184,12 @@ export default function Timeline({
     };
     return [...list, emptyNode];
   }, [items, collapsedIds]);
+
+  // 미리보기(드래그 반영) 노드를 id 로 빠르게 찾기 위한 맵. 드래그 중이 아니면 previewItems === items.
+  const previewMap = useMemo(
+    () => new Map(previewItems.map((p) => [p.id, p])),
+    [previewItems],
+  );
 
   const toggleCollapse = (id: string) => {
     setCollapsedIds((prev) => {
@@ -238,7 +286,8 @@ export default function Timeline({
     };
   }, [flat, selectedId, onSelect, items, collapseAll, expandAll]);
 
-  const range = useMemo(() => computeRange(items), [items]);
+  // 드래그로 막대가 기존 범위를 넘어가면 previewItems 기준으로 range 가 넓어진다(±1년 여유).
+  const range = useMemo(() => computeRange(previewItems), [previewItems]);
 
   const [ppd, setPpd] = useState<number>(PPD[unit]);
   const [hasFitOnLoad, setHasFitOnLoad] = useState(false);
@@ -317,6 +366,9 @@ export default function Timeline({
   }, [hoveredX, range, ppd, totalDays]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    // 막대 드래그 중에는 드래그 effect 의 window mousemove 가 hover 날짜 선을 관리한다.
+    if (barDrag) return;
+
     if (isDragging || !scrollerRef.current) {
       setHoveredX(null);
       return;
@@ -391,6 +443,119 @@ export default function Timeline({
     };
   }, [isDragging]);
 
+  // 막대 위 mousedown 에서 호출 — 드래그 시작
+  const startBarDrag = (node: NodeTreeItem, mode: DragMode, e: React.MouseEvent) => {
+    if (!canEdit || node.kind !== 'ITEM' || !node.startAt || !node.endAt) return;
+    e.stopPropagation(); // 배경 패닝/상위 전파 방지
+    setBarDrag({
+      nodeId: node.id,
+      mode,
+      startClientX: e.clientX,
+      startScrollLeft: scrollerRef.current?.scrollLeft ?? 0,
+      deltaDays: 0,
+    });
+  };
+
+  useEffect(() => {
+    if (!barDrag) return;
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    let lastClientX = barDrag.startClientX;
+    let rafId = 0;
+
+    // 마우스 화면 이동 + 자동 스크롤 이동을 합쳐 deltaDays 를 계산한다(range 원점과 무관).
+    // 동시에 hover 날짜 선(파란 점선 + 헤더 날짜)도 갱신한다.
+    const applyDelta = (clientX: number) => {
+      const movedPx = clientX - barDrag.startClientX + (scroller.scrollLeft - barDrag.startScrollLeft);
+      const dd = pxToDays(movedPx, ppd);
+      setBarDrag((prev) => (prev && prev.deltaDays !== dd ? { ...prev, deltaDays: dd } : prev));
+
+      const relX = clientX - scroller.getBoundingClientRect().left;
+      if (relX < labelWidth) {
+        setHoveredX(null);
+      } else {
+        const chartX = relX + scroller.scrollLeft - labelWidth;
+        setHoveredX(chartX >= 0 && chartX <= totalWidth ? chartX : null);
+      }
+    };
+
+    // 뷰포트 가장자리 근처면 자동 스크롤한다. 마우스가 멈춰 있어도 계속 스크롤되도록 rAF 루프로 돈다.
+    const EDGE = 48; // 가장자리 감지 폭(px)
+    const MAX_SPEED = 20; // 프레임당 최대 스크롤(px)
+    const tick = () => {
+      const rect = scroller.getBoundingClientRect();
+      const relX = lastClientX - rect.left;
+      let speed = 0;
+      if (relX < labelWidth + EDGE) {
+        speed = -MAX_SPEED * Math.min(1, (labelWidth + EDGE - relX) / EDGE);
+      } else if (relX > rect.width - EDGE) {
+        speed = MAX_SPEED * Math.min(1, (relX - (rect.width - EDGE)) / EDGE);
+      }
+      if (speed !== 0) {
+        const before = scroller.scrollLeft;
+        scroller.scrollLeft = before + speed;
+        if (scroller.scrollLeft !== before) applyDelta(lastClientX);
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+
+    const onMove = (e: MouseEvent) => {
+      lastClientX = e.clientX;
+      applyDelta(e.clientX);
+    };
+
+    const onUp = () => {
+      setBarDrag((cur) => {
+        if (cur && cur.deltaDays !== 0) {
+          const orig = items.find((n) => n.id === cur.nodeId);
+          if (orig && orig.startAt && orig.endAt) {
+            const next = applyDrag(orig.startAt, orig.endAt, cur.mode, cur.deltaDays);
+            if (next.startAt !== orig.startAt || next.endAt !== orig.endAt) {
+              const before = recomputeEffective(items);
+              const after = recomputeEffective(
+                items.map((n) =>
+                  n.id === cur.nodeId ? { ...n, startAt: next.startAt, endAt: next.endAt } : n,
+                ),
+              );
+              // move 드래그 직후의 click(선택) 을 한 번 무시
+              if (cur.mode === 'move') justDraggedRef.current = true;
+              onBarChange?.({
+                node: orig,
+                newStartAt: next.startAt,
+                newEndAt: next.endAt,
+                affectedGroups: diffAffectedGroups(before, after),
+              });
+            }
+          }
+        }
+        return null;
+      });
+      setHoveredX(null);
+    };
+
+    // 드래그 도중 ESC: 확인 모달을 거치지 않고 즉시 취소·원복
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setBarDrag(null);
+        setHoveredX(null);
+      }
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('keydown', onKey);
+    };
+    // deltaDays 는 함수형 업데이트로 다루므로 deps 에서 제외해 리스너 재등록을 줄인다.
+  }, [barDrag?.nodeId, barDrag?.startClientX, barDrag?.startScrollLeft, barDrag?.mode, ppd, items, onBarChange, labelWidth, totalWidth]);
+
   const fitToScreen = () => {
     if (!scrollerRef.current || !range || items.length === 0) return;
 
@@ -454,6 +619,13 @@ export default function Timeline({
     }, 10);
   };
 
+  // 헤더 툴바가 호출하는 줌/화면맞춤 제어 노출
+  useImperativeHandle(ref, () => ({
+    zoomIn: () => handleZoom(true),
+    zoomOut: () => handleZoom(false),
+    fitToScreen,
+  }));
+
   // 페이지 로딩 시(최초 데이터가 매핑되었을 때) 화면 맞춤 자동 실행
   useEffect(() => {
     if (items.length > 0 && !hasFitOnLoad && scrollerRef.current) {
@@ -488,54 +660,17 @@ export default function Timeline({
   const todayOffset = dayDiff(today, range.start);
   const todayInRange = todayOffset >= 0 && todayOffset <= totalDays;
 
+  // 막대 선택 콜백 — move 드래그 직후의 click 은 한 번 무시한다.
+  const handleBarSelect = (id: string) => {
+    if (justDraggedRef.current) {
+      justDraggedRef.current = false;
+      return;
+    }
+    onSelect(id);
+  };
+
   return (
     <div className="relative group/timeline w-full h-full flex flex-col overflow-hidden">
-      {/* 플로팅 확대/축소/화면맞춤 조절바 - 화면 밖으로 나가면 뷰포트 맨 아래에 sticky 표시 (헤더를 가리지 않도록 top-[48px] 설정) */}
-      <div className="pointer-events-none absolute inset-x-0 top-[48px] bottom-0 z-30">
-        <div className="sticky bottom-4 flex justify-end pr-4">
-          <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-slate-200 bg-white/60 p-1 shadow-lg dark:border-slate-700/80 dark:bg-slate-900/60 backdrop-blur-sm opacity-50 hover:opacity-100 hover:bg-white dark:hover:bg-slate-900 transition-all duration-200">
-            <button
-              type="button"
-              onClick={() => handleZoom(false)}
-              className="flex h-7 w-7 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-              title="축소 (-)"
-            >
-              －
-            </button>
-            <button
-              type="button"
-              onClick={() => handleZoom(true)}
-              className="flex h-7 w-7 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-              title="확대 (+)"
-            >
-              ＋
-            </button>
-            <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
-            <button
-              type="button"
-              onClick={fitToScreen}
-              className="flex h-7 px-2 items-center justify-center rounded text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-              title="화면에 꽉 차게 맞춤"
-            >
-              화면 맞춤
-            </button>
-            {todayInRange && (
-              <>
-                <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
-                <button
-                  type="button"
-                  onClick={() => scrollToToday('smooth')}
-                  className="flex h-7 px-2 items-center justify-center rounded text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-                  title="오늘 날짜 위치로 스크롤"
-                >
-                  오늘
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* 트리 폭 조절 드래그 핸들 */}
       <div
         onMouseDown={handleResizeMouseDown}
@@ -573,15 +708,15 @@ export default function Timeline({
                 </span>
               </div>
               <div className="flex items-center gap-0.5">
-                {canEdit && onAddRoot && (
+                {canEdit && onAddNode && (
                   <button
                     type="button"
-                    onClick={onAddRoot}
+                    onClick={onAddNode}
                     className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700 transition-colors"
-                    title="최상단 항목 추가"
+                    title="일정 추가 (Ctrl-I) · 선택된 그룹의 자식 또는 아이템의 형제로 추가"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5 pointer-events-none">
-                      <title>최상단 항목 추가</title>
+                      <title>일정 추가 (Ctrl-I)</title>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                     </svg>
                   </button>
@@ -687,6 +822,11 @@ export default function Timeline({
               const siblingCount = siblings.length;
               const indexAmongSiblings = siblings.findIndex((s: any) => s.id === n.id);
 
+              // 드래그 미리보기: 이 노드의 변경 예상 시작/종료(원본과 다르면 반투명 막대로 표시)
+              const pv = previewMap.get(n.id);
+              const previewStart = pv ? (n.kind === 'GROUP' ? pv.startAtEffective : pv.startAt) : null;
+              const previewEnd = pv ? (n.kind === 'GROUP' ? pv.endAtEffective : pv.endAt) : null;
+
               return (
                 <Row
                   key={n.id}
@@ -696,10 +836,13 @@ export default function Timeline({
                   totalWidth={totalWidth}
                   labelWidth={labelWidth}
                   isSelected={selectedId === n.id}
-                  onSelect={onSelect}
+                  onSelect={handleBarSelect}
                   onEdit={onEdit}
                   onHoverNode={setHoveredNode}
                   canEdit={canEdit}
+                  onBarDragStart={startBarDrag}
+                  previewStart={previewStart}
+                  previewEnd={previewEnd}
                   siblingCount={siblingCount}
                   indexAmongSiblings={indexAmongSiblings}
                   isCollapsed={collapsedIds.has(n.id)}
@@ -735,6 +878,9 @@ export default function Timeline({
   );
 }
 
+const Timeline = forwardRef(TimelineComponent);
+export default Timeline;
+
 function Row({
   node,
   range,
@@ -756,6 +902,9 @@ function Row({
   onChangeParent,
   onDelete,
   onAddRoot,
+  onBarDragStart,
+  previewStart,
+  previewEnd,
 }: {
   node: TreeNode;
   range: { start: Date; end: Date };
@@ -777,6 +926,9 @@ function Row({
   onChangeParent?: ((node: NodeTreeItem) => void) | undefined;
   onDelete?: ((node: NodeTreeItem) => void) | undefined;
   onAddRoot?: (() => void) | undefined;
+  onBarDragStart?: ((node: NodeTreeItem, mode: DragMode, e: React.MouseEvent) => void) | undefined;
+  previewStart?: string | null | undefined;
+  previewEnd?: string | null | undefined;
 }) {
   const isGroup = node.kind === 'GROUP';
   const start = isGroup ? node.startAtEffective : node.startAt;
@@ -794,6 +946,19 @@ function Row({
     const offset = dayDiff(s, range.start);
     const span = dayDiff(e, s) + 1; // 시작일/종료일 포함
     bar = {
+      leftPx: offset * ppd,
+      widthPx: Math.max(span * ppd, 2),
+    };
+  }
+
+  // 드래그 미리보기 막대: 변경 예상 위치가 원본과 다를 때만 반투명하게 겹쳐 표시한다.
+  let previewBar: { leftPx: number; widthPx: number } | null = null;
+  if (previewStart && previewEnd && (previewStart !== start || previewEnd !== end)) {
+    const s = parseYmd(previewStart);
+    const e = parseYmd(previewEnd);
+    const offset = dayDiff(s, range.start);
+    const span = dayDiff(e, s) + 1;
+    previewBar = {
       leftPx: offset * ppd,
       widthPx: Math.max(span * ppd, 2),
     };
@@ -924,6 +1089,11 @@ function Row({
         {bar && (
           <button
             type="button"
+            onMouseDown={(e) => {
+              if (canEdit && !isGroup && !isEmptyRow && e.button === 0) {
+                onBarDragStart?.(node, 'move', e);
+              }
+            }}
             onClick={() => onSelect(node.id)}
             onDoubleClick={() => {
               if (isEmptyRow) {
@@ -952,6 +1122,8 @@ function Row({
               onHoverNode(null);
             }}
             className={`absolute top-1 bottom-1 overflow-hidden rounded ${
+              canEdit && !isGroup && !isEmptyRow ? 'cursor-move' : ''
+            } ${
               isGroup
                 ? 'border border-violet-300 bg-violet-100/70 dark:border-violet-700 dark:bg-violet-900/40'
                 : 'border border-sky-400 bg-sky-100 dark:border-sky-700 dark:bg-sky-900/40'
@@ -965,7 +1137,37 @@ function Row({
                 style={{ width: `${progress}%` }}
               />
             )}
+            {canEdit && !isGroup && !isEmptyRow && (
+              <>
+                <span
+                  role="presentation"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    onBarDragStart?.(node, 'resize-start', e);
+                  }}
+                  className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize"
+                />
+                <span
+                  role="presentation"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    onBarDragStart?.(node, 'resize-end', e);
+                  }}
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize"
+                />
+              </>
+            )}
           </button>
+        )}
+        {previewBar && (
+          <div
+            className={`pointer-events-none absolute top-1 bottom-1 rounded border-2 border-dashed opacity-70 ${
+              isGroup
+                ? 'border-violet-400 bg-violet-300/40 dark:border-violet-500 dark:bg-violet-700/30'
+                : 'border-sky-500 bg-sky-300/40 dark:border-sky-500 dark:bg-sky-700/30'
+            }`}
+            style={{ left: previewBar.leftPx, width: previewBar.widthPx }}
+          />
         )}
       </div>
     </div>

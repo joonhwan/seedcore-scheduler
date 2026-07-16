@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 5173",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@sam/shared": "workspace:*",
@@ -27,6 +28,7 @@
     "tailwindcss": "^3.4.13",
     "typescript": "5.6.3",
     "vite": "^5.4.10",
-    "vite-tsconfig-paths": "^5.0.1"
+    "vite-tsconfig-paths": "^5.0.1",
+    "vitest": "^2.1.8"
   }
 }

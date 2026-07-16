@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
@@ -8,7 +8,7 @@ import { apiErrorMessage } from '../lib/errors';
 import NodeDetail from '../components/NodeDetail';
 import NodeCommentsPanel from '../components/NodeCommentsPanel';
 import NodeHistoryPanel from '../components/NodeHistoryPanel';
-import Timeline, { type TimelineUnit } from '../components/Timeline';
+import Timeline, { type TimelineUnit, type TimelineHandle } from '../components/Timeline';
 
 export default function ProjectTimelinePage() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +20,7 @@ export default function ProjectTimelinePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [unit, setUnit] = useState<TimelineUnit>('week');
   const [todayCounter, setTodayCounter] = useState(0);
+  const timelineRef = useRef<TimelineHandle>(null);
 
   const isAdmin = me.data?.globalRole === 'ADMIN';
   const myRole = project.data?.myRole ?? null;
@@ -63,6 +64,41 @@ export default function ProjectTimelinePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* 간트 확대/축소/화면맞춤/오늘 조절 */}
+          <div className="flex items-center gap-0.5 rounded-md border border-slate-300 p-0.5 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => timelineRef.current?.zoomOut()}
+              title="축소"
+              className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              －
+            </button>
+            <button
+              type="button"
+              onClick={() => timelineRef.current?.zoomIn()}
+              title="확대"
+              className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              ＋
+            </button>
+            <button
+              type="button"
+              onClick={() => timelineRef.current?.fitToScreen()}
+              title="화면에 꽉 차게 맞춤"
+              className="flex h-6 items-center justify-center rounded px-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              화면맞춤
+            </button>
+            <button
+              type="button"
+              onClick={() => setTodayCounter((c) => c + 1)}
+              title="오늘 날짜 위치로 스크롤"
+              className="flex h-6 items-center justify-center rounded px-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              오늘
+            </button>
+          </div>
           <Link
             to={`/projects/${id}`}
             className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -78,6 +114,7 @@ export default function ProjectTimelinePage() {
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
         <section className="lg:col-span-7">
           <Timeline
+            ref={timelineRef}
             items={nodes.data ?? []}
             unit={unit}
             onUnitChange={setUnit}

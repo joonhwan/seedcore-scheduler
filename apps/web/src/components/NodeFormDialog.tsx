@@ -9,6 +9,7 @@ import AutocompleteInput from './AutocompleteInput';
 interface Props {
   projectId: string;
   parent: NodeTreeItem | null; // null = 루트 추가
+  defaultStartAt?: string | undefined; // 선택 항목 종료일 다음날 등 기본 시작일(ITEM 일 때 적용)
   onClose: () => void;
   onCreated: (node: NodeTreeItem) => void;
 }
@@ -21,13 +22,14 @@ const getTodayString = () => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-export default function NodeFormDialog({ projectId, parent, onClose, onCreated }: Props) {
+export default function NodeFormDialog({ projectId, parent, defaultStartAt, onClose, onCreated }: Props) {
   const [kind, setKind] = useState<NodeKind>(parent ? 'ITEM' : 'GROUP');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const todayStr = getTodayString();
-  const [startAt, setStartAt] = useState(todayStr);
-  const [endAt, setEndAt] = useState(todayStr);
+  const initialDate = defaultStartAt ?? todayStr;
+  const [startAt, setStartAt] = useState(initialDate);
+  const [endAt, setEndAt] = useState(initialDate);
   const [error, setError] = useState<string | null>(null);
   const create = useCreateNode(projectId);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -109,7 +111,7 @@ export default function NodeFormDialog({ projectId, parent, onClose, onCreated }
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-          {parent ? `"${parent.title}" 의 자식 노드 추가` : '최상단 항목 추가'}
+          {parent ? `"${parent.title}" 의 자식 노드 추가` : '최상단 일정 추가'}
         </h2>
         <form onSubmit={onSubmit} className="mt-4 space-y-4">
           {/* GROUP / ITEM 라디오 선택 영역 (아이콘 매핑) */}

@@ -10,7 +10,7 @@ import {
   useUpdateProject,
   useImportCsv,
 } from '../lib/projects';
-import { useNodes, useDeleteNode, useMoveNode } from '../lib/nodes';
+import { useNodes, useDeleteNode, useMoveNode, useUpdateNode } from '../lib/nodes';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import NodeDetail from '../components/NodeDetail';
@@ -18,7 +18,10 @@ import NodeFormDialog from '../components/NodeFormDialog';
 import ParentPickerDialog from '../components/ParentPickerDialog';
 import CommentInputForm from '../components/CommentInputForm';
 import ActivityFeedPanel from '../components/ActivityFeedPanel';
-import Timeline, { type TimelineUnit } from '../components/Timeline';
+import Timeline, { type TimelineUnit, type TimelineHandle } from '../components/Timeline';
+import BarChangeConfirmDialog from '../components/BarChangeConfirmDialog';
+import type { BarChangeProposal } from '../lib/ganttTypes';
+import { addDays } from '../lib/ganttMath';
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -29,6 +32,7 @@ export default function ProjectDetailPage() {
   const nodes = useNodes(id);
   const deleteNode = useDeleteNode(id ?? '');
   const moveNode = useMoveNode(id ?? '');
+  const updateNode = useUpdateNode(id ?? '');
 
   const isMutating = useIsMutating({
     mutationKey: ['nodes', id],
@@ -46,10 +50,14 @@ export default function ProjectDetailPage() {
   const [isDetailDirty, setIsDetailDirty] = useState(false);
   const [isCommentDirty, setIsCommentDirty] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
+  const [pendingBarChange, setPendingBarChange] = useState<BarChangeProposal | null>(null);
+  // 형제 추가 시 이 노드 바로 뒤에 삽입(생성 후 move). null 이면 부모 맨 끝(기존 동작).
+  const [createInsertAfter, setCreateInsertAfter] = useState<NodeTreeItem | null>(null);
 
   const detailRef = useRef<any>(null);
   const commentsRef = useRef<any>(null);
   const isSaveAndCloseActionRef = useRef(false);
+  const timelineRef = useRef<TimelineHandle>(null);
 
   const handleSelectNode = (nodeId: string | null) => {
     setSelectedId(nodeId);
@@ -71,17 +79,20 @@ export default function ProjectDetailPage() {
   const handleHeaderAddNode = () => {
     if (!selected || selectedId === 'empty-row-placeholder') {
       setCreateParent('root');
+      setCreateInsertAfter(null);
     } else if (selected.kind === 'GROUP') {
       if (selected.depth + 1 >= MAX_TREE_DEPTH) {
         toast.error(`최대 깊이(${MAX_TREE_DEPTH}단계)를 초과하여 하위 일정을 생성할 수 없습니다.`);
         return;
       }
       setCreateParent(selected);
+      setCreateInsertAfter(null);
     } else {
       const parentNode = selected.parentId
         ? (nodes.data ?? []).find((n) => n.id === selected.parentId) ?? null
         : null;
       setCreateParent(parentNode ?? 'root');
+      setCreateInsertAfter(selected); // 선택한 아이템 바로 뒤에 삽입
     }
   };
 
@@ -152,6 +163,13 @@ export default function ProjectDetailPage() {
     [nodes.data, selectedId],
   );
 
+  // 새 일정 추가 시 기본 시작일: 선택 항목의 종료일 다음날(없으면 오늘)
+  const createDefaultStartAt = useMemo(() => {
+    if (!selected) return undefined;
+    const end = selected.kind === 'GROUP' ? selected.endAtEffective : selected.endAt;
+    return end ? addDays(end, 1) : undefined;
+  }, [selected]);
+
   useEffect(() => {
     const parent = document.getElementById('app-main-content');
     if (parent) {
@@ -169,8 +187,8 @@ export default function ProjectDetailPage() {
   // Ctrl 단축키 처리 (Ctrl-Enter: 편집, Ctrl-I: 추가, Ctrl-D: 삭제)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 상세 편집 모달이 열려있거나 포커스가 입력 필드에 있을 때는 단축키 처리 제외
-      if (isDetailModalOpen) return;
+      // 상세 편집 모달이나 막대 변경 확인 모달이 열려있거나 포커스가 입력 필드에 있을 때는 단축키 처리 제외
+      if (isDetailModalOpen || pendingBarChange) return;
 
       const activeEl = document.activeElement;
       if (activeEl) {
@@ -213,7 +231,7 @@ export default function ProjectDetailPage() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selected, canEditNodes, isDetailModalOpen, handleHeaderAddNode, onDeleteNode, handleEditNode]);
+  }, [selected, canEditNodes, isDetailModalOpen, pendingBarChange, handleHeaderAddNode, onDeleteNode, handleEditNode]);
 
   if (project.isLoading || nodes.isLoading) {
     return <div className="p-6 text-sm text-slate-500">로딩…</div>;
@@ -264,13 +282,48 @@ export default function ProjectDetailPage() {
         : `"${node.title}" 노드를 삭제합니다. 계속할까요?`,
     );
     if (!ok) return;
+    // 삭제 전에 다음 선택 대상 계산: 다음 형제 → 없으면 이전 형제 → 없으면 부모
+    const nextSelectionId = (() => {
+      const siblings = (nodes.data ?? [])
+        .filter((n) => n.parentId === node.parentId)
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      const idx = siblings.findIndex((n) => n.id === node.id);
+      const neighbor = siblings[idx + 1] ?? siblings[idx - 1] ?? null;
+      return neighbor ? neighbor.id : node.parentId;
+    })();
     try {
       await deleteNode.mutateAsync(node.id);
-      if (selectedId === node.id) handleSelectNode(null);
+      if (selectedId === node.id) handleSelectNode(nextSelectionId);
       toast.success('노드가 삭제되었습니다.');
     } catch (err) {
       toast.error(apiErrorMessage(err));
     }
+  }
+
+  // 간트 막대 드래그로 확정 대기 중인 변경을 실제 저장한다.
+  async function applyBarChange() {
+    if (!pendingBarChange) return;
+    const { node, newStartAt, newEndAt } = pendingBarChange;
+    try {
+      await updateNode.mutateAsync({
+        id: node.id,
+        body: {
+          startAt: newStartAt,
+          endAt: newEndAt,
+          expectedUpdatedAt: node.updatedAt,
+        },
+      });
+      // 성공: 트리 재조회는 useUpdateNode onSuccess 가 처리. 미리보기 해제.
+      setPendingBarChange(null);
+    } catch (err) {
+      // 409 충돌 포함 모든 실패: apiErrorMessage 가 CONFLICT 메시지를 반환한다.
+      toast.error(apiErrorMessage(err));
+      setPendingBarChange(null); // 미리보기 원복
+    }
+  }
+
+  function cancelBarChange() {
+    setPendingBarChange(null);
   }
 
 
@@ -286,6 +339,10 @@ export default function ProjectDetailPage() {
         canEdit={canEditNodes}
         onAddNode={handleHeaderAddNode}
         onToggleHelp={() => setIsHelpOpen((prev) => !prev)}
+        onZoomIn={() => timelineRef.current?.zoomIn()}
+        onZoomOut={() => timelineRef.current?.zoomOut()}
+        onFitToScreen={() => timelineRef.current?.fitToScreen()}
+        onJumpToday={() => setTodayCounter((c) => c + 1)}
       />
 
       <div className="mt-2.5 flex-1 min-h-0 w-full flex flex-col">
@@ -293,6 +350,7 @@ export default function ProjectDetailPage() {
         <section className="flex-1 min-h-0 flex flex-col min-w-0">
           <div className="flex-1 min-h-0 w-full flex flex-col">
             <Timeline
+              ref={timelineRef}
               items={nodes.data ?? []}
               unit={unit}
               onUnitChange={setUnit}
@@ -301,17 +359,27 @@ export default function ProjectDetailPage() {
               onEdit={handleEditNode}
               jumpToTodayCounter={todayCounter}
               canEdit={canEditNodes}
-              onAddChild={(p) => setCreateParent(p)}
+              onAddChild={(p) => {
+                setCreateParent(p);
+                setCreateInsertAfter(null);
+              }}
               onAddSibling={(s) => {
                 const parentNode = s.parentId
                   ? (nodes.data ?? []).find((n) => n.id === s.parentId) ?? null
                   : null;
                 setCreateParent(parentNode ?? 'root');
+                setCreateInsertAfter(s); // 이 노드 바로 뒤에 삽입
               }}
               onMoveSibling={onMoveSibling}
               onChangeParent={(n) => setPickParentFor(n)}
               onDelete={onDeleteNode}
-              onAddRoot={() => setCreateParent('root')}
+              onAddRoot={() => {
+                setCreateParent('root');
+                setCreateInsertAfter(null);
+              }}
+              onAddNode={handleHeaderAddNode}
+              onBarChange={setPendingBarChange}
+              previewProposal={pendingBarChange}
             />
           </div>
         </section>
@@ -420,12 +488,41 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
+      {pendingBarChange && (
+        <BarChangeConfirmDialog
+          proposal={pendingBarChange}
+          onConfirm={applyBarChange}
+          onCancel={cancelBarChange}
+        />
+      )}
+
       {createParent !== null && (
         <NodeFormDialog
           projectId={id}
           parent={createParent === 'root' ? null : createParent}
-          onClose={() => setCreateParent(null)}
-          onCreated={() => {}}
+          defaultStartAt={createDefaultStartAt}
+          onClose={() => {
+            setCreateParent(null);
+            setCreateInsertAfter(null);
+          }}
+          onCreated={async (node) => {
+            handleSelectNode(node.id);
+            // 형제 추가면 선택 항목 바로 뒤로 이동(이미 그 자리면 생략)
+            if (createInsertAfter && node.sortOrder !== createInsertAfter.sortOrder + 1) {
+              try {
+                await moveNode.mutateAsync({
+                  id: node.id,
+                  body: {
+                    newParentId: node.parentId,
+                    newSortOrder: createInsertAfter.sortOrder + 1,
+                    expectedUpdatedAt: node.updatedAt,
+                  },
+                });
+              } catch (err) {
+                toast.error(apiErrorMessage(err));
+              }
+            }
+          }}
         />
       )}
       {pickParentFor && nodes.data && (
@@ -568,6 +665,10 @@ function ProjectHeader({
   canEdit,
   onAddNode,
   onToggleHelp,
+  onZoomIn,
+  onZoomOut,
+  onFitToScreen,
+  onJumpToday,
 }: {
   project: ProjectDetail;
   canManage: boolean;
@@ -577,6 +678,10 @@ function ProjectHeader({
   canEdit: boolean;
   onAddNode: () => void;
   onToggleHelp: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onFitToScreen: () => void;
+  onJumpToday: () => void;
 }) {
   const updateProject = useUpdateProject(project.id);
   const deleteProject = useDeleteProject();
@@ -740,6 +845,41 @@ function ProjectHeader({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          {/* 간트 확대/축소/화면맞춤/오늘 조절 (기존 플로팅 툴바를 헤더로 이동) */}
+          <div className="flex items-center gap-0.5 rounded-md border border-slate-300 p-0.5 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={onZoomOut}
+              title="축소"
+              className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              －
+            </button>
+            <button
+              type="button"
+              onClick={onZoomIn}
+              title="확대"
+              className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              ＋
+            </button>
+            <button
+              type="button"
+              onClick={onFitToScreen}
+              title="화면에 꽉 차게 맞춤"
+              className="flex h-6 items-center justify-center rounded px-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              화면맞춤
+            </button>
+            <button
+              type="button"
+              onClick={onJumpToday}
+              title="오늘 날짜 위치로 스크롤"
+              className="flex h-6 items-center justify-center rounded px-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              오늘
+            </button>
+          </div>
           {/* CSV 가져오기/내보내기 기능 임시 숨김 처리 (요구사항 반영)
           {canEdit && (
             <button
@@ -771,7 +911,7 @@ function ProjectHeader({
               type="button"
               onClick={onAddNode}
               className="px-2.5 py-1.5 rounded-md border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 dark:border-sky-800/80 dark:bg-sky-950/40 dark:hover:bg-sky-950/70 dark:text-sky-300 transition-colors flex items-center gap-1.5 text-xs font-semibold"
-              title="새 일정 추가 (선택된 그룹의 자식 또는 아이템의 형제로 추가)"
+              title="일정 추가 (Ctrl-I) · 선택된 그룹의 자식 또는 아이템의 형제로 추가"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
