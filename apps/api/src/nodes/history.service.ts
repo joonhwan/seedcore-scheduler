@@ -1,10 +1,11 @@
 import {
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import type { NodeAction, NodeHistoryItem } from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertProjectReadAccess } from '../common/project-access';
+import { parseDiff } from '../common/diff.util';
 
 interface ActorContext {
   actorId: string;
@@ -36,10 +37,10 @@ export class HistoryService {
         select: { projectId: true },
       });
       if (!node) throw new NotFoundException({ error: 'NODE_NOT_FOUND' });
-      await this.assertReadAccess(node.projectId, ctx);
+      await assertProjectReadAccess(this.prisma, node.projectId, ctx);
       return [];
     }
-    await this.assertReadAccess(sample.projectIdSnapshot, ctx);
+    await assertProjectReadAccess(this.prisma, sample.projectIdSnapshot, ctx);
 
     const rows = await this.prisma.nodeHistory.findMany({
       where: { nodeIdSnapshot: nodeId },
@@ -61,29 +62,5 @@ export class HistoryService {
       diff: parseDiff(r.diffJson),
       occurredAt: r.occurredAt.toISOString(),
     }));
-  }
-
-  private async assertReadAccess(
-    projectId: string,
-    ctx: ActorContext,
-  ): Promise<void> {
-    if (ctx.globalRole === 'ADMIN' && ctx.adminMode) return;
-    const m = await this.prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId, userId: ctx.actorId } },
-      select: { role: true },
-    });
-    if (!m) throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
-  }
-}
-
-function parseDiff(json: string): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(json);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return {};
-  } catch {
-    return {};
   }
 }

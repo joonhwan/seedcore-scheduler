@@ -1,5 +1,4 @@
 import {
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -13,6 +12,8 @@ import {
   type RawHistoryRow,
 } from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertProjectReadAccess } from '../common/project-access';
+import { parseDiff } from '../common/diff.util';
 
 interface ActorContext {
   actorId: string;
@@ -40,7 +41,7 @@ export class ProjectHistoryService {
       select: { id: true },
     });
     if (!project) throw new NotFoundException({ error: 'PROJECT_NOT_FOUND' });
-    await this.assertReadAccess(projectId, ctx);
+    await assertProjectReadAccess(this.prisma, projectId, ctx);
 
     const { from, to } = resolveWindow(q);
 
@@ -138,15 +139,6 @@ export class ProjectHistoryService {
     }
     return meta;
   }
-
-  private async assertReadAccess(projectId: string, ctx: ActorContext): Promise<void> {
-    if (ctx.globalRole === 'ADMIN' && ctx.adminMode) return;
-    const m = await this.prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId, userId: ctx.actorId } },
-      select: { role: true },
-    });
-    if (!m) throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
-  }
 }
 
 /** range 를 실제 [from, to] Date 창으로 바꾼다. */
@@ -160,18 +152,6 @@ function resolveWindow(q: ProjectHistoryQuery): { from: Date; to: Date } {
   }
   const days = q.range === '1w' ? 7 : 30;
   return { from: new Date(now.getTime() - days * 24 * 60 * 60 * 1000), to: now };
-}
-
-function parseDiff(json: string): Record<string, unknown> {
-  try {
-    const p: unknown = JSON.parse(json);
-    if (p && typeof p === 'object' && !Array.isArray(p)) {
-      return p as Record<string, unknown>;
-    }
-    return {};
-  } catch {
-    return {};
-  }
 }
 
 function titleFromDiff(diff: Record<string, unknown>): string | null {

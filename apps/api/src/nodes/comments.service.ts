@@ -6,6 +6,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import type { CreateCommentDto, NodeCommentItem } from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertProjectReadAccess } from '../common/project-access';
 
 interface ActorContext {
   actorId: string;
@@ -25,7 +26,7 @@ export class CommentsService {
       select: { id: true, projectId: true },
     });
     if (!node) throw new NotFoundException({ error: 'NODE_NOT_FOUND' });
-    await this.assertReadAccess(node.projectId, ctx);
+    await assertProjectReadAccess(this.prisma, node.projectId, ctx);
 
     const comments = await this.prisma.nodeComment.findMany({
       where: { nodeId, deletedAt: null },
@@ -115,18 +116,6 @@ export class CommentsService {
       where: { id: commentId },
       data: { deletedAt: new Date() },
     });
-  }
-
-  private async assertReadAccess(
-    projectId: string,
-    ctx: ActorContext,
-  ): Promise<void> {
-    if (ctx.globalRole === 'ADMIN' && ctx.adminMode) return;
-    const m = await this.prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId, userId: ctx.actorId } },
-      select: { role: true },
-    });
-    if (!m) throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
   }
 
   private async assertWriteAccess(

@@ -20,6 +20,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AutocompleteService } from '../autocomplete/autocomplete.service';
 import { buildTreeItems } from './tree-aggregation';
+import { assertProjectReadAccess } from '../common/project-access';
 
 interface ActorContext {
   actorId: string;
@@ -43,7 +44,7 @@ export class NodesService {
    */
   async listTree(projectId: string, ctx: ActorContext): Promise<NodeTreeItem[]> {
     await this.assertProjectExists(projectId);
-    await this.assertReadAccess(projectId, ctx);
+    await assertProjectReadAccess(this.prisma, projectId, ctx);
 
     const rows = await this.prisma.scheduleNode.findMany({
       where: { projectId },
@@ -534,19 +535,6 @@ export class NodesService {
       select: { id: true },
     });
     if (!exists) throw new NotFoundException({ error: 'PROJECT_NOT_FOUND' });
-  }
-
-  /** 멤버 OR ADMIN+adminMode */
-  private async assertReadAccess(
-    projectId: string,
-    ctx: ActorContext,
-  ): Promise<void> {
-    if (ctx.globalRole === 'ADMIN' && ctx.adminMode) return;
-    const m = await this.prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId, userId: ctx.actorId } },
-      select: { role: true },
-    });
-    if (!m) throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
   }
 
   /** DESIGN §4.2: 노드 CRUD 는 MANAGER/MEMBER 모두 허용. ADMIN+adminMode 도 허용. */

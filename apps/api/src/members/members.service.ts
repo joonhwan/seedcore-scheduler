@@ -8,6 +8,7 @@ import {
 import type { AddMemberDto, ProjectMemberItem } from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { assertProjectReadAccess } from '../common/project-access';
 
 interface ActorContext {
   actorId: string;
@@ -29,7 +30,7 @@ export class MembersService {
    */
   async list(projectId: string, ctx: ActorContext): Promise<ProjectMemberItem[]> {
     await this.assertProjectExists(projectId);
-    await this.assertReadAccess(projectId, ctx);
+    await assertProjectReadAccess(this.prisma, projectId, ctx);
 
     const members = await this.prisma.projectMember.findMany({
       where: { projectId },
@@ -179,18 +180,6 @@ export class MembersService {
       select: { id: true },
     });
     if (!exists) throw new NotFoundException({ error: 'PROJECT_NOT_FOUND' });
-  }
-
-  private async assertReadAccess(
-    projectId: string,
-    ctx: ActorContext,
-  ): Promise<void> {
-    if (ctx.globalRole === 'ADMIN' && ctx.adminMode) return;
-    const m = await this.prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId, userId: ctx.actorId } },
-      select: { role: true },
-    });
-    if (!m) throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
   }
 
   private async assertWriteAccess(
