@@ -8,8 +8,19 @@ import { applyDrag, pxToDays, parseYmd, dayDiff, type DragMode } from '../lib/ga
 import { recomputeEffective, diffAffectedGroups } from '../lib/ganttAggregate';
 import type { BarChangeProposal } from '../lib/ganttTypes';
 import { computeCheckStates, type CheckState } from '../lib/bulkSelection';
+import {
+  PPD,
+  ROW_HEIGHT,
+  HEADER_HEIGHT,
+  todayUtc,
+  flattenTree,
+  computeRange,
+  computeHeaderCells,
+  type TimelineUnit,
+  type HeaderCell,
+} from '../lib/ganttLayout';
 
-export type TimelineUnit = 'day' | 'week' | 'month' | 'quarter';
+export type { TimelineUnit } from '../lib/ganttLayout';
 
 interface Props {
   items: NodeTreeItem[];
@@ -46,37 +57,6 @@ export interface TimelineHandle {
   zoomIn: () => void;
   zoomOut: () => void;
   fitToScreen: () => void;
-}
-
-const PPD: Record<TimelineUnit, number> = {
-  day: 36,
-  week: 10,
-  month: 4,
-  quarter: 2,
-};
-
-const ROW_HEIGHT = 32;
-const HEADER_HEIGHT = 44;
-const PADDING_DAYS = 3;
-
-function todayUtc(): Date {
-  const n = new Date();
-  return new Date(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()));
-}
-
-function flattenTree(items: NodeTreeItem[], collapsedIds: Set<string>): TreeNode[] {
-  const tree = buildTree(items);
-  const out: TreeNode[] = [];
-  function walk(arr: TreeNode[]) {
-    for (const n of arr) {
-      out.push(n);
-      if (n.children.length > 0 && !collapsedIds.has(n.id)) {
-        walk(n.children);
-      }
-    }
-  }
-  walk(tree);
-  return out;
 }
 
 function TimelineComponent({
@@ -1311,137 +1291,6 @@ function Row({
       </div>
     </div>
   );
-}
-
-function computeRange(items: NodeTreeItem[]): { start: Date; end: Date } {
-  let minStart: string | null = null;
-  let maxEnd: string | null = null;
-  for (const n of items) {
-    const s = n.kind === 'GROUP' ? n.startAtEffective : n.startAt;
-    const e = n.kind === 'GROUP' ? n.endAtEffective : n.endAt;
-    if (s && (minStart === null || s < minStart)) minStart = s;
-    if (e && (maxEnd === null || e > maxEnd)) maxEnd = e;
-  }
-
-  let start: Date;
-  let end: Date;
-
-  if (minStart && maxEnd) {
-    start = parseYmd(minStart);
-    end = parseYmd(maxEnd);
-    start.setUTCFullYear(start.getUTCFullYear() - 1);
-    end.setUTCFullYear(end.getUTCFullYear() + 1);
-  } else {
-    // 날짜가 입력된 노드가 하나도 없는 경우(빈 프로젝트 포함), 오늘을 기준으로 +- 6개월 임시 범위 제공
-    const today = todayUtc();
-    start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 6, 1));
-    end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 6, 1));
-  }
-
-  return { start, end };
-}
-
-interface HeaderCell {
-  offsetPx: number;
-  widthPx: number;
-  label: string;
-  subLabel?: string | undefined;
-  tooltip?: string | undefined;
-  isSaturday?: boolean | undefined;
-  isSunday?: boolean | undefined;
-}
-
-function computeHeaderCells(
-  range: { start: Date; end: Date },
-  unit: TimelineUnit,
-  ppd: number,
-): HeaderCell[] {
-  const cells: HeaderCell[] = [];
-  const totalDays = dayDiff(range.end, range.start) + 1;
-
-  if (unit === 'day') {
-    const dowNames = ['일', '월', '화', '수', '목', '금', '토'];
-    for (let i = 0; i < totalDays; i += 1) {
-      const d = new Date(range.start.getTime() + i * 86400000);
-      const day = d.getUTCDate();
-      const dayOfWeek = d.getUTCDay();
-      const showDow = ppd >= 30;
-      cells.push({
-        offsetPx: i * ppd,
-        widthPx: ppd,
-        label: `${day}`,
-        subLabel: showDow ? dowNames[dayOfWeek] : undefined,
-        tooltip: `${d.getUTCMonth() + 1}/${day} (${dowNames[dayOfWeek]})`,
-        isSaturday: dayOfWeek === 6,
-        isSunday: dayOfWeek === 0,
-      });
-    }
-    return cells;
-  }
-  if (unit === 'week') {
-    // 주 시작 (월요일) 기준
-    let cursor = new Date(range.start);
-    const dow = cursor.getUTCDay();
-    const back = (dow + 6) % 7; // 월=0, 일=6
-    cursor = new Date(cursor.getTime() - back * 86400000);
-    while (cursor < range.end) {
-      const next = new Date(cursor.getTime() + 7 * 86400000);
-      const offsetDays = dayDiff(cursor, range.start);
-      const widthDays = Math.min(7, totalDays - offsetDays);
-      const label = `${cursor.getUTCMonth() + 1}/${cursor.getUTCDate()}`;
-      cells.push({
-        offsetPx: Math.max(0, offsetDays * ppd),
-        widthPx: widthDays * ppd,
-        label,
-      });
-      cursor = next;
-    }
-    return cells;
-  }
-  if (unit === 'month') {
-    let y = range.start.getUTCFullYear();
-    let m = range.start.getUTCMonth();
-    while (true) {
-      const cellStart = new Date(Date.UTC(y, m, 1));
-      const cellEnd = new Date(Date.UTC(y, m + 1, 1));
-      if (cellStart >= range.end) break;
-      const offsetDays = Math.max(0, dayDiff(cellStart, range.start));
-      const endDays = Math.min(dayDiff(cellEnd, range.start), totalDays);
-      cells.push({
-        offsetPx: offsetDays * ppd,
-        widthPx: (endDays - offsetDays) * ppd,
-        label: `${y}-${(m + 1).toString().padStart(2, '0')}`,
-      });
-      m += 1;
-      if (m > 11) {
-        m = 0;
-        y += 1;
-      }
-    }
-    return cells;
-  }
-  // quarter
-  let y = range.start.getUTCFullYear();
-  let q = Math.floor(range.start.getUTCMonth() / 3);
-  while (true) {
-    const startMonth = q * 3;
-    const cellStart = new Date(Date.UTC(y, startMonth, 1));
-    const cellEnd = new Date(Date.UTC(y, startMonth + 3, 1));
-    if (cellStart >= range.end) break;
-    const offsetDays = Math.max(0, dayDiff(cellStart, range.start));
-    const endDays = Math.min(dayDiff(cellEnd, range.start), totalDays);
-    cells.push({
-      offsetPx: offsetDays * ppd,
-      widthPx: (endDays - offsetDays) * ppd,
-      label: `${y} Q${q + 1}`,
-    });
-    q += 1;
-    if (q > 3) {
-      q = 0;
-      y += 1;
-    }
-  }
-  return cells;
 }
 
 function HistoryTooltip({
