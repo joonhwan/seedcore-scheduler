@@ -17,7 +17,6 @@ import {
   computeRange,
   computeHeaderCells,
   type TimelineUnit,
-  type HeaderCell,
 } from '../lib/ganttLayout';
 
 export type { TimelineUnit } from '../lib/ganttLayout';

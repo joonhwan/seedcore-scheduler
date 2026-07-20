@@ -36,7 +36,9 @@ export function flattenTree(items: NodeTreeItem[], collapsedIds: Set<string>): T
   return out;
 }
 
-export function computeRange(items: NodeTreeItem[]): { start: Date; end: Date } {
+// 노드 목록에서 최소 시작일/최대 종료일을 스캔한다(GROUP은 effective 날짜 사용).
+// computeRange/computeActiveRange 공용 내부 헬퍼.
+function scanDateBounds(items: NodeTreeItem[]): { minStart: string | null; maxEnd: string | null } {
   let minStart: string | null = null;
   let maxEnd: string | null = null;
   for (const n of items) {
@@ -45,6 +47,11 @@ export function computeRange(items: NodeTreeItem[]): { start: Date; end: Date } 
     if (s && (minStart === null || s < minStart)) minStart = s;
     if (e && (maxEnd === null || e > maxEnd)) maxEnd = e;
   }
+  return { minStart, maxEnd };
+}
+
+export function computeRange(items: NodeTreeItem[]): { start: Date; end: Date } {
+  const { minStart, maxEnd } = scanDateBounds(items);
 
   let start: Date;
   let end: Date;
@@ -68,14 +75,7 @@ export function computeRange(items: NodeTreeItem[]): { start: Date; end: Date } 
 export function computeActiveRange(
   items: NodeTreeItem[],
 ): { start: Date; end: Date } | null {
-  let minStart: string | null = null;
-  let maxEnd: string | null = null;
-  for (const n of items) {
-    const s = n.kind === 'GROUP' ? n.startAtEffective : n.startAt;
-    const e = n.kind === 'GROUP' ? n.endAtEffective : n.endAt;
-    if (s && (minStart === null || s < minStart)) minStart = s;
-    if (e && (maxEnd === null || e > maxEnd)) maxEnd = e;
-  }
+  const { minStart, maxEnd } = scanDateBounds(items);
   if (!minStart || !maxEnd) return null;
   return { start: parseYmd(minStart), end: parseYmd(maxEnd) };
 }
