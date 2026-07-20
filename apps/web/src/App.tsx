@@ -10,6 +10,7 @@ import ProjectsPage from './pages/ProjectsPage';
 import ProjectNewPage from './pages/ProjectNewPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import ProjectMembersPage from './pages/ProjectMembersPage';
+import ProjectHistoryPage from './pages/ProjectHistoryPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AdminAutocompletePage from './pages/AdminAutocompletePage';
 import { useParams } from 'react-router-dom';
@@ -199,6 +200,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <ProjectMembersPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/projects/:id/history"
+            element={
+              <RequireAuth>
+                <ProjectHistoryPage />
               </RequireAuth>
             }
           />
