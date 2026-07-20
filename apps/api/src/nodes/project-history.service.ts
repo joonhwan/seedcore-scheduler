@@ -53,6 +53,9 @@ export class ProjectHistoryService {
             where: { projectIdSnapshot: projectId, occurredAt: { gte: from, lte: to } },
             include: { actor: { select: { username: true, displayName: true } } },
             orderBy: { occurredAt: 'desc' },
+            // 기간 창으로 이미 좁히지만, 매우 활발한 프로젝트에서 창 안 행이 폭증해도
+            // 메모리를 방어하기 위한 상한(최신순). 최종 표시 상한(RESULT_LIMIT)의 여유 배수.
+            take: RESULT_LIMIT * 4,
           });
 
     // 댓글: 살아있는 노드 + 미삭제. ALL/COMMENTS 주제에서만 필요.
@@ -62,6 +65,7 @@ export class ProjectHistoryService {
             where: { deletedAt: null, node: { projectId }, createdAt: { gte: from, lte: to } },
             include: { author: { select: { username: true, displayName: true } } },
             orderBy: { createdAt: 'desc' },
+            take: RESULT_LIMIT * 4, // 이력과 동일한 방어용 상한(최신순).
           })
         : [];
 
