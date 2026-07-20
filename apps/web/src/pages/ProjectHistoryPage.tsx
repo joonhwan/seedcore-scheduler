@@ -127,21 +127,24 @@ function Row({ item }: { item: ProjectHistoryEntry }) {
   return (
     <li className="flex items-stretch overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40">
       <span className={`w-1 shrink-0 ${strip}`} aria-hidden />
-      <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-sm">
+      <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-base">
+        {/* 항목 제목을 맨 앞으로. 폭은 내용 폭 그대로(고정 컬럼 두지 않음). */}
+        <span
+          className={`shrink-0 font-medium ${
+            item.nodeDeleted ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-slate-100'
+          }`}
+        >
+          "{item.nodeTitle}"
+        </span>
+        {item.nodeDeleted && (
+          <span className="shrink-0 rounded border border-slate-300 px-1 text-[11px] text-slate-500 dark:border-slate-700">
+            삭제됨
+          </span>
+        )}
         <span className={`shrink-0 ${text}`}>{icon}</span>
-        <span className="truncate text-slate-700 dark:text-slate-200">{label}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-slate-400">
-          <span className={item.nodeDeleted ? 'text-slate-400 line-through' : 'text-slate-500'}>
-            "{item.nodeTitle}"
-          </span>
-          {item.nodeDeleted && (
-            <span className="rounded border border-slate-300 px-1 text-[10px] text-slate-500 dark:border-slate-700">
-              삭제됨
-            </span>
-          )}
-          <span>
-            · {who} · {formatDateTime(when)}
-          </span>
+        <span className="min-w-0 flex-1 truncate text-slate-600 dark:text-slate-300">{label}</span>
+        <span className="ml-auto shrink-0 text-sm text-slate-400">
+          {who} · {formatDateTime(when)}
         </span>
       </div>
     </li>
