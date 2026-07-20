@@ -30,6 +30,8 @@ interface Palette {
   itemBarBorder: string;
   itemBarBg: string;
   itemFill: string;
+  groupIcon: string;
+  itemIcon: string;
 }
 
 // Tailwind 팔레트를 화면 Timeline 과 최대한 맞춘 고정 색.
@@ -47,6 +49,8 @@ const LIGHT: Palette = {
   itemBarBorder: '#38bdf8', // sky-400
   itemBarBg: '#e0f2fe', // sky-100
   itemFill: '#0ea5e9', // sky-500
+  groupIcon: '#8b5cf6', // violet-500
+  itemIcon: '#0ea5e9', // sky-500
 };
 
 const DARK: Palette = {
@@ -63,6 +67,8 @@ const DARK: Palette = {
   itemBarBorder: '#0369a1', // sky-700
   itemBarBg: 'rgba(12,74,110,0.4)', // sky-900/40
   itemFill: 'rgba(14,165,233,0.8)', // sky-500/80
+  groupIcon: '#a78bfa', // violet-400
+  itemIcon: '#38bdf8', // sky-400
 };
 
 export interface GanttExportViewProps {
@@ -192,9 +198,9 @@ export default function GanttExportView({
                 }}
               >
                 {isGroup ? (
-                  <FolderIcon className="w-4 h-4" />
+                  <FolderIcon className="w-4 h-4" color={p.groupIcon} />
                 ) : (
-                  <ItemIcon className="w-4 h-4" />
+                  <ItemIcon className="w-4 h-4" color={p.itemIcon} />
                 )}
                 <span
                   style={{

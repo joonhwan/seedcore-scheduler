@@ -2,12 +2,14 @@ import React from 'react';
 
 interface IconProps {
   className?: string;
+  color?: string;
 }
 
-export function FolderIcon({ className = 'w-4 h-4' }: IconProps) {
+export function FolderIcon({ className = 'w-4 h-4', color }: IconProps) {
   return (
     <svg
       className={`${className} text-violet-500 dark:text-violet-400 shrink-0`}
+      style={color ? { color } : undefined}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
@@ -23,10 +25,11 @@ export function FolderIcon({ className = 'w-4 h-4' }: IconProps) {
   );
 }
 
-export function ItemIcon({ className = 'w-4 h-4' }: IconProps) {
+export function ItemIcon({ className = 'w-4 h-4', color }: IconProps) {
   return (
     <svg
       className={`${className} text-sky-500 dark:text-sky-400 shrink-0`}
+      style={color ? { color } : undefined}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
