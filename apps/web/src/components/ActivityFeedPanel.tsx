@@ -6,6 +6,7 @@ import { useComments, useDeleteComment } from '../lib/comments';
 import { useNodeHistory } from '../lib/history';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
+import { historyLabelText, formatDateTime as formatDateTimeShared } from '../lib/historyView';
 
 interface Props {
   nodeId: string;
@@ -80,7 +81,7 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
                     💬 {c.authorDisplayName}{' '}
                     <span className="text-slate-400 font-normal">@{c.authorUsername}</span>
                   </span>
-                  <span className="text-[10px] text-slate-400">{formatDateTime(c.createdAt)}</span>
+                  <span className="text-[10px] text-slate-400">{formatDateTimeShared(c.createdAt)}</span>
                 </div>
                 <p className="whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300 leading-relaxed">{c.body}</p>
                 {canDelete && (
@@ -107,11 +108,11 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
                   <div className="flex items-center gap-1.5 flex-1 min-w-0">
                     <ActionBadge action={h.action} />
                     <div className="truncate text-slate-700 dark:text-slate-300 font-medium text-[11px] flex items-center gap-1">
-                      {renderHistorySummary(h.action, h.diff, h.actorDisplayName)}
+                      {historyLabelText(h.action, h.diff)}
                     </div>
                   </div>
                   <p className="text-[9px] text-slate-400 mt-1 pl-1">
-                    by @{h.actorUsername} · {formatDateTime(h.occurredAt)}
+                    by @{h.actorUsername} · {formatDateTimeShared(h.occurredAt)}
                   </p>
                 </div>
 
@@ -158,67 +159,6 @@ function ActionBadge({ action }: { action: NodeHistoryItem['action'] }) {
   );
 }
 
-function renderHistorySummary(action: string, diff: Record<string, any>, actorDisplayName: string): React.ReactNode {
-  const actor = actorDisplayName;
-  if (action === 'CREATE') {
-    return <span>{actor} 님이 새 일정을 생성했습니다.</span>;
-  }
-  if (action === 'DELETE') {
-    return <span>{actor} 님이 일정을 삭제했습니다.</span>;
-  }
-  if (action === 'RESTORE') {
-    return <span>{actor} 님이 삭제된 일정을 복구했습니다.</span>;
-  }
-  if (action === 'MOVE') {
-    return <span>{actor} 님이 일정의 상위(부모) 관계를 이동했습니다.</span>;
-  }
-  if (action === 'UPDATE') {
-    const keys = Object.keys(diff);
-    if (keys.includes('progress')) {
-      const pDiff = diff['progress'];
-      if (pDiff && typeof pDiff === 'object' && 'to' in pDiff && 'from' in pDiff) {
-        const fromVal = Number(pDiff.from ?? 0);
-        const toVal = Number(pDiff.to ?? 0);
-        if (toVal === 100) {
-          return (
-            <span className="flex items-center gap-1">
-              <span>🎉 {actor} 님이 진척율을 100% 완료했습니다!</span>
-              <span className="text-emerald-600 dark:text-emerald-400 font-bold font-mono">({fromVal}% → 100%)</span>
-            </span>
-          );
-        }
-        if (toVal > fromVal) {
-          return (
-            <span className="flex items-center gap-1">
-              <span className="text-emerald-600 dark:text-emerald-400 font-extrabold text-[12px]">↗</span>
-              <span>{actor} 님이 진척율을 올렸습니다.</span>
-              <span className="text-slate-400 dark:text-slate-500 font-mono">({fromVal}% → {toVal}%)</span>
-            </span>
-          );
-        }
-        if (toVal < fromVal) {
-          return (
-            <span className="flex items-center gap-1">
-              <span className="text-rose-600 dark:text-rose-400 font-extrabold text-[12px]">↘</span>
-              <span>{actor} 님이 진척율을 내렸습니다.</span>
-              <span className="text-slate-400 dark:text-slate-500 font-mono">({fromVal}% → {toVal}%)</span>
-            </span>
-          );
-        }
-        return <span>{actor} 님이 진척율을 {toVal}%로 수정했습니다.</span>;
-      }
-    }
-    if (keys.includes('title')) {
-      return <span>{actor} 님이 일정 제목을 변경했습니다.</span>;
-    }
-    if (keys.includes('startAt') || keys.includes('endAt')) {
-      return <span>{actor} 님이 일정의 기간 범위를 수정했습니다.</span>;
-    }
-    return <span>{actor} 님이 일정을 수정했습니다.</span>;
-  }
-  return <span>{actor} 님이 작업 이력을 남겼습니다.</span>;
-}
-
 function DiffTooltip({ action, diff }: { action: string; diff: Record<string, any> }) {
   const entries = Object.entries(diff).filter(
     ([, v]) =>
@@ -251,12 +191,4 @@ function DiffTooltip({ action, diff }: { action: string; diff: Record<string, an
       })}
     </ul>
   );
-}
-
-function formatDateTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
 }
