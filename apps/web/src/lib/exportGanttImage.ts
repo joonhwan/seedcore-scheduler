@@ -1,6 +1,6 @@
 // 화면 밖에 정적 간트를 렌더해 PNG 로 캡처하고 내려받는다(부수효과).
 import { createElement } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import { toPng } from 'html-to-image';
 import type { NodeTreeItem } from '@sam/shared';
 import GanttExportView, { EXPORT_ROOT_ID } from '../components/GanttExportView';
@@ -33,10 +33,11 @@ export async function exportGanttImage(opts: ExportGanttImageOptions): Promise<v
   host.style.top = '0';
   host.style.pointerEvents = 'none';
   host.style.zIndex = '-1';
-  document.body.appendChild(host);
 
-  const root = createRoot(host);
+  let root: Root | null = null;
   try {
+    document.body.appendChild(host);
+    root = createRoot(host);
     root.render(
       createElement(GanttExportView, {
         items: opts.items,
@@ -58,6 +59,7 @@ export async function exportGanttImage(opts: ExportGanttImageOptions): Promise<v
       pixelRatio: opts.pixelRatio,
       backgroundColor: opts.theme === 'dark' ? '#0f172a' : '#ffffff',
       cacheBust: true,
+      skipFonts: true,
     });
 
     const link = document.createElement('a');
@@ -65,7 +67,7 @@ export async function exportGanttImage(opts: ExportGanttImageOptions): Promise<v
     link.href = dataUrl;
     link.click();
   } finally {
-    root.unmount();
+    root?.unmount();
     host.remove();
   }
 }
