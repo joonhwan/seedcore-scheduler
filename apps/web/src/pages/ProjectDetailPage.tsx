@@ -48,7 +48,6 @@ export default function ProjectDetailPage() {
   const [createParent, setCreateParent] = useState<NodeTreeItem | null | 'root'>(
     null,
   );
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [pickParentFor, setPickParentFor] = useState<NodeTreeItem | null>(null);
   const [unit, setUnit] = useState<TimelineUnit>('week');
   const [todayCounter, setTodayCounter] = useState(0);
@@ -240,9 +239,6 @@ export default function ProjectDetailPage() {
             onDeleteNode(selected);
           }
         }
-      } else if (e.key === '?' || (e.key === 'h' && !e.ctrlKey)) {
-        e.preventDefault();
-        setIsHelpOpen((prev) => !prev);
       }
     };
 
@@ -427,7 +423,7 @@ export default function ProjectDetailPage() {
 
 
   return (
-    <main className="flex h-full w-full flex-col overflow-hidden px-4 py-3">
+    <main className="flex h-full w-full flex-col overflow-hidden px-3 py-0">
       <div className={selectionMode ? 'pointer-events-none opacity-40 transition-opacity' : 'transition-opacity'}>
         <ProjectHeader
           project={project.data}
@@ -437,7 +433,6 @@ export default function ProjectDetailPage() {
           nodes={nodes.data ?? []}
           canEdit={canEditNodes}
           onAddNode={handleHeaderAddNode}
-          onToggleHelp={() => setIsHelpOpen((prev) => !prev)}
           onZoomIn={() => timelineRef.current?.zoomIn()}
           onZoomOut={() => timelineRef.current?.zoomOut()}
           onFitToScreen={() => timelineRef.current?.fitToScreen()}
@@ -446,7 +441,7 @@ export default function ProjectDetailPage() {
         />
       </div>
 
-      <div className="mt-2.5 flex-1 min-h-0 w-full flex flex-col">
+      <div className="mt-0 flex-1 min-h-0 w-full flex flex-col">
         {/* 단일 열 전체 영역 구성 */}
         <section className="flex-1 min-h-0 flex flex-col min-w-0">
           <div className="flex-1 min-h-0 w-full flex flex-col">
@@ -676,100 +671,6 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* 화면 하단 미세 단축키 도움말 가이드 */}
-      <footer className="mt-1 flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 px-1 select-none shrink-0 border-t border-slate-100 pt-2 dark:border-slate-800/80">
-        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-          <span>🖱️ <b>더블클릭/Enter</b>: 편집</span>
-          <span>➕ <b>Ctrl+I</b>: 일정 추가</span>
-          <span>❌ <b>Ctrl+D</b>: 일정 삭제</span>
-          <span>↕️ <b>위/아래 방향키</b>: 탐색</span>
-          <span>↔️ <b>좌우 방향키(그룹선택시)</b>: 접기/펴기</span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsHelpOpen(true)}
-          className="text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 font-semibold flex items-center gap-0.5 shrink-0"
-        >
-          도움말 보기 (?)
-        </button>
-      </footer>
-
-      {/* 키보드 단축키 및 사용법 도움말 모달 */}
-      {isHelpOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm animate-in fade-in-50 duration-100">
-          <div className="relative flex flex-col w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900 animate-in zoom-in-95 duration-150 text-slate-800 dark:text-slate-200">
-            <button
-              type="button"
-              onClick={() => setIsHelpOpen(false)}
-              className="absolute right-4 top-4 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 p-1.5 transition-colors"
-              aria-label="도움말 닫기"
-            >
-              <span className="text-xl font-bold">✕</span>
-            </button>
-            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-sky-600 dark:text-sky-400">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
-              </svg>
-              키보드 단축키 & 사용 가이드
-            </h3>
-            <div className="mt-4 space-y-3.5 text-xs text-slate-600 dark:text-slate-400 font-normal">
-              <div className="grid grid-cols-3 gap-2 border-b border-slate-100 pb-2 dark:border-slate-800 font-semibold text-slate-700 dark:text-slate-300">
-                <div>동작</div>
-                <div className="col-span-2">단축키 / 조작법</div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <div className="font-medium text-slate-800 dark:text-slate-200">일정 선택</div>
-                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">마우스 클릭</kbd></div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <div className="font-medium text-slate-800 dark:text-slate-200">일정 편집</div>
-                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">더블클릭</kbd> 또는 <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Enter</kbd></div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <div className="font-medium text-slate-800 dark:text-slate-200">새 일정 추가</div>
-                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Ctrl + I</kbd> 또는 상단 버튼</div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <div className="font-medium text-slate-800 dark:text-slate-200">일정 삭제</div>
-                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Ctrl + D</kbd> (확인 팝업 노출)</div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <div className="font-medium text-slate-800 dark:text-slate-200">위/아래 이동</div>
-                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">↑</kbd> / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">↓</kbd> 화살표 키</div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <div className="font-medium text-slate-800 dark:text-slate-200">그룹 접기/펴기</div>
-                <div className="col-span-2">선택된 그룹에서 <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">←</kbd>(접기) / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">→</kbd>(펴기)</div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 items-center border-t border-slate-100 dark:border-slate-800/60 pt-2">
-                <div className="font-semibold text-slate-700 dark:text-slate-300">편집창 내 동작</div>
-                <div className="col-span-2"></div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <div className="font-medium text-slate-800 dark:text-slate-200">진행률 조절</div>
-                <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">Ctrl + ,</kbd>(-10%) / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">Ctrl + .</kbd>(+10%) / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">Ctrl + /</kbd>(100% 완료)</div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <div className="font-medium text-slate-800 dark:text-slate-200">댓글 작성</div>
-                <div className="col-span-2">댓글 입력창에서 <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Ctrl + Enter</kbd></div>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-500 space-y-1">
-                <div>💡 <span className="font-semibold">스마트 추가</span>: 그룹 선택 시 하위 자식 노드로, 아이템 선택 시 이웃 형제 노드로 생성됩니다.</div>
-                <div>⌨️ <span className="font-semibold">추가 창 종류 전환</span>: 텍스트 입력창 포커스를 유지한 채 <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[9px]">Alt + 1</kbd>(일정) 또는 <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[9px]">Alt + 2</kbd>(그룹)로 종류를 전환할 수 있습니다.</div>
-              </div>
-            </div>
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsHelpOpen(false)}
-                className="rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 px-4 py-2 text-xs font-semibold transition-colors"
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
@@ -792,7 +693,6 @@ function ProjectHeader({
   nodes,
   canEdit,
   onAddNode,
-  onToggleHelp,
   onZoomIn,
   onZoomOut,
   onFitToScreen,
@@ -806,7 +706,6 @@ function ProjectHeader({
   nodes: NodeTreeItem[];
   canEdit: boolean;
   onAddNode: () => void;
-  onToggleHelp: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitToScreen: () => void;
@@ -940,7 +839,7 @@ function ProjectHeader({
 
   return (
     <>
-      <header className="flex flex-col gap-1.5 border-b border-slate-200 pb-2 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex flex-col gap-1 py-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-lg font-bold">
             <span>{project.name}</span>
@@ -1050,16 +949,15 @@ function ProjectHeader({
               <span>일정추가</span>
             </button>
           )}
-          <button
-            type="button"
-            onClick={onToggleHelp}
+          <Link
+            to="/help"
             className="p-1.5 rounded-md border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-            title="단축키 및 사용법 도움말 (h 또는 ?)"
+            title="사용설명서 (도움말)"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
             </svg>
-          </button>
+          </Link>
           <Link
             to={`/projects/${project.id}/members`}
             className="p-1.5 rounded-md border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
