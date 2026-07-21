@@ -355,6 +355,8 @@ function TimelineComponent({
   const dragStartRef = useRef({ x: 0, scrollLeft: 0 });
 
   const [hoveredX, setHoveredX] = useState<number | null>(null);
+  // 현재 가로 스크롤 위치(px). 오늘선이 라벨 칸 뒤로 넘어갔는지 판단에 쓴다.
+  const [scrollLeftPx, setScrollLeftPx] = useState(0);
 
   const hoveredDateStr = useMemo(() => {
     if (hoveredX === null || !range) return null;
@@ -752,6 +754,7 @@ function TimelineComponent({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
+        onScroll={(e) => setScrollLeftPx(e.currentTarget.scrollLeft)}
         className={`flex-1 min-h-0 overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 ${
           isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'
         }`}
@@ -931,7 +934,10 @@ function TimelineComponent({
                 />
               );
             })}
-            {todayInRange && (
+            {/* 오늘선: 라벨 칸(sticky) 뒤로 스크롤돼 들어가면 그리지 않는다.
+                화면상 위치(labelWidth + todayOffset*ppd - scrollLeftPx)가 labelWidth 미만이면
+                라벨 칸이 대부분 덮되 행 사이 1px 틈으로 빨간 점이 새어 보이기 때문. */}
+            {todayInRange && todayOffset * ppd >= scrollLeftPx && (
               <div
                 ref={todayRef}
                 className="pointer-events-none absolute top-0 bottom-0 w-px bg-rose-500"
