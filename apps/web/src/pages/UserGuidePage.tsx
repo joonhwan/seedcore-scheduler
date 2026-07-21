@@ -239,7 +239,7 @@ export default function UserGuidePage() {
             </p>
             <ul className="list-disc pl-5 space-y-1.5 text-sm text-slate-600 dark:text-slate-300 mt-2">
               <li>**로고 및 일정관리 시스템 제목**: 클릭 시 언제든지 프로젝트 목록(홈)으로 이동합니다.</li>
-              <li>**도움말 버튼 (사용법 보기)**: 이 사용설명서 페이지(`/help`)로 빠르게 이동합니다.</li>
+              <li>**사용설명서 버튼**: 이 사용설명서 페이지(`/help`)로 빠르게 이동합니다.</li>
               <li>**테마 전환 (해/달 아이콘)**: 라이트 모드와 다크 모드를 원클릭으로 전환합니다.</li>
               <li>**🔒 관리자 전용 아이콘**: 사용자 관리, 자동완성 관리, 관리자 모드 토글 스위치.</li>
             </ul>
@@ -408,39 +408,86 @@ export default function UserGuidePage() {
               키보드 단축키 모음
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-              프로젝트 상세 화면에서 <kbd className="px-1.5 py-0.5 rounded border bg-slate-100 dark:bg-slate-800">h</kbd> 또는 <kbd className="px-1.5 py-0.5 rounded border bg-slate-100 dark:bg-slate-800">?</kbd>를 누르면 단축키 도우미 창이 열립니다.
+              프로젝트 화면 어디서나 <kbd className="px-1.5 py-0.5 rounded border bg-slate-100 dark:bg-slate-800">h</kbd> 또는 <kbd className="px-1.5 py-0.5 rounded border bg-slate-100 dark:bg-slate-800">?</kbd> 키를 누르면 아래의 단축키 안내 창을 열 수 있습니다. 단축키는 **메인 화면 탐색**과 **상세 편집 창 내부** 2가지 상황별로 구분됩니다.
             </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse border border-slate-200 dark:border-slate-800">
-                <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                  <tr>
-                    <th className="p-2 border">단축키</th>
-                    <th className="p-2 border">동작 설명</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                  <tr>
-                    <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">Ctrl + I</td>
-                    <td className="p-2 border">새 일정/그룹 추가 창 팝업 (스마트 추가)</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">Ctrl + D</td>
-                    <td className="p-2 border">선택한 일정 삭제 (확인 창)</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">Enter / 더블클릭</td>
-                    <td className="p-2 border">선택 노드 상세 편집 대화상자 열기</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">+ / = / -</td>
-                    <td className="p-2 border">간트 타임라인 확대 및 축소</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">Alt + 1 / Alt + 2</td>
-                    <td className="p-2 border">일정 추가 모달에서 노드 종류 전환 (일정 / 그룹)</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div className="space-y-4">
+              {/* 범주 1: 메인 화면 */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-1.5">
+                  <span>📌 1) 메인 화면 (트리노드 & 간트차트 탐색 중)</span>
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse border border-slate-200 dark:border-slate-800">
+                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                      <tr>
+                        <th className="p-2 border w-40">단축키</th>
+                        <th className="p-2 border">동작 설명 및 시점</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                      <tr>
+                        <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">↑ / ↓</td>
+                        <td className="p-2 border">트리 노드 목록을 위/아래로 탐색 및 선택 이동</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">← / →</td>
+                        <td className="p-2 border">선택한 그룹(GROUP) 노드를 접기(Collapse) / 펴기(Expand)</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">Enter / 더블클릭</td>
+                        <td className="p-2 border">선택한 일정/그룹의 상세 편집 대화상자(모달) 열기</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">Ctrl + I</td>
+                        <td className="p-2 border">새 일정/그룹 스마트 추가 창 팝업</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">Ctrl + D</td>
+                        <td className="p-2 border">선택한 일정 삭제 (삭제 확인 대화상자)</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">- / + (또는 =)</td>
+                        <td className="p-2 border">간트 타임라인 축소 및 확대</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">? / h</td>
+                        <td className="p-2 border">키보드 단축키 안내 대화상자 토글</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 범주 2: 상세 편집 창 내부 */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-1.5">
+                  <span>📝 2) 일정 상세 / 편집 대화상자 내부</span>
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse border border-slate-200 dark:border-slate-800">
+                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                      <tr>
+                        <th className="p-2 border w-40">단축키</th>
+                        <th className="p-2 border">동작 설명 및 시점</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                      <tr>
+                        <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">Ctrl + , / . / /</td>
+                        <td className="p-2 border">일정(ITEM) 편집 모달에서 진행률 빠른 조정 (<code className="text-[11px] bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">Ctrl+,</code>: -10%, <code className="text-[11px] bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">Ctrl+.</code>: +10%, <code className="text-[11px] bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">Ctrl+/</code>: 100% 완료)</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">Alt + 1 / Alt + 2</td>
+                        <td className="p-2 border">일정/그룹 추가 모달에서 작성할 노드의 종류(일정 ITEM ↔ 그룹 GROUP) 즉시 전환</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-mono font-bold text-sky-600 dark:text-sky-400">ESC</td>
+                        <td className="p-2 border">열려있는 상세 편집 모달 또는 단축키 도우미 창 닫기/취소</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </section>
 
