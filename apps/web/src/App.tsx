@@ -59,7 +59,9 @@ function Header() {
       <div className="flex items-center gap-2">
         <Link to="/" className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200" title="홈(프로젝트 목록) 화면 이동">
           <img src="/logo_b.png" alt="시드코어" className="h-5 w-auto dark:invert" />
-          <span className="text-sm">일정관리 시스템</span>
+          <span className="text-sm">
+            일정관리 시스템 <span className="text-[10px] italic font-normal text-slate-400 dark:text-slate-500 ml-0.5">v1.0</span>
+          </span>
         </Link>
       </div>
       <div className="flex items-center gap-3 text-xs">

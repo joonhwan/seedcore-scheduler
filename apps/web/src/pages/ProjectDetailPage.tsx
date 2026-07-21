@@ -26,6 +26,7 @@ import { addDays } from '../lib/ganttMath';
 import { collectDeleteTargets, collectCompleteTargets, hasGroupSelected, collectSubtreeIds } from '../lib/bulkSelection';
 import ExportMenu from '../components/ExportMenu';
 import GanttExportDialog from '../components/GanttExportDialog';
+import ExcelExportDialog from '../components/ExcelExportDialog';
 import { useTheme } from '../lib/theme';
 
 export default function ProjectDetailPage() {
@@ -62,6 +63,7 @@ export default function ProjectDetailPage() {
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState<'delete' | 'complete' | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [excelExportOpen, setExcelExportOpen] = useState(false);
   const selectionMode = selectedNodeIds.size > 0;
 
   const detailRef = useRef<any>(null);
@@ -422,6 +424,10 @@ export default function ProjectDetailPage() {
 
 
 
+  const handleExportExcel = () => {
+    setExcelExportOpen(true);
+  };
+
   return (
     <main className="flex h-full w-full flex-col overflow-hidden px-3 py-0">
       <div className={selectionMode ? 'pointer-events-none opacity-40 transition-opacity' : 'transition-opacity'}>
@@ -438,6 +444,7 @@ export default function ProjectDetailPage() {
           onFitToScreen={() => timelineRef.current?.fitToScreen()}
           onJumpToday={() => setTodayCounter((c) => c + 1)}
           onExportImage={() => setExportOpen(true)}
+          onExportExcel={handleExportExcel}
         />
       </div>
 
@@ -619,6 +626,16 @@ export default function ProjectDetailPage() {
         />
       )}
 
+      {excelExportOpen && (
+        <ExcelExportDialog
+          items={nodes.data ?? []}
+          currentUnit={unit}
+          currentTheme={theme}
+          projectName={project.data.name}
+          onClose={() => setExcelExportOpen(false)}
+        />
+      )}
+
       {createParent !== null && (
         <NodeFormDialog
           projectId={id}
@@ -698,6 +715,7 @@ function ProjectHeader({
   onFitToScreen,
   onJumpToday,
   onExportImage,
+  onExportExcel,
 }: {
   project: ProjectDetail;
   canManage: boolean;
@@ -711,6 +729,7 @@ function ProjectHeader({
   onFitToScreen: () => void;
   onJumpToday: () => void;
   onExportImage: () => void;
+  onExportExcel: () => void;
 }) {
   const updateProject = useUpdateProject(project.id);
   const deleteProject = useDeleteProject();
@@ -909,7 +928,11 @@ function ProjectHeader({
               오늘
             </button>
           </div>
-          <ExportMenu onSelectImage={onExportImage} />
+          <ExportMenu
+            onSelectImage={onExportImage}
+            onSelectCsv={handleExportCsv}
+            onSelectExcel={onExportExcel}
+          />
           {/* CSV 가져오기/내보내기 기능 임시 숨김 처리 (요구사항 반영)
           {canEdit && (
             <button
