@@ -9,9 +9,6 @@ import NodeDetail from '../components/NodeDetail';
 import NodeCommentsPanel from '../components/NodeCommentsPanel';
 import NodeHistoryPanel from '../components/NodeHistoryPanel';
 import Timeline, { type TimelineUnit, type TimelineHandle } from '../components/Timeline';
-import ExportMenu from '../components/ExportMenu';
-import GanttExportDialog from '../components/GanttExportDialog';
-import { useTheme } from '../lib/theme';
 
 export default function ProjectTimelinePage() {
   const { id } = useParams<{ id: string }>();
@@ -24,8 +21,6 @@ export default function ProjectTimelinePage() {
   const [unit, setUnit] = useState<TimelineUnit>('week');
   const [todayCounter, setTodayCounter] = useState(0);
   const timelineRef = useRef<TimelineHandle>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const { theme } = useTheme();
 
   const isAdmin = me.data?.globalRole === 'ADMIN';
   const myRole = project.data?.myRole ?? null;
@@ -104,7 +99,6 @@ export default function ProjectTimelinePage() {
               오늘
             </button>
           </div>
-          <ExportMenu onSelectImage={() => setExportOpen(true)} />
           <Link
             to={`/projects/${id}`}
             className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -142,16 +136,6 @@ export default function ProjectTimelinePage() {
           )}
         </section>
       </div>
-
-      {exportOpen && (
-        <GanttExportDialog
-          items={nodes.data ?? []}
-          currentUnit={unit}
-          currentTheme={theme}
-          projectName={project.data.name}
-          onClose={() => setExportOpen(false)}
-        />
-      )}
     </main>
   );
 }
