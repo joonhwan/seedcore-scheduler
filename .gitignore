@@ -4,10 +4,13 @@ node_modules/
 
 # build output
 dist/
+dist-exe/
+dist-bundle/
 build/
 .next/
 .turbo/
 *.tsbuildinfo
+apps/api/public/
 
 # tsc -b 가 워크스페이스 *.config.ts 와 같은 위치에 떨어뜨리는 산출물
 # (실제 런타임은 원본 .ts 를 읽음)
@@ -25,13 +28,15 @@ packages/shared/src/*.js.map
 .env.local
 .env.*.local
 
-# data / runtime (local dev)
+# data / runtime (local dev & exe)
 data/
 *.db
 *.db-shm
 *.db-wal
-/backup/
+backup/
+backups/
 logs/
+
 
 # editor / OS
 .vscode/*

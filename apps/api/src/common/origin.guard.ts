@@ -18,22 +18,32 @@ export class OriginGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<Request>();
     if (SAFE_METHODS.has(req.method)) return true;
 
-    const allowed = (process.env.WEB_ORIGIN ?? 'http://localhost:5173').replace(
-      /\/$/,
-      '',
-    );
+    const host = req.headers.host;
+    const originsToCheck = new Set<string>();
+
+    if (process.env.WEB_ORIGIN) {
+      originsToCheck.add(process.env.WEB_ORIGIN.replace(/\/$/, ''));
+    }
+    if (host) {
+      originsToCheck.add(`http://${host}`.replace(/\/$/, ''));
+      originsToCheck.add(`https://${host}`.replace(/\/$/, ''));
+    }
+    originsToCheck.add('http://localhost:5173');
+    originsToCheck.add('http://localhost:3000');
+    originsToCheck.add('http://127.0.0.1:3000');
+
     const origin = (req.headers.origin as string | undefined)?.replace(/\/$/, '');
     if (origin) {
-      if (origin === allowed) return true;
+      if (originsToCheck.has(origin)) return true;
       throw new ForbiddenException({ error: 'CSRF_ORIGIN_MISMATCH' });
     }
 
-    // Origin 이 없는 경우 Referer 로 폴백 (일부 same-origin POST).
+    // Origin 이 없는 경우 Referer 로 폴백
     const referer = req.headers.referer as string | undefined;
     if (referer) {
       try {
-        const refOrigin = new URL(referer).origin;
-        if (refOrigin === allowed) return true;
+        const refOrigin = new URL(referer).origin.replace(/\/$/, '');
+        if (originsToCheck.has(refOrigin)) return true;
       } catch {
         // fallthrough
       }
@@ -41,3 +51,4 @@ export class OriginGuard implements CanActivate {
     throw new ForbiddenException({ error: 'CSRF_ORIGIN_MISSING' });
   }
 }
+

@@ -5,7 +5,7 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import * as argon2 from 'argon2';
+import * as bcrypt from 'bcryptjs';
 import { validatePassword } from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionsService } from '../sessions/sessions.service';
@@ -16,13 +16,6 @@ const FAILED_LOCK_THRESHOLD = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15분
 const LOGIN_RATE_LIMIT = 10;
 const LOGIN_RATE_WINDOW_MS = 60 * 1000;
-
-const ARGON2_OPTS: argon2.Options = {
-  type: argon2.argon2id,
-  memoryCost: 19456, // ~19 MB
-  timeCost: 2,
-  parallelism: 1,
-};
 
 export interface LoginContext {
   ip?: string | undefined;
@@ -47,7 +40,21 @@ export class AuthService {
   ) {}
 
   async hashPassword(plain: string): Promise<string> {
-    return argon2.hash(plain, ARGON2_OPTS);
+    // pure JS bcrypt 해싱 사용 (Air-gap Windows 단일 EXE 환경 호환)
+    return bcrypt.hash(plain, 10);
+  }
+
+  private async verifyPassword(hash: string, plain: string): Promise<boolean> {
+    try {
+      if (hash.startsWith('$2a$') || hash.startsWith('$2b$') || hash.startsWith('$2y$')) {
+        return await bcrypt.compare(plain, hash);
+      }
+      // fallback: 기존 bcrypt compare 시도
+      return await bcrypt.compare(plain, hash);
+    } catch (err) {
+      this.logger.error('password verify failed', err);
+      return false;
+    }
   }
 
   async login(
@@ -75,33 +82,11 @@ export class AuthService {
       throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS' });
     }
 
-    // [계정 잠금 비활성화] 사용자 계정잠금 기능이 제거됨에 따라 lockedUntil 체크를 스킵합니다.
-    /*
-    if (user.lockedUntil && user.lockedUntil > now) {
-      await this.audit.log({
-        actorId: user.id,
-        action: 'LOGIN_LOCKED',
-        ip: ctx.ip,
-        userAgent: ctx.userAgent,
-        payload: { lockedUntil: user.lockedUntil.toISOString() },
-      });
-      throw new UnauthorizedException({
-        error: 'ACCOUNT_LOCKED',
-        lockedUntil: user.lockedUntil.toISOString(),
-      });
-    }
-    */
-
     let valid = false;
-    try {
-      valid = await argon2.verify(user.passwordHash, password);
-    } catch (err) {
-      this.logger.error('argon2.verify failed', err);
-    }
+    valid = await this.verifyPassword(user.passwordHash, password);
 
     if (!valid) {
       const nextCount = user.failedLoginCount + 1;
-      // [계정 잠금 비활성화] 사용자 계정잠금 기능 제거로 인해 shouldLock은 항상 false, lockedUntil은 null로 업데이트합니다.
       const shouldLock = false;
       await this.prisma.user.update({
         where: { id: user.id },
@@ -123,6 +108,7 @@ export class AuthService {
       });
       throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS' });
     }
+
 
     // 성공 — 카운터 초기화 + 자기 만료 세션 sweep + 새 세션 발급.
     await this.prisma.user.update({
@@ -175,14 +161,11 @@ export class AuthService {
     if (!user) throw new UnauthorizedException({ error: 'NO_SESSION' });
 
     let valid = false;
-    try {
-      valid = await argon2.verify(user.passwordHash, current);
-    } catch (err) {
-      this.logger.error('argon2.verify failed', err);
-    }
+    valid = await this.verifyPassword(user.passwordHash, current);
     if (!valid) {
       throw new ForbiddenException({ error: 'CURRENT_PASSWORD_INVALID' });
     }
+
 
     const policyError = validatePassword(next, user.username);
     if (policyError) {

@@ -1,6 +1,11 @@
 dist/
+dist-bundle/
+public/
 data/
+backups/
+logs/
 .env
 *.db
 *.db-shm
 *.db-wal
+

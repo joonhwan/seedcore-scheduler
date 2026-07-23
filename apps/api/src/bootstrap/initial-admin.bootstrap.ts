@@ -13,21 +13,9 @@ export class InitialAdminBootstrap implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    const username = process.env.INITIAL_ADMIN_USERNAME;
-    const password = process.env.INITIAL_ADMIN_PASSWORD;
-    if (!username || !password) {
-      // 운영 권장 — 시딩 후 환경변수 제거.
-      const adminCount = await this.prisma.user.count({
-        where: { globalRole: 'ADMIN', isActive: true },
-      });
-      if (adminCount === 0) {
-        this.logger.warn(
-          'No active ADMIN exists and INITIAL_ADMIN_* env vars are not set. ' +
-            '관리자 계정이 없습니다. INITIAL_ADMIN_USERNAME / INITIAL_ADMIN_PASSWORD 를 설정 후 재기동하십시오.',
-        );
-      }
-      return;
-    }
+    const username = process.env.INITIAL_ADMIN_USERNAME || 'admin';
+    const password = process.env.INITIAL_ADMIN_PASSWORD || 'ChangeMe!Now';
+
 
     const existing = await this.prisma.user.findUnique({ where: { username } });
     if (existing) {
