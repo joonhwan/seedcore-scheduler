@@ -1,6 +1,7 @@
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { splitSqlStatements } from './sql-statements';
 
 /**
  * 러너가 필요한 최소 인터페이스. PrismaClient 전체에 묶이지 않게 해서
@@ -135,4 +136,87 @@ export async function listPending(client: RawClient, dir: string): Promise<strin
   }
 
   return files.filter((name) => !applied.includes(name));
+}
+
+/** 마이그레이션 적용 중 SQL 이 실패한 경우. 어느 마이그레이션의 몇 번째 문장인지 담는다. */
+export class MigrationFailedError extends Error {
+  readonly migrationName: string;
+  readonly statementIndex: number;
+
+  constructor(migrationName: string, statementIndex: number, cause: unknown) {
+    super(
+      `마이그레이션 '${migrationName}' 의 ${statementIndex}번째 문장에서 실패했습니다: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
+    this.name = 'MigrationFailedError';
+    this.migrationName = migrationName;
+    this.statementIndex = statementIndex;
+    this.cause = cause;
+  }
+}
+
+/**
+ * 주어진 마이그레이션을 순서대로 적용하고 이력에 기록한다.
+ *
+ * 트랜잭션으로 감싸지 않는다. Prisma 의 $transaction 안에서는 PRAGMA 가 동작하지 않아,
+ * 마이그레이션 SQL 이 스스로 하는 FK 제어(PRAGMA foreign_keys=OFF / defer_foreign_keys)가
+ * 무력화되어 오히려 위험해진다. 원자성은 트랜잭션이 아니라 사전 백업으로 확보한다.
+ *
+ * 실패하면 즉시 중단하고 그 마이그레이션은 이력에 기록하지 않는다. 뒤의 것도 실행하지 않는다.
+ */
+export async function applyMigrations(
+  client: RawClient,
+  dir: string,
+  names: string[],
+): Promise<void> {
+  await ensureMigrationsTable(client);
+
+  for (const name of names) {
+    const sql = readMigrationSql(dir, name);
+    const statements = splitSqlStatements(sql);
+
+    for (let i = 0; i < statements.length; i += 1) {
+      try {
+        await client.$executeRawUnsafe(statements[i]!);
+      } catch (err) {
+        // 1-based 로 알린다. 관리자가 파일을 열어 세기 좋다.
+        throw new MigrationFailedError(name, i + 1, err);
+      }
+    }
+
+    await recordApplied(client, name, checksumOf(sql), statements.length);
+  }
+}
+
+async function recordApplied(
+  client: RawClient,
+  name: string,
+  checksum: string,
+  steps: number,
+): Promise<void> {
+  // VALUES 에 파라미터를 쓸 수 없는 상황이 아니지만, $executeRawUnsafe 로 일관되게 다룬다.
+  // name/checksum 은 파일시스템과 해시에서 온 값이라 인용부호만 escape 하면 충분하다.
+  const escapedName = name.replace(/'/g, "''");
+  await client.$executeRawUnsafe(
+    `INSERT INTO "_prisma_migrations"
+       ("id","checksum","migration_name","started_at","finished_at","applied_steps_count")
+     VALUES ('${randomUUID()}','${checksum}','${escapedName}',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,${steps})`,
+  );
+}
+
+/**
+ * SQLite 스냅샷을 destPath 에 만든다.
+ *
+ * VACUUM INTO 를 쓰는 이유는 WAL 모드에서 아직 병합되지 않은 내용까지 포함한
+ * 일관된 단일 파일을 얻기 위해서다. 파일 복사로는 이걸 보장할 수 없다.
+ * BackupService(backup.service.ts:109) 와 같은 방식이다.
+ *
+ * BackupService 를 재사용하지 않는 이유: 그쪽은 PrismaService 에 의존하는 Nest 프로바이더인데
+ * 마이그레이션은 PrismaService 초기화 도중에 일어나므로 순환 의존이 생긴다.
+ */
+export async function snapshotTo(client: RawClient, destPath: string): Promise<void> {
+  // VACUUM INTO 는 prepared parameter 미지원 → 인라인. SQLite 는 '' 로 escape.
+  const escaped = destPath.replace(/'/g, "''");
+  await client.$executeRawUnsafe(`VACUUM INTO '${escaped}'`);
 }
