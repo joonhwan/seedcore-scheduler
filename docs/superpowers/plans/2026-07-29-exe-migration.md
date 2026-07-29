@@ -431,7 +431,7 @@ export function formatDowngradeNotice(missing: string[]): string {
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `pnpm -F @sam/api test src/prisma/migration-messages.test.ts`
-Expected: PASS — 8 tests
+Expected: PASS — 7 tests
 
 - [ ] **Step 5: 커밋**
 
@@ -526,10 +526,6 @@ describe('checksumOf', () => {
     expect(checksumOf('SELECT 1;')).toBe(
       '17db4fd369edb9244b9f91d9aeed145c3d04ad8ba6e95d06247f07a63527d11a',
     );
-  });
-
-  it('같은 입력에 항상 같은 값을 준다', () => {
-    expect(checksumOf('SELECT 1;')).toBe(checksumOf('SELECT 1;'));
   });
 
   it('64자 16진 문자열이다', () => {
@@ -716,7 +712,7 @@ Expected: `17db4fd369edb9244b9f91d9aeed145c3d04ad8ba6e95d06247f07a63527d11a`
 - [ ] **Step 6: 테스트 통과 확인**
 
 Run: `pnpm -F @sam/api test src/prisma/migration-runner.test.ts`
-Expected: PASS — 15 tests
+Expected: PASS — 이 파일의 모든 테스트 통과, 실패 0
 
 - [ ] **Step 7: dev DB 와 checksum 호환성 일회 검증**
 
@@ -946,7 +942,7 @@ export async function listPending(client: RawClient, dir: string): Promise<strin
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `pnpm -F @sam/api test src/prisma/migration-runner.test.ts`
-Expected: PASS — 21 tests
+Expected: PASS — 이 파일의 모든 테스트 통과, 실패 0 (앞 태스크의 테스트도 계속 통과해야 한다)
 
 - [ ] **Step 5: typecheck 후 커밋**
 
@@ -1235,7 +1231,7 @@ export async function snapshotTo(client: RawClient, destPath: string): Promise<v
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `pnpm -F @sam/api test src/prisma/migration-runner.test.ts`
-Expected: PASS — 33 tests
+Expected: PASS — 이 파일의 모든 테스트 통과, 실패 0 (앞 태스크의 테스트도 계속 통과해야 한다)
 
 - [ ] **Step 5: 실제 마이그레이션 6개로 통합 검증 테스트 추가**
 
@@ -1313,7 +1309,7 @@ describe('실제 prisma/migrations 적용', () => {
 - [ ] **Step 6: 통합 테스트 통과 확인**
 
 Run: `pnpm -F @sam/api test src/prisma/migration-runner.test.ts`
-Expected: PASS — 37 tests
+Expected: PASS — 이 파일의 모든 테스트 통과, 실패 0. 특히 "실제 prisma/migrations 적용" 4건이 모두 통과해야 한다
 
 실패하면 여기서 멈춘다. 마이그레이션 SQL 이 우리 러너로 실행되지 않는다는 뜻이고, 이후 태스크는 의미가 없다.
 

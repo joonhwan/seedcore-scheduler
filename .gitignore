@@ -51,3 +51,6 @@ coverage/
 
 # Playwright MCP scratch (browser snapshots / console logs)
 .playwright-mcp/
+
+# Superpowers SDD 작업 공간 (ledger / brief / review package 등 임시 산출물)
+.superpowers/
