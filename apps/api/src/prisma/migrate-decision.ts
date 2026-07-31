@@ -2,6 +2,7 @@ import {
   DowngradeError,
   LegacySchemaError,
   isFreshDatabase,
+  listApplied,
   listMigrationFiles,
   listPending,
   type RawClient,
@@ -59,16 +60,30 @@ export async function decideMigrate(
     throw err;
   }
 
+  const fresh = await isFreshDatabase(client);
+
+  // 이력에 적용 완료 행이 남아 있는데 테이블이 하나도 없다 — 손상된 백업 복원 등.
+  // sp-server.exe 의 exit 6 (formatSchemaMissingNotice) 과 같은 상태이므로 같은 코드/문구를 쓴다.
+  //
+  // 미적용분 개수와 무관하게 먼저 판정한다. 이 판정을 pending.length === 0 안쪽에만 두면,
+  // "이력에 완료 행 있음 + 테이블 없음 + 미적용분도 있음"(오래된 .db 를 새 .db 위에 복원한
+  // 경우) 상태에서 아래 exit 2 로 떨어져 "비어 있으니 sp-server.exe 를 먼저 실행하라" 고
+  // 안내하게 된다. 그러면 sp-server.exe 는 같은 파일을 최초 실행으로 보고 뒤쪽 마이그레이션만
+  // 적용하려다 죽는다 — 두 실행 파일이 한 DB 상태에 서로 다른 진단을 내리는 셈이다.
+  // (`boot-decision.ts` 의 같은 위치에 같은 판정이 있어야 한다.)
+  //
+  // 테이블 존재 여부가 아니라 `listApplied()` 로 판정하는 이유: ensureMigrationsTable() 직후
+  // 첫 INSERT 전에 죽으면 빈 _prisma_migrations 테이블만 남는데, 그건 아직 아무것도 적용되지
+  // 않은 진짜 빈 DB 다. 완료된 이력 행이 있는지로 물어야 그 경우를 손상으로 오진하지 않는다.
+  if (fresh && (await listApplied(client)).length > 0) {
+    return { kind: 'halt', exitCode: 6, notice: formatSchemaMissingNotice() };
+  }
+
   if (pending.length === 0) {
-    if (await isFreshDatabase(client)) {
-      // 이력에는 전부 적용된 것으로 남아 있는데 테이블이 하나도 없다 — 손상된 백업 복원 등.
-      // sp-server.exe 의 exit 6 (formatSchemaMissingNotice) 과 같은 상태이므로 같은 코드/문구를 쓴다.
-      return { kind: 'halt', exitCode: 6, notice: formatSchemaMissingNotice() };
-    }
     return { kind: 'up-to-date' };
   }
 
-  if (await isFreshDatabase(client)) {
+  if (fresh) {
     // 이력도 없고 테이블도 없는 진짜 빈 DB. sp-migrate.exe 가 적용할 대상이 아니다.
     // (sp-server.exe 가 최초 실행 시 직접 초기화한다.)
     //
