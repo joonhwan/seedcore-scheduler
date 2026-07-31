@@ -32,6 +32,21 @@ function copyDirRecursive(src, dest) {
   }
 }
 
+// 복사된 migrations 디렉터리가 비어 있지 않은지 확인한다.
+// copyDirRecursive 는 빈 디렉터리도 조용히 성공시키므로, 잘못된 리베이스나 실수로 폴더 이름이
+// 바뀌어 migration.sql 이 하나도 없는 채로 exe 에 내장되면 이 단계에서는 아무 에러도 나지 않고
+// 넘어간다. 그 결과는 고객사 현장에서 exit 6("마이그레이션 파일을 찾을 수 없습니다")로만
+// 드러나는데, 그 시점에 할 수 있는 해결책은 매체를 다시 보내는 것뿐이다. 그래서 여기서 미리 막는다.
+function assertMigrationsEmbedded(dir) {
+  const hasAny = fs
+    .readdirSync(dir, { withFileTypes: true })
+    .some((entry) => entry.isDirectory() && fs.existsSync(path.join(dir, entry.name, 'migration.sql')));
+  if (!hasAny) {
+    console.error(`❌ ${dir} 에 migration.sql 을 담은 디렉터리가 하나도 없습니다. 내장이 비어 있습니다.`);
+    process.exit(1);
+  }
+}
+
 async function main() {
   log('1/5. 공유 패키지 및 프론트엔드/백엔드 빌드 수행');
   run('pnpm -F @sam/shared build');
@@ -70,6 +85,7 @@ async function main() {
   // sp-server.exe 도 판정에 파일 목록이 필요하므로 함께 내장한다 (SQL 내용은 쓰지 않지만 이름 비교용).
   const migrationsSrcDir = path.join(apiDir, 'prisma', 'migrations');
   copyDirRecursive(migrationsSrcDir, path.join(serverBundleDir, 'migrations'));
+  assertMigrationsEmbedded(path.join(serverBundleDir, 'migrations'));
   console.log('✅ 마이그레이션 SQL 내장 (server)');
 
   // PKG가 정적 자원을 .exe 내부 가상 파일시스템(snapshot)으로 임베딩하도록 package.json 생성
@@ -94,6 +110,7 @@ async function main() {
   const migrateBundleDir = path.join(bundleOutDir, 'migrate');
   run(`npx ncc build dist/migrate-main.js -o dist-bundle/migrate --no-cache`, apiDir);
   copyDirRecursive(migrationsSrcDir, path.join(migrateBundleDir, 'migrations'));
+  assertMigrationsEmbedded(path.join(migrateBundleDir, 'migrations'));
 
   const migratePkgConfig = {
     name: 'seedcore-scheduler-migrate',
