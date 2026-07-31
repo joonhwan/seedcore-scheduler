@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { bindPrismaQueryEngine, resolveDatabaseUrl, resolveDbFilePath } from './common/db-path';
 import { appendPlainLog } from './common/plain-daily-log';
-import { checkServerLock } from './common/server-lock';
+import { removeLock, writeLock } from './common/process-lock';
 import {
   MigrationFailedError,
   applyMigrations,
@@ -12,11 +12,11 @@ import {
 } from './prisma/migration-runner';
 import { createMigrationClient } from './prisma/migration-client';
 import { decideMigrate } from './prisma/migrate-decision';
+import { decideLockAcquisition } from './prisma/lock-decision';
 import {
   formatBackupFailedNotice,
   formatMigrateFailureNotice,
   formatNoMigrationFilesNotice,
-  formatServerRunningNotice,
 } from './prisma/migration-messages';
 
 function pad(n: number): string {
@@ -87,6 +87,11 @@ export async function runMigrate(): Promise<number> {
 
   const client = createMigrationClient(dbUrl);
 
+  // 아래 finally 에서 "내가 잡은 잠금만" 해제하기 위한 표시. removeLock() 이 PID 소유권까지
+  // 확인하므로 이중 방어지만, 잠금을 잡기 전에 반환/예외로 빠져나가는 경로(서버 실행 중 등)에서
+  // 남의 잠금을 지우려는 시도조차 하지 않게 해 둔다.
+  let heldMigrateLock = false;
+
   try {
     await client.$connect();
     await client.$queryRawUnsafe('PRAGMA journal_mode=WAL;');
@@ -117,26 +122,28 @@ export async function runMigrate(): Promise<number> {
     }
     emit('');
 
-    // 백업보다 먼저 서버 실행 여부를 본다. 순서가 뒤바뀌면 안 된다 — 이 안내는 "DB 를 전혀
-    // 건드리지 않았다" 고 약속하고, 그 약속이 사실이어야 관리자가 재설치나 복원을 시도하지 않는다.
-    // (위험의 전모는 server-lock.ts 의 resolveServerLockPath() 주석 참고: 트랜잭션을 쓰지 않는
-    // 이 설계에서는 마이그레이션 문장이 하나씩 커밋되므로, INSERT SELECT 와 DROP TABLE 사이에
-    // 서버가 커밋한 사용자 편집은 사전 백업에도 없어 되돌릴 수단이 아예 없다.)
+    // 백업보다 먼저 다른 프로세스가 DB 를 쓰고 있는지 본다. 순서가 뒤바뀌면 안 된다 — 이 안내는
+    // "DB 를 전혀 건드리지 않았다" 고 약속하고, 그 약속이 사실이어야 관리자가 재설치나 복원을
+    // 시도하지 않는다. (위험의 전모는 process-lock.ts 의 파일 앞머리 주석 참고: 트랜잭션을 쓰지
+    // 않는 이 설계에서는 마이그레이션 문장이 하나씩 커밋되므로, INSERT SELECT 와 DROP TABLE 사이에
+    // 다른 프로세스가 커밋한 사용자 편집은 사전 백업에도 없어 되돌릴 수단이 아예 없다.)
     //
     // decideMigrate() 뒤에 두는 것도 의도적이다. 적용할 것이 없는(=up-to-date) 상태에서는 서버가
     // 켜져 있는 것이 정상이며, 그때 sp-migrate.exe 는 "이미 최신입니다" 로 조용히 끝나야 한다.
-    const lock = checkServerLock();
-    if (lock.kind === 'locked') {
+    // 살아 있는 sp-server.exe 도, 겹쳐 도는 다른 sp-migrate.exe 도 막는다 (판정은
+    // decideLockAcquisition() 이 하고, sp-server.exe 부팅 경로와 같은 코드를 쓴다).
+    const lock = decideLockAcquisition('migrate');
+    if (lock.kind === 'halt') {
       emitError('');
-      emitError(
-        formatServerRunningNotice(
-          lock.note === undefined
-            ? { pid: lock.pid, lockPath: lock.lockPath }
-            : { pid: lock.pid, lockPath: lock.lockPath, note: lock.note },
-        ),
-      );
-      return 7;
+      emitError(lock.notice);
+      return lock.exitCode;
     }
+
+    // 이제부터가 실제 쓰기 구간이다. 여기서 잠금을 잡아 sp-server.exe 부팅과 다른 sp-migrate.exe
+    // 실행을 막는다. 해제는 아래 finally 에서 — 예외로 빠져나가는 경로까지 반드시 지나간다.
+    // 잠금을 못 만들었다고 업그레이드를 포기하지는 않는다 (writeLock() 은 실패해도 예외를 던지지
+    // 않는다). 안전장치가 폐쇄망에서 업그레이드 자체를 막는 사유가 되면 안 된다.
+    heldMigrateLock = writeLock('migrate');
 
     const backupPath = resolvePreMigrateBackupPath(new Date());
     emit('업그레이드 전 백업을 만듭니다...');
@@ -215,6 +222,12 @@ export async function runMigrate(): Promise<number> {
     emit('');
     return 0;
   } finally {
+    // 성공/실패/예외 어느 경로로 나가든 잠금을 놓는다. 남겨두면 다음 시도와 서버 시작이 막힌다
+    // (PID 생존 확인과 "잠금 파일을 지우라" 안내가 있으니 복구는 되지만, 관리자에게 불필요한
+    // 사고 조사를 시키는 셈이다).
+    if (heldMigrateLock) {
+      removeLock('migrate');
+    }
     await client.$disconnect();
   }
 }

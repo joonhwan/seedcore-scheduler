@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { applyMigrations, listMigrationFiles, listPending } from './prisma/migration-runner';
-import { resolveServerLockPath, writeServerLock } from './common/server-lock';
+import { readLock, resolveLockPath, writeLock } from './common/process-lock';
 import { resolvePreMigrateBackupPath, runMigrate } from './migrate-main';
 
 describe('resolvePreMigrateBackupPath', () => {
@@ -190,6 +190,10 @@ describe('runMigrate() 의 정상 업그레이드 경로', () => {
     const output = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
     expect(output.replace(/\\/g, '/')).toContain(backupPath);
     expect(output).toContain('업그레이드 완료 — 1건 적용');
+
+    // 7) 적용 구간에서 잡은 마이그레이션 잠금을 성공 경로에서 놓았다. 남으면 다음 실행과
+    //    sp-server.exe 시작이 막힌다.
+    expect(readLock('migrate')).toBeUndefined();
   });
 });
 
@@ -268,10 +272,17 @@ describe('runMigrate() 의 백업 실패 처리', () => {
     // 마이그레이션 적용 실패(formatMigrateFailureNotice) 문구가 섞여 나오면 안 된다 —
     // 이건 적용을 시작하기 전 단계의 실패이지, 적용 중 실패가 아니다.
     expect(output).not.toContain('업그레이드가 실패했습니다');
+
+    // 실패 경로에서도 마이그레이션 잠금을 놓는다 (잠금은 백업보다 먼저 잡으므로 이 실패는
+    // 잠금을 쥔 상태에서 일어난다). 남으면 원인을 해결하고 다시 실행할 때 exit 7 로 막힌다.
+    expect(readLock('migrate')).toBeUndefined();
   });
 });
 
-describe('runMigrate() 의 서버 실행 중 거부', () => {
+// 어떤 OS 에서도 배정되지 않는 값 → process.kill(pid, 0) 이 확실히 ESRCH 를 낸다.
+const DEAD_PID = 2 ** 30;
+
+describe('runMigrate() 의 동시 실행 거부', () => {
   // 서버가 켜진 채로 마이그레이션을 적용하면, 트랜잭션을 쓰지 않는 이 설계에서는 INSERT SELECT 와
   // DROP TABLE 사이에 커밋된 사용자 편집이 사라진다. 사전 백업은 그 편집이 생기기 전에 떠 놓은
   // 것이라 복구 수단이 되지 못한다. 그래서 이 검사는 반드시 **백업보다 먼저** 있어야 한다 —
@@ -323,8 +334,8 @@ describe('runMigrate() 의 서버 실행 중 거부', () => {
     process.env.DATABASE_URL = `file:${dbPath}`;
 
     // 확실히 살아 있는 PID = 지금 이 테스트 프로세스 자신.
-    writeServerLock(process.pid);
-    expect(fs.existsSync(resolveServerLockPath())).toBe(true);
+    writeLock('server', process.pid);
+    expect(fs.existsSync(resolveLockPath('server'))).toBe(true);
 
     workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-migrate-main-locked-cwd-'));
     process.chdir(workDir);
@@ -337,10 +348,14 @@ describe('runMigrate() 의 서버 실행 중 거부', () => {
     expect(output).toContain('sp-server.exe 가 아직 실행 중입니다');
     expect(output).toContain(`PID ${process.pid}`);
     expect(output).toContain('데이터베이스는 전혀 변경되지 않았습니다');
-    expect(output.replace(/\\/g, '/')).toContain(resolveServerLockPath().replace(/\\/g, '/'));
+    expect(output.replace(/\\/g, '/')).toContain(resolveLockPath('server').replace(/\\/g, '/'));
 
     // 백업 폴더가 생기지도 않았어야 한다 = 검사가 백업보다 먼저다.
     expect(fs.existsSync(path.join(workDir, 'backups'))).toBe(false);
+
+    // 남의 잠금(서버 잠금)을 지우지도, 자기 잠금을 남기지도 않았다.
+    expect(readLock('server')).toBe(process.pid);
+    expect(readLock('migrate')).toBeUndefined();
 
     // 미적용분도 그대로 남아 있어야 한다 (적용을 시작하지 않았다).
     const verifyClient = new PrismaClient({
@@ -371,7 +386,8 @@ describe('runMigrate() 의 서버 실행 중 거부', () => {
     process.env.DATABASE_URL = `file:${dbPath}`;
 
     // 어떤 OS 에서도 배정되지 않는 큰 값 → 강제 종료 후 남은 낡은 잠금과 같은 상태.
-    writeServerLock(2 ** 30);
+    writeLock('server', DEAD_PID);
+    writeLock('migrate', DEAD_PID);
 
     workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-migrate-main-stale-cwd-'));
     process.chdir(workDir);
@@ -379,5 +395,49 @@ describe('runMigrate() 의 서버 실행 중 거부', () => {
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     expect(await runMigrate()).toBe(0);
+
+    // 성공 경로에서 자기 잠금을 놓는다. 남겨두면 다음 실행과 서버 시작이 막힌다.
+    // (자기 잠금을 쓰면서 낡은 DEAD_PID 값을 덮어썼으므로, 해제 후에는 파일이 없어야 한다.)
+    expect(readLock('migrate')).toBeUndefined();
+  });
+
+  it('다른 sp-migrate.exe 가 살아 있으면 exit 7 이고 백업조차 만들지 않는다', async () => {
+    const migrationsDir = path.resolve(__dirname, '..', 'prisma', 'migrations');
+    const names = listMigrationFiles(migrationsDir);
+
+    dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-migrate-main-dup-db-'));
+    const dbPath = path.join(dbDir, 'app.db').replace(/\\/g, '/');
+
+    const setupClient = new PrismaClient({
+      datasources: { db: { url: `file:${dbPath}?connection_limit=1` } },
+    });
+    await setupClient.$connect();
+    await applyMigrations(setupClient, migrationsDir, names.slice(0, names.length - 1));
+    await setupClient.$disconnect();
+
+    originalEnv = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = `file:${dbPath}`;
+
+    writeLock('migrate', process.pid);
+
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-migrate-main-dup-cwd-'));
+    process.chdir(workDir);
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    expect(await runMigrate()).toBe(7);
+
+    const output = errorSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    expect(output).toContain('sp-migrate.exe 가 업그레이드를 진행 중입니다');
+    expect(output).toContain(`PID ${process.pid}`);
+    expect(output).toContain('강제로 종료하거나 그 창을 닫지 마십시오');
+    // 탈출구 경로는 서버 잠금이 아니라 **마이그레이션 잠금** 파일이어야 한다.
+    expect(output.replace(/\\/g, '/')).toContain(resolveLockPath('migrate').replace(/\\/g, '/'));
+
+    expect(fs.existsSync(path.join(workDir, 'backups'))).toBe(false);
+
+    // 진행 중인 쪽의 잠금을 지우지 않았다 (여기서는 PID 가 같아 소유권 확인으로는 못 막으므로,
+    // "잠금을 잡기 전에 반환하는 경로에서는 해제를 시도조차 하지 않는다" 를 확인하는 셈이다).
+    expect(readLock('migrate')).toBe(process.pid);
   });
 });

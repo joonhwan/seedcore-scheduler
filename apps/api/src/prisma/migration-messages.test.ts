@@ -8,7 +8,9 @@ import {
   formatMigrateFailureNotice,
   formatNoMigrationFilesNotice,
   formatPendingMigrationsNotice,
+  formatMigrateInProgressNotice,
   formatSchemaMissingNotice,
+  formatServerAlreadyRunningNotice,
   formatServerRunningNotice,
 } from './migration-messages';
 
@@ -304,5 +306,82 @@ describe('formatServerRunningNotice', () => {
     });
     expect(withNote).toContain('참고: 다른 사용자 권한으로 실행 중인 것으로 보입니다 (EPERM)');
     expect(notice).not.toContain('참고:');
+  });
+});
+
+describe('formatServerAlreadyRunningNotice', () => {
+  const notice = formatServerAlreadyRunningNotice({
+    pid: 8080,
+    lockPath: 'D:/data/sp-server.lock',
+  });
+
+  it('이미 서버가 실행 중이라고 알리고 PID 를 보여준다', () => {
+    expect(notice).toContain('이미 sp-server.exe 가 실행 중입니다');
+    expect(notice).toContain('PID 8080');
+  });
+
+  it('DB 를 전혀 변경하지 않았음을 명시한다', () => {
+    expect(notice).toContain('데이터베이스는 전혀 변경되지 않았습니다');
+  });
+
+  it('실행 중인 서버를 그대로 쓰거나 종료 후 다시 실행하라고 안내한다', () => {
+    expect(notice).toContain('이미 실행 중인 서버를 그대로 쓰십시오');
+    expect(notice).toContain('sp-server.exe 를 다시 실행하십시오.');
+  });
+
+  it('서버 잠금 파일 경로와 삭제 탈출구를 함께 안내한다', () => {
+    expect(notice).toContain('D:/data/sp-server.lock');
+    expect(notice).toContain('이 파일을 지운 뒤 sp-server.exe 를 다시 실행하십시오.');
+  });
+
+  it('note 를 주면 참고 줄로 함께 보여준다', () => {
+    const withNote = formatServerAlreadyRunningNotice({
+      pid: 8080,
+      lockPath: 'D:/data/sp-server.lock',
+      note: '다른 사용자 권한으로 실행 중인 것으로 보입니다 (EPERM)',
+    });
+    expect(withNote).toContain('참고: 다른 사용자 권한으로 실행 중인 것으로 보입니다 (EPERM)');
+    expect(notice).not.toContain('참고:');
+  });
+});
+
+describe('formatMigrateInProgressNotice', () => {
+  const notice = formatMigrateInProgressNotice({
+    pid: 5150,
+    lockPath: 'D:/data/sp-migrate.lock',
+    retryCommand: 'sp-server.exe',
+  });
+
+  it('업그레이드가 진행 중이라고 알리고 PID 를 보여준다', () => {
+    expect(notice).toContain('sp-migrate.exe 가 업그레이드를 진행 중입니다');
+    expect(notice).toContain('PID 5150');
+  });
+
+  it('DB 를 변경하지 않았음을 명시한다', () => {
+    expect(notice).toContain('데이터베이스는 이 프로그램이 전혀 변경하지 않았습니다');
+  });
+
+  it('진행 중인 업그레이드를 강제 종료하지 말고 기다리라고 경고한다', () => {
+    // INSERT SELECT 와 DROP TABLE 사이에서 끊기면 스키마가 절반만 남는다.
+    expect(notice).toContain('강제로 종료하거나 그 창을 닫지 마십시오');
+    expect(notice).toContain('기다리십시오');
+  });
+
+  it('retryCommand 로 다시 실행할 실행 파일을 구분한다', () => {
+    expect(notice).toContain('"업그레이드 완료" 가 표시된 뒤에 sp-server.exe 를 실행하십시오.');
+    const forMigrate = formatMigrateInProgressNotice({
+      pid: 5150,
+      lockPath: 'D:/data/sp-migrate.lock',
+      retryCommand: 'sp-migrate.exe',
+    });
+    expect(forMigrate).toContain(
+      '"업그레이드 완료" 가 표시된 뒤에 sp-migrate.exe 를 실행하십시오.',
+    );
+  });
+
+  it('탈출구는 마이그레이션 잠금 파일 경로를 가리키고, 다시 실행할 대상도 맞춘다', () => {
+    expect(notice).toContain('D:/data/sp-migrate.lock');
+    expect(notice).toContain('sp-migrate.exe 를 이미 종료한 것이 확실하다면');
+    expect(notice).toContain('이 파일을 지운 뒤 sp-server.exe 를 다시 실행하십시오.');
   });
 });

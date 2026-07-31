@@ -139,17 +139,39 @@ export function formatEmptyDatabaseNotice(dbUrl: string): string {
 }
 
 /**
+ * 잠금 파일 삭제 탈출구 안내 (아래 세 안내가 공유한다).
+ *
+ * 윈도우는 PID 를 재사용하므로, 강제 종료로 남은 낡은 잠금 파일의 PID 가 이미 다른 프로그램에게
+ * 배정되어 있으면 생존 판정이 거짓 양성을 낸다. 그때 이 탈출구가 없으면 정상적인 실행이 영구히
+ * 막혀버린다 — 폐쇄망에는 원격으로 손봐줄 사람이 없다. 그래서 **잠금 파일마다 정확히 그 파일의**
+ * 경로를 보여줘야 한다 (서버 잠금과 마이그레이션 잠금은 다른 파일이다).
+ *
+ * `ownerName` 은 그 잠금을 남긴 실행 파일 이름이고, `retryCommand` 는 관리자가 다시 실행할
+ * 실행 파일 이름이다. 둘이 다른 경우가 있어 인자를 나눠 받는다 (예: 업그레이드 중이라 서버를
+ * 시작하지 못한 경우 — 남긴 쪽은 sp-migrate.exe, 다시 실행할 쪽은 sp-server.exe).
+ */
+function staleLockEscapeLines(params: {
+  ownerName: string;
+  lockPath: string;
+  retryCommand: string;
+}): string[] {
+  const { ownerName, lockPath, retryCommand } = params;
+  return [
+    `  ${ownerName} 를 이미 종료한 것이 확실하다면, 아래 파일이 지워지지 않고 남은 것입니다.`,
+    '  (강제 종료나 콘솔 창을 그냥 닫은 경우 이렇게 남습니다.)',
+    `  이 파일을 지운 뒤 ${retryCommand} 를 다시 실행하십시오.`,
+    '',
+    `    ${lockPath}`,
+  ];
+}
+
+/**
  * sp-server.exe 가 아직 실행 중인 상태에서 sp-migrate.exe 를 실행한 경우.
  *
  * 이 안내는 백업보다도 **먼저** 나온다. 그래야 "데이터베이스는 전혀 변경되지 않았습니다" 가
- * 사실이 된다 (server-lock.ts 의 resolveServerLockPath() 주석에 위험의 전모가 적혀 있다:
+ * 사실이 된다 (process-lock.ts 의 파일 앞머리 주석에 위험의 전모가 적혀 있다:
  * 마이그레이션은 트랜잭션을 쓰지 않아 문장 단위로 커밋되고, INSERT SELECT 와 DROP TABLE 사이에
  * 서버가 커밋한 편집은 사전 백업에도 없어 되돌릴 방법이 없다).
- *
- * 잠금 파일 경로를 그대로 보여주고 "지워도 된다" 고 말하는 것이 이 문구의 핵심이다.
- * 윈도우는 PID 를 재사용하므로, 강제 종료로 남은 낡은 잠금 파일의 PID 가 이미 다른 프로그램에게
- * 배정되어 있으면 생존 판정이 거짓 양성을 낸다. 그때 이 탈출구가 없으면 정상적인 업그레이드가
- * 영구히 막혀버린다 — 폐쇄망에는 원격으로 손봐줄 사람이 없다.
  */
 export function formatServerRunningNotice(params: {
   pid: number;
@@ -175,11 +197,106 @@ export function formatServerRunningNotice(params: {
     '',
     '  sp-server.exe 를 종료한 뒤 sp-migrate.exe 를 다시 실행하십시오.',
     '',
-    '  서버를 이미 종료한 것이 확실하다면, 아래 파일이 지워지지 않고 남은 것입니다.',
-    '  (강제 종료나 콘솔 창을 그냥 닫은 경우 이렇게 남습니다.)',
-    '  이 파일을 지운 뒤 sp-migrate.exe 를 다시 실행하십시오.',
+    ...staleLockEscapeLines({
+      ownerName: 'sp-server.exe',
+      lockPath,
+      retryCommand: 'sp-migrate.exe',
+    }),
     '',
-    `    ${lockPath}`,
+    LINE,
+  );
+  return lines.join('\n');
+}
+
+/**
+ * 이미 sp-server.exe 가 실행 중인데 sp-server.exe 를 또 실행한 경우.
+ *
+ * 이 검사가 없을 때의 동작이 특히 나빴다: 두 번째 서버는 3000번 포트 바인딩에서 EADDRINUSE 로
+ * 죽는데, 그 실패가 처리되지 않은 Promise 거부로 새어나가 영문 스택 트레이스만 남기고 exit 1 로
+ * 끝났다. README-exe.txt 의 종료 코드 표에서 exit 1 은 "DB 파일을 지워야 할 수도 있는 상태" 와
+ * 묶여 있어, 관리자가 이 화면을 보고 DB 를 지우는 최악의 오조작으로 이어질 수 있었다.
+ * 그래서 Nest 를 띄우기도 전에 이 안내를 주고 exit 7 로 끝낸다.
+ */
+export function formatServerAlreadyRunningNotice(params: {
+  pid: number;
+  lockPath: string;
+  note?: string;
+}): string {
+  const { pid, lockPath, note } = params;
+  const lines = [
+    LINE,
+    '  이미 sp-server.exe 가 실행 중입니다',
+    LINE,
+    '',
+    `  실행 중으로 보이는 서버 프로세스: PID ${pid}`,
+  ];
+  if (note !== undefined) {
+    lines.push(`  참고: ${note}`);
+  }
+  lines.push(
+    '',
+    '  서버는 한 번에 하나만 실행할 수 있습니다. 하나의 데이터베이스를 두 서버가 함께 고치면',
+    '  데이터가 어긋날 수 있어, 이 서버는 시작하지 않았습니다.',
+    '  데이터베이스는 전혀 변경되지 않았습니다.',
+    '',
+    '  이미 실행 중인 서버를 그대로 쓰십시오. 브라우저에서 접속되지 않는다면 그 서버를 먼저',
+    '  종료한 뒤 sp-server.exe 를 다시 실행하십시오.',
+    '',
+    ...staleLockEscapeLines({
+      ownerName: 'sp-server.exe',
+      lockPath,
+      retryCommand: 'sp-server.exe',
+    }),
+    '',
+    LINE,
+  );
+  return lines.join('\n');
+}
+
+/**
+ * sp-migrate.exe 가 업그레이드를 진행하는 중에 sp-server.exe 나 sp-migrate.exe 를 실행한 경우.
+ *
+ * 관리자가 여기서 할 수 있는 최악의 선택이 "안 끝나는 것 같으니 창을 닫는" 것이다. 마이그레이션은
+ * 트랜잭션 없이 문장 단위로 커밋되므로, INSERT SELECT 와 DROP TABLE 사이에서 끊기면 스키마가
+ * 절반만 적용된 상태로 남는다 (설계 문서 6절). 그래서 이 문구는 "기다리라, 끝내게 두라" 를
+ * 명시적으로 말한다.
+ *
+ * `retryCommand` 로 다시 실행할 실행 파일을 구분한다 — 서버를 시작하려던 관리자에게
+ * "sp-migrate.exe 를 다시 실행하라" 고 말하면 안 된다.
+ */
+export function formatMigrateInProgressNotice(params: {
+  pid: number;
+  lockPath: string;
+  retryCommand: string;
+  note?: string;
+}): string {
+  const { pid, lockPath, retryCommand, note } = params;
+  const lines = [
+    LINE,
+    '  sp-migrate.exe 가 업그레이드를 진행 중입니다',
+    LINE,
+    '',
+    `  실행 중으로 보이는 업그레이드 프로세스: PID ${pid}`,
+  ];
+  if (note !== undefined) {
+    lines.push(`  참고: ${note}`);
+  }
+  lines.push(
+    '',
+    '  업그레이드 도중에 다른 프로그램이 같은 데이터베이스를 건드리면 데이터가 사라질 수 있어,',
+    '  아무 작업도 하지 않고 멈췄습니다. 데이터베이스는 이 프로그램이 전혀 변경하지 않았습니다.',
+    '',
+    '  ※ 진행 중인 sp-migrate.exe 를 강제로 종료하거나 그 창을 닫지 마십시오.',
+    '     업그레이드는 도중에 끊기면 스키마가 절반만 바뀐 상태로 남습니다. 끝날 때까지',
+    '     기다리십시오 (보통 수 초 ~ 수십 초).',
+    '',
+    `  "업그레이드 완료" 가 표시된 뒤에 ${retryCommand} 를 실행하십시오.`,
+    '',
+    ...staleLockEscapeLines({
+      ownerName: 'sp-migrate.exe',
+      lockPath,
+      retryCommand,
+    }),
     '',
     LINE,
   );
