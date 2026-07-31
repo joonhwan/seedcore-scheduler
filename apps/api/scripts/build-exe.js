@@ -47,7 +47,32 @@ function assertMigrationsEmbedded(dir) {
   }
 }
 
+// 이전 빌드가 남긴 apiPublic / dist-bundle / dist-exe 를 통째로 지운다.
+//
+// copyDirRecursive 는 파괴적이지 않다 — dest 에 이미 있는데 src 에는 더 이상 없는 항목을
+// 지우지 않고 그대로 둔다. 그래서 이 정리 없이 재빌드하면, 소스에서 지우거나 이름을 바꾼
+// migration.sql 디렉터리나 React 정적 자원이 이전 빌드 결과물 안에 그대로 남아 다음 exe 에도
+// 다시 내장된다.
+//
+// 이게 특히 위험한 이유(단순 빌드 위생 문제가 아니다): exe 에 남은 낡은 migrations 디렉터리는
+// listMigrationFiles() 가 그대로 목록에 집어넣지만, 어떤 고객 DB 의 _prisma_migrations 에도
+// 그 이름과 일치하는 행이 존재할 수 없다(그 마이그레이션은 프로젝트에서 이미 삭제됐으므로).
+// 그러면 그 항목은 영원히 "미적용" 으로 보고된다 — sp-server.exe 는 exit 3 으로 계속 멈추고,
+// sp-migrate.exe 는 존재하지도 않는(의도적으로 지운) 마이그레이션을 적용하려 시도한다.
+// 에어갭 현장에서 이 상태를 되돌리는 방법은 새 매체를 다시 보내는 것뿐이다. 그래서 사람이
+// 폴더를 손으로 지우는 걸 잊지 않는 것에 기대지 않고, 매 빌드 시작 시 강제로 깨끗하게 지운다.
+// (증분 빌드 속도를 위해 이 정리를 지우고 싶어질 수 있는데, 위 이유 때문에 지우면 안 된다.)
+function cleanPreviousBuildOutputs() {
+  const apiPublicDir = path.join(apiDir, 'public');
+  for (const dir of [apiPublicDir, path.join(apiDir, 'dist-bundle'), outputDistDir]) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
+  log('이전 빌드 산출물 정리 (public / dist-bundle / dist-exe)');
+  cleanPreviousBuildOutputs();
+
   log('1/5. 공유 패키지 및 프론트엔드/백엔드 빌드 수행');
   run('pnpm -F @sam/shared build');
   run('pnpm -F @sam/web build');
