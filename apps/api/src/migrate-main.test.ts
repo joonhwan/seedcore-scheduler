@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { applyMigrations, listMigrationFiles, listPending } from './prisma/migration-runner';
+import { resolveServerLockPath, writeServerLock } from './common/server-lock';
 import { resolvePreMigrateBackupPath, runMigrate } from './migrate-main';
 
 describe('resolvePreMigrateBackupPath', () => {
@@ -267,5 +268,116 @@ describe('runMigrate() 의 백업 실패 처리', () => {
     // 마이그레이션 적용 실패(formatMigrateFailureNotice) 문구가 섞여 나오면 안 된다 —
     // 이건 적용을 시작하기 전 단계의 실패이지, 적용 중 실패가 아니다.
     expect(output).not.toContain('업그레이드가 실패했습니다');
+  });
+});
+
+describe('runMigrate() 의 서버 실행 중 거부', () => {
+  // 서버가 켜진 채로 마이그레이션을 적용하면, 트랜잭션을 쓰지 않는 이 설계에서는 INSERT SELECT 와
+  // DROP TABLE 사이에 커밋된 사용자 편집이 사라진다. 사전 백업은 그 편집이 생기기 전에 떠 놓은
+  // 것이라 복구 수단이 되지 못한다. 그래서 이 검사는 반드시 **백업보다 먼저** 있어야 한다 —
+  // 아래에서 backups/ 폴더가 아예 만들어지지 않았음을 확인하는 것이 그 순서를 고정하는 단언이다.
+  const originalCwd = process.cwd();
+  let originalEnv: string | undefined;
+  let dbDir: string | undefined;
+  let workDir: string | undefined;
+  let errorSpy: ReturnType<typeof vi.spyOn> | undefined;
+  let logSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+  afterEach(() => {
+    // 임시 디렉터리를 지우기 전에 cwd 를 되돌린다 (fileParallelism: false).
+    process.chdir(originalCwd);
+    if (originalEnv === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = originalEnv;
+    }
+    errorSpy?.mockRestore();
+    logSpy?.mockRestore();
+    if (dbDir) {
+      fs.rmSync(dbDir, { recursive: true, force: true });
+      dbDir = undefined;
+    }
+    if (workDir) {
+      fs.rmSync(workDir, { recursive: true, force: true });
+      workDir = undefined;
+    }
+  });
+
+  it('살아 있는 PID 가 적힌 잠금이 있으면 exit 7 이고 백업조차 만들지 않는다', async () => {
+    const migrationsDir = path.resolve(__dirname, '..', 'prisma', 'migrations');
+    const names = listMigrationFiles(migrationsDir);
+    expect(names.length).toBeGreaterThan(1);
+
+    dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-migrate-main-locked-db-'));
+    const dbPath = path.join(dbDir, 'app.db').replace(/\\/g, '/');
+
+    // 마지막 하나를 빼고 적용해 두어 decideMigrate() 가 'apply' 로 판정하게 만든다.
+    const setupClient = new PrismaClient({
+      datasources: { db: { url: `file:${dbPath}?connection_limit=1` } },
+    });
+    await setupClient.$connect();
+    await applyMigrations(setupClient, migrationsDir, names.slice(0, names.length - 1));
+    await setupClient.$disconnect();
+
+    originalEnv = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = `file:${dbPath}`;
+
+    // 확실히 살아 있는 PID = 지금 이 테스트 프로세스 자신.
+    writeServerLock(process.pid);
+    expect(fs.existsSync(resolveServerLockPath())).toBe(true);
+
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-migrate-main-locked-cwd-'));
+    process.chdir(workDir);
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    expect(await runMigrate()).toBe(7);
+
+    const output = errorSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    expect(output).toContain('sp-server.exe 가 아직 실행 중입니다');
+    expect(output).toContain(`PID ${process.pid}`);
+    expect(output).toContain('데이터베이스는 전혀 변경되지 않았습니다');
+    expect(output.replace(/\\/g, '/')).toContain(resolveServerLockPath().replace(/\\/g, '/'));
+
+    // 백업 폴더가 생기지도 않았어야 한다 = 검사가 백업보다 먼저다.
+    expect(fs.existsSync(path.join(workDir, 'backups'))).toBe(false);
+
+    // 미적용분도 그대로 남아 있어야 한다 (적용을 시작하지 않았다).
+    const verifyClient = new PrismaClient({
+      datasources: { db: { url: `file:${dbPath}?connection_limit=1` } },
+    });
+    try {
+      expect(await listPending(verifyClient, migrationsDir)).toEqual([names[names.length - 1]!]);
+    } finally {
+      await verifyClient.$disconnect();
+    }
+  });
+
+  it('죽은 PID 가 적힌 낡은 잠금은 업그레이드를 막지 않는다', async () => {
+    const migrationsDir = path.resolve(__dirname, '..', 'prisma', 'migrations');
+    const names = listMigrationFiles(migrationsDir);
+
+    dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-migrate-main-stale-db-'));
+    const dbPath = path.join(dbDir, 'app.db').replace(/\\/g, '/');
+
+    const setupClient = new PrismaClient({
+      datasources: { db: { url: `file:${dbPath}?connection_limit=1` } },
+    });
+    await setupClient.$connect();
+    await applyMigrations(setupClient, migrationsDir, names.slice(0, names.length - 1));
+    await setupClient.$disconnect();
+
+    originalEnv = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = `file:${dbPath}`;
+
+    // 어떤 OS 에서도 배정되지 않는 큰 값 → 강제 종료 후 남은 낡은 잠금과 같은 상태.
+    writeServerLock(2 ** 30);
+
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-migrate-main-stale-cwd-'));
+    process.chdir(workDir);
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    expect(await runMigrate()).toBe(0);
   });
 });

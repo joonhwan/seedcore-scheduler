@@ -9,6 +9,7 @@ import {
   formatNoMigrationFilesNotice,
   formatPendingMigrationsNotice,
   formatSchemaMissingNotice,
+  formatServerRunningNotice,
 } from './migration-messages';
 
 describe('formatPendingMigrationsNotice', () => {
@@ -262,5 +263,46 @@ describe('formatInitFailureNotice', () => {
 
   it('sp-migrate.exe 로 해결되지 않는다고 명시한다', () => {
     expect(notice).toContain('sp-migrate.exe 를 실행해도 해결되지 않습니다');
+  });
+});
+
+describe('formatServerRunningNotice', () => {
+  const notice = formatServerRunningNotice({
+    pid: 4321,
+    lockPath: 'D:/data/sp-server.lock',
+  });
+
+  it('서버가 아직 실행 중이라고 알리고 PID 를 보여준다', () => {
+    expect(notice).toContain('sp-server.exe 가 아직 실행 중입니다');
+    expect(notice).toContain('PID 4321');
+  });
+
+  it('DB 를 전혀 변경하지 않았음을 명시한다', () => {
+    // 이 안내는 백업보다 먼저 나오므로 이 문장이 사실이어야 한다. 순서가 뒤바뀌면 거짓이 된다.
+    expect(notice).toContain('데이터베이스는 전혀 변경되지 않았습니다');
+  });
+
+  it('백업으로도 되돌릴 수 없는 위험이라는 점을 알려준다', () => {
+    expect(notice).toContain('백업으로도 되돌릴 수 없습니다');
+  });
+
+  it('서버를 종료한 뒤 다시 실행하라고 안내한다', () => {
+    expect(notice).toContain('sp-server.exe 를 종료한 뒤 sp-migrate.exe 를 다시 실행하십시오.');
+  });
+
+  it('잠금 파일 경로와 삭제 탈출구를 함께 안내한다', () => {
+    // PID 재사용으로 생존 판정이 거짓 양성을 낼 때 관리자에게 남는 유일한 수단이다.
+    expect(notice).toContain('D:/data/sp-server.lock');
+    expect(notice).toContain('이 파일을 지운 뒤 sp-migrate.exe 를 다시 실행하십시오.');
+  });
+
+  it('note 를 주면 참고 줄로 함께 보여주고, 주지 않으면 그 줄이 없다', () => {
+    const withNote = formatServerRunningNotice({
+      pid: 4321,
+      lockPath: 'D:/data/sp-server.lock',
+      note: '다른 사용자 권한으로 실행 중인 것으로 보입니다 (EPERM)',
+    });
+    expect(withNote).toContain('참고: 다른 사용자 권한으로 실행 중인 것으로 보입니다 (EPERM)');
+    expect(notice).not.toContain('참고:');
   });
 });

@@ -139,6 +139,54 @@ export function formatEmptyDatabaseNotice(dbUrl: string): string {
 }
 
 /**
+ * sp-server.exe 가 아직 실행 중인 상태에서 sp-migrate.exe 를 실행한 경우.
+ *
+ * 이 안내는 백업보다도 **먼저** 나온다. 그래야 "데이터베이스는 전혀 변경되지 않았습니다" 가
+ * 사실이 된다 (server-lock.ts 의 resolveServerLockPath() 주석에 위험의 전모가 적혀 있다:
+ * 마이그레이션은 트랜잭션을 쓰지 않아 문장 단위로 커밋되고, INSERT SELECT 와 DROP TABLE 사이에
+ * 서버가 커밋한 편집은 사전 백업에도 없어 되돌릴 방법이 없다).
+ *
+ * 잠금 파일 경로를 그대로 보여주고 "지워도 된다" 고 말하는 것이 이 문구의 핵심이다.
+ * 윈도우는 PID 를 재사용하므로, 강제 종료로 남은 낡은 잠금 파일의 PID 가 이미 다른 프로그램에게
+ * 배정되어 있으면 생존 판정이 거짓 양성을 낸다. 그때 이 탈출구가 없으면 정상적인 업그레이드가
+ * 영구히 막혀버린다 — 폐쇄망에는 원격으로 손봐줄 사람이 없다.
+ */
+export function formatServerRunningNotice(params: {
+  pid: number;
+  lockPath: string;
+  note?: string;
+}): string {
+  const { pid, lockPath, note } = params;
+  const lines = [
+    LINE,
+    '  sp-server.exe 가 아직 실행 중입니다',
+    LINE,
+    '',
+    `  실행 중으로 보이는 서버 프로세스: PID ${pid}`,
+  ];
+  if (note !== undefined) {
+    lines.push(`  참고: ${note}`);
+  }
+  lines.push(
+    '',
+    '  서버가 켜진 채로 업그레이드하면 그 사이에 사용자가 저장한 내용이 사라질 수 있고,',
+    '  업그레이드 직전에 만드는 백업으로도 되돌릴 수 없습니다.',
+    '  그래서 아무 작업도 하지 않고 멈췄습니다. 데이터베이스는 전혀 변경되지 않았습니다.',
+    '',
+    '  sp-server.exe 를 종료한 뒤 sp-migrate.exe 를 다시 실행하십시오.',
+    '',
+    '  서버를 이미 종료한 것이 확실하다면, 아래 파일이 지워지지 않고 남은 것입니다.',
+    '  (강제 종료나 콘솔 창을 그냥 닫은 경우 이렇게 남습니다.)',
+    '  이 파일을 지운 뒤 sp-migrate.exe 를 다시 실행하십시오.',
+    '',
+    `    ${lockPath}`,
+    '',
+    LINE,
+  );
+  return lines.join('\n');
+}
+
+/**
  * sp-migrate.exe 가 업그레이드 전 백업(`snapshotTo()`, 또는 그 대상 폴더를 만드는
  * `fs.mkdirSync()`) 자체를 만들지 못한 상태.
  *

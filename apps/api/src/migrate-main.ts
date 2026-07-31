@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { bindPrismaQueryEngine, resolveDatabaseUrl, resolveDbFilePath } from './common/db-path';
 import { appendPlainLog } from './common/plain-daily-log';
+import { checkServerLock } from './common/server-lock';
 import {
   MigrationFailedError,
   applyMigrations,
@@ -15,6 +16,7 @@ import {
   formatBackupFailedNotice,
   formatMigrateFailureNotice,
   formatNoMigrationFilesNotice,
+  formatServerRunningNotice,
 } from './prisma/migration-messages';
 
 function pad(n: number): string {
@@ -114,6 +116,27 @@ export async function runMigrate(): Promise<number> {
       emit(`  - ${name}`);
     }
     emit('');
+
+    // 백업보다 먼저 서버 실행 여부를 본다. 순서가 뒤바뀌면 안 된다 — 이 안내는 "DB 를 전혀
+    // 건드리지 않았다" 고 약속하고, 그 약속이 사실이어야 관리자가 재설치나 복원을 시도하지 않는다.
+    // (위험의 전모는 server-lock.ts 의 resolveServerLockPath() 주석 참고: 트랜잭션을 쓰지 않는
+    // 이 설계에서는 마이그레이션 문장이 하나씩 커밋되므로, INSERT SELECT 와 DROP TABLE 사이에
+    // 서버가 커밋한 사용자 편집은 사전 백업에도 없어 되돌릴 수단이 아예 없다.)
+    //
+    // decideMigrate() 뒤에 두는 것도 의도적이다. 적용할 것이 없는(=up-to-date) 상태에서는 서버가
+    // 켜져 있는 것이 정상이며, 그때 sp-migrate.exe 는 "이미 최신입니다" 로 조용히 끝나야 한다.
+    const lock = checkServerLock();
+    if (lock.kind === 'locked') {
+      emitError('');
+      emitError(
+        formatServerRunningNotice(
+          lock.note === undefined
+            ? { pid: lock.pid, lockPath: lock.lockPath }
+            : { pid: lock.pid, lockPath: lock.lockPath, note: lock.note },
+        ),
+      );
+      return 7;
+    }
 
     const backupPath = resolvePreMigrateBackupPath(new Date());
     emit('업그레이드 전 백업을 만듭니다...');
