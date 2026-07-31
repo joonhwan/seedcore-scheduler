@@ -139,6 +139,42 @@ export function formatEmptyDatabaseNotice(dbUrl: string): string {
 }
 
 /**
+ * sp-migrate.exe 가 업그레이드 전 백업(`snapshotTo()`, 또는 그 대상 폴더를 만드는
+ * `fs.mkdirSync()`) 자체를 만들지 못한 상태.
+ *
+ * 이 실패는 마이그레이션을 적용하기 **전**에 일어난다 — `applyMigrations()` 호출 자체가
+ * 시작되지 않았으므로 DB 는 아무 것도 바뀌지 않은 상태 그대로다. 관리자가 가장 걱정할
+ * "DB 가 반쯤 망가졌나?" 라는 질문에 답을 먼저 주는 것이 이 안내의 핵심이다 — 그래야
+ * 있지도 않은 백업을 찾아 헤매거나 불필요하게 재설치를 시도하지 않는다.
+ *
+ * causeMessage 만 보여주고 원문 스택 트레이스를 노출하지 않는 이유는
+ * formatMigrateFailureNotice() 와 같다: 관리자가 읽고 다음 행동을 정할 수 있는
+ * 요약이면 충분하고, 실제 원인 분류(디스크 공간/권한/파일 충돌)는 아래 목록으로 안내한다.
+ */
+export function formatBackupFailedNotice(backupPath: string, causeMessage: string): string {
+  return [
+    LINE,
+    '  업그레이드 전 백업을 만들지 못했습니다',
+    LINE,
+    '',
+    `  백업 경로: ${backupPath}`,
+    `  원인: ${causeMessage}`,
+    '',
+    '  백업이 실패했으므로 업그레이드를 진행하지 않았습니다.',
+    '  데이터베이스는 전혀 변경되지 않았습니다.',
+    '',
+    '  주로 다음 중 하나가 원인입니다.',
+    '    - 디스크 여유 공간 부족',
+    '    - backups/pre-migrate/ 폴더에 쓰기 권한 없음',
+    '    - 같은 이름의 백업 파일이 이미 존재함',
+    '',
+    '  원인을 해결한 뒤 sp-migrate.exe 를 다시 실행하십시오.',
+    '',
+    LINE,
+  ].join('\n');
+}
+
+/**
  * sp-migrate.exe 가 마이그레이션 적용 도중 실패한 상태.
  *
  * 이 실행 파일이 하는 유일한 쓰기 작업이 실패한 것이므로, 관리자가 다음 두 가지를

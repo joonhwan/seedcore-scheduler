@@ -120,10 +120,13 @@ if (tables.length === 0) {   // users 가 있으면 DDL 블록 전체를 건너�
 
 `migrate-main.ts` 를 계획 당시 생각했던 `apps/api/scripts/` 가 아니라 `apps/api/src/` 에 둔 이유:
 `build-exe.js` 는 `scripts/backup-cli.ts` 와 `scripts/reset-admin-cli.ts` 를 `npx tsc scripts/...`
-형태로 **별도 `tsc` 호출**로 컴파일한다. 이 항목을 `scripts/` 에 두고 `../src/` 를 import 하면
-tsc 가 두 디렉터리를 모두 아우르도록 `rootDir` 를 추론해버려 출력 경로 구조가 바뀌고, 그 결과
-ncc 가 기대하는 엔트리 경로(`dist/scripts/migrate-cli.js`)가 어긋난다. 반면 `src/migrate-main.ts` 는
-`nest build` 가 만드는 `dist/migrate-main.js` 를 그대로 ncc 에 넘기면 되므로(§8 참고) 이 문제가 없다.
+형태로 **별도 `tsc` 호출**로 컴파일한다. 이 항목을 `scripts/` 에 두고 `../src/` 를 import 했다면
+tsc 가 두 디렉터리를 모두 아우르도록 `rootDir` 를 추론해 출력 경로 구조가 바뀌고, 그 결과 ncc 가
+기대하는 엔트리 경로(`dist/scripts/migrate-cli.js`)가 어긋났을 것으로 **예상된다** — 실제로 그
+구성으로 빌드를 돌려서 깨지는 것을 확인한 것은 아니고, `tsc` 의 `rootDir` 자동 추론 규칙과
+`build-exe.js` 의 두 컴파일 경로(3/5 의 개별 `tsc` 대 `nest build`)가 어떻게 상호작용할지를 미리
+따져 본 결과다. 이 위험을 피하려고 처음부터 `src/migrate-main.ts` 로 뒀다. 그 경로는 `nest build` 가
+만드는 `dist/migrate-main.js` 를 그대로 ncc 에 넘기면 되므로(§8 참고) 이 문제 자체가 생기지 않는다.
 
 ### `MigrationRunner` 인터페이스
 
@@ -305,10 +308,7 @@ CREATE TABLE "_prisma_migrations" (
 
 | 단계 | 변경 |
 |---|---|
-| 3/5 | 변경 없음 — `migrate-main.ts` 는 `apps/api/src/` 에 있어 기존 `pnpm -F @sam/api build`(nest build)가
-그대로 `dist/migrate-main.js` 를 만든다. `scripts/backup-cli.ts` / `scripts/reset-admin-cli.ts` 를 위한
-별도 `tsc` 호출(3/5)에는 손대지 않는다 — 4번째 대상으로 끼워 넣으면 §4 각주에 적은 `rootDir` 추론 문제가
-생긴다 |
+| 3/5 | 변경 없음 — `migrate-main.ts` 는 `apps/api/src/` 에 있어 기존 `pnpm -F @sam/api build`(nest build)가 그대로 `dist/migrate-main.js` 를 만든다. `scripts/backup-cli.ts` / `scripts/reset-admin-cli.ts` 를 위한 별도 `tsc` 호출(3/5)에는 손대지 않는다 — 4번째 대상으로 끼워 넣으면 §4 에 적은 `rootDir` 추론 위험(예상, 미확인)이 현실화될 수 있다 |
 | 4/5 | `dist-bundle/migrate/` ncc 번들 추가. `server/` 와 `migrate/` 양쪽에 `prisma/migrations/` 복사 |
 | pkg assets | `server` / `migrate` 의 `package.json` 에 `'migrations/**/*'` 추가 (기존 `public/**/*` 옆에) |
 | 5/5 | `sp-migrate.exe` 생성 추가 |

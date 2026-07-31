@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatBackupFailedNotice,
   formatDowngradeNotice,
   formatEmptyDatabaseNotice,
   formatInitFailureNotice,
@@ -103,6 +104,38 @@ describe('formatEmptyDatabaseNotice', () => {
   it('sp-server.exe 를 먼저 실행하라고 안내한다', () => {
     expect(notice).toContain('sp-server.exe');
     expect(notice).toContain('자동으로 만들어지고 초기화');
+  });
+});
+
+describe('formatBackupFailedNotice', () => {
+  const notice = formatBackupFailedNotice(
+    'D:/backups/pre-migrate/sam_20260731_215740.db',
+    'ENOTDIR: not a directory',
+  );
+
+  it('백업을 만들지 못했다고 알린다', () => {
+    expect(notice).toContain('업그레이드 전 백업을 만들지 못했습니다');
+  });
+
+  it('전달받은 백업 경로와 원인 메시지를 그대로 포함한다', () => {
+    expect(notice).toContain('D:/backups/pre-migrate/sam_20260731_215740.db');
+    expect(notice).toContain('ENOTDIR: not a directory');
+  });
+
+  it('데이터베이스가 전혀 변경되지 않았다고 명시한다', () => {
+    // 이 안내의 핵심: 백업 실패 시점엔 마이그레이션 적용이 아직 시작되지 않았으므로
+    // DB 는 원래 상태 그대로다. 관리자가 백업을 찾아 헤매거나 반쪽 DB 를 걱정하지 않게 한다.
+    expect(notice).toContain('데이터베이스는 전혀 변경되지 않았습니다');
+  });
+
+  it('원인 후보(디스크 공간/쓰기 권한/파일 충돌)를 안내한다', () => {
+    expect(notice).toContain('디스크 여유 공간 부족');
+    expect(notice).toContain('쓰기 권한');
+    expect(notice).toContain('이미 존재');
+  });
+
+  it('원인 해결 후 sp-migrate.exe 재실행을 안내한다', () => {
+    expect(notice).toContain('sp-migrate.exe 를 다시 실행하십시오');
   });
 });
 

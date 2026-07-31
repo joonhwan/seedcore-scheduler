@@ -10,7 +10,11 @@ import {
   snapshotTo,
 } from './prisma/migration-runner';
 import { decideMigrate } from './prisma/migrate-decision';
-import { formatMigrateFailureNotice, formatNoMigrationFilesNotice } from './prisma/migration-messages';
+import {
+  formatBackupFailedNotice,
+  formatMigrateFailureNotice,
+  formatNoMigrationFilesNotice,
+} from './prisma/migration-messages';
 
 function pad(n: number): string {
   return n.toString().padStart(2, '0');
@@ -18,7 +22,10 @@ function pad(n: number): string {
 
 /**
  * 업그레이드 직전 스냅샷 경로.
- * 일상 백업(backups/<날짜>/)의 14일 보존 정책에 섞이지 않도록 pre-migrate/ 로 분리한다.
+ * 일상 자동 백업(BackupService, 기본 보존 30일 = BACKUP_RETENTION_DAYS)의 정리 대상과
+ * 섞이지 않도록 pre-migrate/ 로 분리한다. cleanupOld() 는 8자리 숫자(YYYYMMDD) 이름의
+ * 폴더만 정리 대상으로 보므로, pre-migrate/ 는 이름 자체가 그 패턴에 걸리지 않아
+ * 애초에 정리 대상으로 스캔되지도 않는다.
  */
 export function resolvePreMigrateBackupPath(now: Date): string {
   const stamp =
@@ -103,9 +110,21 @@ export async function runMigrate(): Promise<number> {
     console.log('');
 
     const backupPath = resolvePreMigrateBackupPath(new Date());
-    fs.mkdirSync(path.dirname(backupPath), { recursive: true });
     console.log('업그레이드 전 백업을 만듭니다...');
-    await snapshotTo(client, backupPath);
+    // 이 블록(폴더 생성 + VACUUM INTO)은 마이그레이션 적용을 시작하기 전이다. 여기서
+    // 실패하면 DB 는 전혀 건드리지 않은 상태다 — 아래 applyMigrations() 루프의 실패(부분
+    // 적용 가능성 있음, formatMigrateFailureNotice)와는 성격이 다르므로 별도 안내
+    // (formatBackupFailedNotice)로 구분한다. 디스크 공간 부족/쓰기 권한 없음/동명 파일
+    // 존재가 실제 발생 원인이다.
+    try {
+      fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+      await snapshotTo(client, backupPath);
+    } catch (err) {
+      const causeMessage = err instanceof Error ? err.message : String(err);
+      console.error('');
+      console.error(formatBackupFailedNotice(backupPath, causeMessage));
+      return 1;
+    }
     console.log(`  백업 완료: ${backupPath}`);
     console.log('');
 
