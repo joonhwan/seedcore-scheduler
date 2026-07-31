@@ -163,7 +163,16 @@ export class MigrationFailedError extends Error {
  * 마이그레이션 SQL 이 스스로 하는 FK 제어(PRAGMA foreign_keys=OFF / defer_foreign_keys)가
  * 무력화되어 오히려 위험해진다. 원자성은 트랜잭션이 아니라 사전 백업으로 확보한다.
  *
- * 실패하면 즉시 중단하고 그 마이그레이션은 이력에 기록하지 않는다. 뒤의 것도 실행하지 않는다.
+ * 실패하면 즉시 중단한다. 뒤의 마이그레이션도 실행하지 않는다. (이력 기록 방식은 아래 참고)
+ *
+ * 중요(호출자 책임): PRAGMA foreign_keys=OFF / defer_foreign_keys 는 커넥션 단위 설정이다.
+ * 이 함수가 실행하는 문장들은 매번 `client` 의 커넥션 풀에서 커넥션을 꺼내 쓰므로, 풀에
+ * 커넥션이 둘 이상이면 어떤 마이그레이션(예: m3_node_progress)의 "PRAGMA foreign_keys=OFF" 문장과
+ * 뒤이은 "DROP TABLE" 문장이 서로 다른 커넥션에서 실행될 수 있다. 그러면 FK 가 여전히 켜진
+ * 채로 DROP TABLE 의 암묵적 DELETE 가 실행되어 ON DELETE CASCADE 가 발동하고, 관련 자식
+ * 레코드(예: node_comments, node_history)가 조용히 삭제된다 — 마이그레이션은 "성공"으로 보고된다.
+ * 그러므로 호출자는 반드시 datasource URL 에 `connection_limit=1` 을 붙여 단일 커넥션으로
+ * 고정한 client 를 넘겨야 한다. (test-helpers.ts 의 createTempDb() 참고)
  */
 export async function applyMigrations(
   client: RawClient,
@@ -175,33 +184,57 @@ export async function applyMigrations(
   for (const name of names) {
     const sql = readMigrationSql(dir, name);
     const statements = splitSqlStatements(sql);
+    const checksum = checksumOf(sql);
+    const id = randomUUID();
 
-    for (let i = 0; i < statements.length; i += 1) {
-      try {
-        await client.$executeRawUnsafe(statements[i]!);
-      } catch (err) {
-        // 1-based 로 알린다. 관리자가 파일을 열어 세기 좋다.
-        throw new MigrationFailedError(name, i + 1, err);
+    // Prisma 의 방식을 따른다: 실행 전에 finished_at 이 NULL 인 행을 먼저 남기고,
+    // 전부 성공하면 UPDATE 로 완료 처리한다. 이렇게 하면 "시도했지만 중단됨" 과
+    // "아예 시도하지 않음" 을 이력만 보고 구분할 수 있다. listApplied() 는 이미
+    // finished_at IS NOT NULL 조건으로 걸러내므로, 중단된 행이 있어도 적용된 것으로
+    // 잘못 세지 않는다.
+    //
+    // 문장 실행 실패든, 아래 이력 기록(INSERT/UPDATE) 자체의 실패든 모두 이 try 안에서
+    // MigrationFailedError 로 통일해서 던진다 — 이력 기록 실패가 관리자에게 raw Prisma
+    // 에러로 노출되지 않게 하기 위해서다.
+    let statementIndex = 0;
+    try {
+      await insertStartedRecord(client, id, name, checksum);
+
+      for (; statementIndex < statements.length; statementIndex += 1) {
+        await client.$executeRawUnsafe(statements[statementIndex]!);
       }
-    }
 
-    await recordApplied(client, name, checksumOf(sql), statements.length);
+      await markFinished(client, id, statements.length);
+    } catch (err) {
+      // 1-based 로 알린다. 관리자가 파일을 열어 세기 좋다.
+      // insertStartedRecord 단계 실패는 statementIndex===0 → 1 로, markFinished 단계 실패는
+      // statementIndex===statements.length → 문장 수 + 1 로 보고된다.
+      throw new MigrationFailedError(name, statementIndex + 1, err);
+    }
   }
 }
 
-async function recordApplied(
+async function insertStartedRecord(
   client: RawClient,
+  id: string,
   name: string,
   checksum: string,
-  steps: number,
 ): Promise<void> {
   // VALUES 에 파라미터를 쓸 수 없는 상황이 아니지만, $executeRawUnsafe 로 일관되게 다룬다.
   // name/checksum 은 파일시스템과 해시에서 온 값이라 인용부호만 escape 하면 충분하다.
   const escapedName = name.replace(/'/g, "''");
   await client.$executeRawUnsafe(
     `INSERT INTO "_prisma_migrations"
-       ("id","checksum","migration_name","started_at","finished_at","applied_steps_count")
-     VALUES ('${randomUUID()}','${checksum}','${escapedName}',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,${steps})`,
+       ("id","checksum","migration_name","started_at","applied_steps_count")
+     VALUES ('${id}','${checksum}','${escapedName}',CURRENT_TIMESTAMP,0)`,
+  );
+}
+
+async function markFinished(client: RawClient, id: string, steps: number): Promise<void> {
+  await client.$executeRawUnsafe(
+    `UPDATE "_prisma_migrations"
+        SET finished_at = CURRENT_TIMESTAMP, applied_steps_count = ${steps}
+      WHERE id = '${id}'`,
   );
 }
 
@@ -214,6 +247,12 @@ async function recordApplied(
  *
  * BackupService 를 재사용하지 않는 이유: 그쪽은 PrismaService 에 의존하는 Nest 프로바이더인데
  * 마이그레이션은 PrismaService 초기화 도중에 일어나므로 순환 의존이 생긴다.
+ *
+ * 전제조건 (호출자 책임 — 둘 다 실패 시 raw Prisma 에러가 그대로 전파된다):
+ * - destPath 의 부모 디렉터리가 미리 존재해야 한다. VACUUM INTO 는 디렉터리를 만들어주지
+ *   않는다. 없으면 SQLITE_CANTOPEN 계열 에러가 난다.
+ * - destPath 에 파일이 이미 있으면 VACUUM INTO 가 거부한다 ("output file already exists").
+ *   덮어쓰기가 필요하면 호출자가 미리 지우거나, 매번 충돌하지 않는 파일명을 골라야 한다.
  */
 export async function snapshotTo(client: RawClient, destPath: string): Promise<void> {
   // VACUUM INTO 는 prepared parameter 미지원 → 인라인. SQLite 는 '' 로 escape.

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { PrismaClient } from '@prisma/client';
 import {
   applyMigrations,
   checksumOf,
@@ -315,6 +316,27 @@ describe('applyMigrations', () => {
     );
     expect(tables).toEqual([]);
   });
+
+  it('실패한 마이그레이션은 finished_at 이 NULL 인 이력 행을 남긴다 (시도했지만 중단됨 vs 아예 시도 안 함)', async () => {
+    const dir = createMigrationsDir([
+      ['20260101000000_a', 'CREATE TABLE "t" ("id" TEXT); THIS IS NOT SQL;'],
+    ]);
+    await expect(
+      applyMigrations(db.client, dir, ['20260101000000_a']),
+    ).rejects.toThrow(MigrationFailedError);
+
+    // listApplied() 는 finished_at IS NOT NULL 로 걸러내므로 빈 배열이어야 한다 (기존 동작 유지).
+    expect(await listApplied(db.client)).toEqual([]);
+
+    // 하지만 이력 테이블에는 시도했다는 행 자체는 남아 있어야 하고, finished_at 은 NULL 이어야 한다.
+    const rows = await db.client.$queryRawUnsafe<
+      Array<{ migration_name: string; finished_at: string | null }>
+    >(
+      `SELECT migration_name, finished_at FROM "_prisma_migrations" WHERE migration_name = '20260101000000_a'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.finished_at).toBeNull();
+  });
 });
 
 describe('snapshotTo', () => {
@@ -337,6 +359,21 @@ describe('snapshotTo', () => {
 
     expect(fs.existsSync(dest)).toBe(true);
     expect(fs.statSync(dest).size).toBeGreaterThan(0);
+
+    // 파일이 존재하고 크기가 0 보다 크다는 것만으로는 "데이터가 담겼다" 를 증명하지 못한다.
+    // 별도 PrismaClient 로 스냅샷 파일을 직접 열어 데이터를 읽어본다.
+    const snapClient = new PrismaClient({
+      datasources: { db: { url: `file:${dest.replace(/\\/g, '/')}?connection_limit=1` } },
+    });
+    try {
+      await snapClient.$connect();
+      const rows = await snapClient.$queryRawUnsafe<Array<{ id: string }>>(
+        'SELECT id FROM "t"',
+      );
+      expect(rows).toEqual([{ id: 'v1' }]);
+    } finally {
+      await snapClient.$disconnect();
+    }
   });
 
   it("경로에 작은따옴표가 있어도 동작한다", async () => {
@@ -411,5 +448,66 @@ describe('실제 prisma/migrations 적용', () => {
       `SELECT title FROM "autocomplete_terms" WHERE title = '요구사항 분석'`,
     );
     expect(rows).toHaveLength(1);
+  });
+
+  it('중간에 실제 데이터가 있어도 이후 RedefineTables 마이그레이션에서 데이터가 보존된다', async () => {
+    // 앞의 통합 테스트들은 전부 빈 DB 에 적용하기 때문에, RedefineTables 마이그레이션의
+    // "INSERT INTO new_x ... SELECT ... FROM x" 문장이 언제나 0행을 복사한다. 즉 그 경로가
+    // 실제로 동작하는지, 그리고 PRAGMA foreign_keys=OFF 가 DROP TABLE 시점까지 유지되는지는
+    // 이 테스트가 아니면 검증되지 않는다. (커넥션이 여러 개면 PRAGMA 가 무력화되어
+    // ON DELETE CASCADE 로 node_comments/node_history 가 조용히 삭제될 수 있다 — 회귀 방지용.)
+    const dir = path.resolve(__dirname, '../../prisma/migrations');
+    const allNames = listMigrationFiles(dir);
+    // 1번째(initial), 2번째(m1_auth_lockout) 까지만 먼저 적용해 실제 스키마에 데이터를 채운다.
+    const firstTwo = allNames.slice(0, 2);
+    const rest = allNames.slice(2);
+    expect(rest.length).toBeGreaterThan(0);
+
+    await applyMigrations(db.client, dir, firstTwo);
+
+    const userId = 'u1';
+    const projectId = 'p1';
+    const nodeId = 'n1';
+    const commentId = 'c1';
+
+    await db.client.$executeRawUnsafe(
+      `INSERT INTO "users" ("id","username","display_name","password_hash","updated_at")
+       VALUES ('${userId}','tester','Tester','hash','2026-01-01T00:00:00.000Z')`,
+    );
+    await db.client.$executeRawUnsafe(
+      `INSERT INTO "projects" ("id","name","created_by","updated_at")
+       VALUES ('${projectId}','Test Project','${userId}','2026-01-01T00:00:00.000Z')`,
+    );
+    await db.client.$executeRawUnsafe(
+      `INSERT INTO "schedule_nodes"
+         ("id","project_id","parent_id","kind","title","sort_order","depth","created_by","updated_by","updated_at")
+       VALUES ('${nodeId}','${projectId}',NULL,'ITEM','Test Node',1,0,'${userId}','${userId}','2026-01-01T00:00:00.000Z')`,
+    );
+    await db.client.$executeRawUnsafe(
+      `INSERT INTO "node_comments" ("id","node_id","author_id","body","updated_at")
+       VALUES ('${commentId}','${nodeId}','${userId}','a comment','2026-01-01T00:00:00.000Z')`,
+    );
+
+    // 나머지(m2b_node_history_snapshot, m3_node_progress 등 RedefineTables 포함)를 적용한다.
+    await applyMigrations(db.client, dir, rest);
+
+    const nodes = await db.client.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT id FROM "schedule_nodes" WHERE id = '${nodeId}'`,
+    );
+    expect(nodes).toEqual([{ id: nodeId }]);
+
+    // C1 이 고쳐지지 않았다면 이 행이 ON DELETE CASCADE 로 조용히 사라진다.
+    const comments = await db.client.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT id FROM "node_comments" WHERE id = '${commentId}'`,
+    );
+    expect(comments).toEqual([{ id: commentId }]);
+
+    const fkViolations = await db.client.$queryRawUnsafe<unknown[]>('PRAGMA foreign_key_check');
+    expect(fkViolations).toEqual([]);
+
+    const fkStatus = await db.client.$queryRawUnsafe<Array<{ foreign_keys: number }>>(
+      'PRAGMA foreign_keys',
+    );
+    expect(Number(fkStatus[0]!.foreign_keys)).toBe(1);
   });
 });
