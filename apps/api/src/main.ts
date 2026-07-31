@@ -7,8 +7,8 @@ import { AppModule } from './app.module';
 import { DailyLoggerService } from './common/daily-logger.service';
 import { bindPrismaQueryEngine, resolveDatabaseUrl } from './common/db-path';
 import { appendPlainLog } from './common/plain-daily-log';
-import { removeLock, writeLock } from './common/process-lock';
-import { decideLockAcquisition } from './prisma/lock-decision';
+import { removeLock } from './common/process-lock';
+import { acquireLock } from './prisma/lock-decision';
 
 
 function setupEnvironment() {
@@ -40,6 +40,7 @@ function emitBootError(message: string): void {
  * **검사가 반드시 쓰기보다 먼저다.** 순서를 뒤집으면 두 번째 서버가 첫 번째의 PID 를 덮어써
  * 충돌을 아무도 눈치채지 못하고, 두 번째가 종료할 때 잠금이 사라져 첫 번째가 살아 있는데도
  * sp-migrate.exe 가 진행해버린다 (process-lock.ts 의 removeLock() 주석 참고).
+ * 그 순서와 기록 후 되읽어 검증은 acquireLock() 이 담당한다 (src/prisma/lock-decision.ts).
  *
  * 두 가지를 본다.
  *  - 다른 sp-server.exe: 한 DB 를 두 서버가 고치면 데이터가 어긋난다. 부수 효과로 진단도 좋아진다 —
@@ -60,15 +61,21 @@ function emitBootError(message: string): void {
  * 하고, 그마저 PID 재사용으로 어긋날 경우를 위해 "이 파일을 지우라" 는 탈출구를 안내에 함께 싣는다.
  */
 function acquireServerLock(): boolean {
-  const decision = decideLockAcquisition('server');
-  if (decision.kind === 'halt') {
+  const acquisition = acquireLock('server');
+  if (acquisition.kind === 'halt') {
     emitBootError('');
-    emitBootError(decision.notice);
+    emitBootError(acquisition.notice);
     return false;
   }
 
-  writeLock('server');
+  // 잠금을 못 걸었어도 서버는 시작한다. 다만 안전장치가 꺼진 상태를 조용히 넘기지 않는다 —
+  // 이 줄이 없으면 나중에 사고가 났을 때 "그때 잠금이 없었다" 는 사실을 알아낼 방법이 없다.
+  if (acquisition.warning !== undefined) {
+    emitBootError(acquisition.warning);
+  }
 
+  // 잠금을 쥐지 못한 경우에도 핸들러는 그대로 등록한다. removeLock() 이 소유권을 확인하므로
+  // 남의 잠금을 지울 위험이 없고, 분기를 두지 않는 편이 종료 경로가 단순하다.
   process.on('exit', () => {
     removeLock('server');
   });

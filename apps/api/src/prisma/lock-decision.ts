@@ -1,4 +1,10 @@
-import { checkLock, type LockRole } from '../common/process-lock';
+import {
+  checkLock,
+  readLock,
+  resolveLockPath,
+  writeLock,
+  type LockRole,
+} from '../common/process-lock';
 import {
   formatMigrateInProgressNotice,
   formatServerAlreadyRunningNotice,
@@ -66,4 +72,70 @@ export function decideLockAcquisition(role: LockRole): LockDecision {
   }
 
   return { kind: 'proceed' };
+}
+
+export type LockAcquisition =
+  | { kind: 'acquired'; held: boolean; warning?: string }
+  | { kind: 'halt'; exitCode: number; notice: string };
+
+/**
+ * 확인 → 기록 → **되읽어 검증** 순으로 잠금을 확보한다. 두 exe 의 유일한 잠금 획득 경로다.
+ *
+ * 확인과 기록이 원자적이지 않다는 점(TOCTOU)이 남는 문제였다. 같은 순간에 뜬 두 프로세스가 둘 다
+ * 'free' 를 읽고 둘 다 기록하면 파일에는 나중에 쓴 쪽의 PID 만 남는데, 소유권 기반 해제만으로는
+ * "먼저 쓴 쪽" 이 진행하는 것을 막지 못한다 — 나중 쪽이 끝나며 잠금을 지우는 순간 먼저 쓴 쪽은
+ * DROP TABLE 한복판인데 아무 표시도 남지 않는다.
+ *
+ * 되읽어 검증이 이 경우를 결정적으로 가른다. 기록 직후 파일에 내 PID 가 남아 있지 않다면 경쟁에서
+ * 진 것이므로, 사전 확인이 잡아냈을 것과 같은 안내로 멈춘다. 그래서 두 프로세스 중 정확히 하나만
+ * 진행한다. 실제로 동시 기록이 없었다면 되읽기는 항상 내 PID 이므로 이 검증이 정상 실행을
+ * 막는 일은 없다.
+ *
+ * 남는 창: 낡은 잠금 정리 경로(readLock 으로 죽은 PID 확인 → 덮어쓰기)는 여전히 원자적이지 않다.
+ * 다만 그 경쟁에서 지는 쪽도 이 검증에 걸려 멈추므로 데이터 손실로 이어지지 않는다.
+ *
+ * `held` 가 false 인 'acquired': 잠금 파일을 만들지 못했지만(권한/디스크) 계속 진행하는 경우다.
+ * 안전장치를 못 걸었다고 폐쇄망에서 서버 시작이나 업그레이드 자체를 막으면, 안전장치가 서비스
+ * 중단 사유로 바뀐다. 대신 `warning` 을 돌려주므로 호출자가 화면과 로그에 남긴다 — 안전장치가
+ * 조용히 꺼진 채로 돌아가는 상황을 아무도 모르게 두지 않는다.
+ */
+export function acquireLock(role: LockRole): LockAcquisition {
+  const pre = decideLockAcquisition(role);
+  if (pre.kind === 'halt') {
+    return pre;
+  }
+
+  const lockPath = resolveLockPath(role);
+  if (!writeLock(role)) {
+    return {
+      kind: 'acquired',
+      held: false,
+      warning:
+        `경고: 잠금 파일을 만들지 못했습니다 (${lockPath}). 다른 프로그램이 같은 데이터베이스를 ` +
+        '동시에 사용하는 것을 막을 수 없는 상태로 계속 진행합니다. 이 폴더의 쓰기 권한과 디스크 ' +
+        '여유 공간을 확인하십시오.',
+    };
+  }
+
+  if (readLock(role) === process.pid) {
+    return { kind: 'acquired', held: true };
+  }
+
+  // 내가 쓴 값이 남아 있지 않다 = 같은 순간 다른 프로세스가 덮어썼다. 그쪽이 살아 있으면
+  // 사전 확인과 같은 안내로 멈춘다 (여기서 잠금을 지우려 하지 않는다 — removeLock() 은 소유권을
+  // 확인하므로 시도해도 지워지지 않지만, 애초에 남의 잠금을 건드리려는 코드를 두지 않는다).
+  const post = decideLockAcquisition(role);
+  if (post.kind === 'halt') {
+    return post;
+  }
+
+  // 덮어쓴 쪽이 이미 죽었거나 내용이 깨진 드문 경우. 막을 근거는 없지만 잠금을 쥐었다고 말할 수도
+  // 없으므로, 경고만 남기고 진행한다.
+  return {
+    kind: 'acquired',
+    held: false,
+    warning:
+      `경고: 잠금 파일(${lockPath})의 내용이 예상과 다릅니다. 다른 프로그램이 같은 데이터베이스를 ` +
+      '동시에 사용하는 것을 막을 수 없는 상태로 계속 진행합니다.',
+  };
 }

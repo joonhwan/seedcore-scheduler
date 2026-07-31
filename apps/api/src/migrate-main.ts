@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { bindPrismaQueryEngine, resolveDatabaseUrl, resolveDbFilePath } from './common/db-path';
 import { appendPlainLog } from './common/plain-daily-log';
-import { removeLock, writeLock } from './common/process-lock';
+import { removeLock } from './common/process-lock';
 import {
   MigrationFailedError,
   applyMigrations,
@@ -12,7 +12,7 @@ import {
 } from './prisma/migration-runner';
 import { createMigrationClient } from './prisma/migration-client';
 import { decideMigrate } from './prisma/migrate-decision';
-import { decideLockAcquisition } from './prisma/lock-decision';
+import { acquireLock } from './prisma/lock-decision';
 import {
   formatBackupFailedNotice,
   formatMigrateFailureNotice,
@@ -130,20 +130,22 @@ export async function runMigrate(): Promise<number> {
     //
     // decideMigrate() 뒤에 두는 것도 의도적이다. 적용할 것이 없는(=up-to-date) 상태에서는 서버가
     // 켜져 있는 것이 정상이며, 그때 sp-migrate.exe 는 "이미 최신입니다" 로 조용히 끝나야 한다.
-    // 살아 있는 sp-server.exe 도, 겹쳐 도는 다른 sp-migrate.exe 도 막는다 (판정은
-    // decideLockAcquisition() 이 하고, sp-server.exe 부팅 경로와 같은 코드를 쓴다).
-    const lock = decideLockAcquisition('migrate');
+    // 살아 있는 sp-server.exe 도, 겹쳐 도는 다른 sp-migrate.exe 도 막는다. 확인 → 기록 →
+    // 되읽어 검증을 acquireLock() 이 한 경로로 묶고, sp-server.exe 부팅 경로와 같은 코드를 쓴다.
+    // 여기서 잠금을 잡으면 아래 백업부터가 쓰기 구간이다 — 해제는 finally 에서.
+    const lock = acquireLock('migrate');
     if (lock.kind === 'halt') {
       emitError('');
       emitError(lock.notice);
       return lock.exitCode;
     }
-
-    // 이제부터가 실제 쓰기 구간이다. 여기서 잠금을 잡아 sp-server.exe 부팅과 다른 sp-migrate.exe
-    // 실행을 막는다. 해제는 아래 finally 에서 — 예외로 빠져나가는 경로까지 반드시 지나간다.
-    // 잠금을 못 만들었다고 업그레이드를 포기하지는 않는다 (writeLock() 은 실패해도 예외를 던지지
-    // 않는다). 안전장치가 폐쇄망에서 업그레이드 자체를 막는 사유가 되면 안 된다.
-    heldMigrateLock = writeLock('migrate');
+    // 잠금을 못 걸었어도 업그레이드는 진행한다(폐쇄망에서 업그레이드 자체가 막히는 편이 더 나쁘다).
+    // 다만 안전장치가 꺼진 상태를 조용히 넘기지 않는다.
+    if (lock.warning !== undefined) {
+      emitError(lock.warning);
+      emit('');
+    }
+    heldMigrateLock = lock.held;
 
     const backupPath = resolvePreMigrateBackupPath(new Date());
     emit('업그레이드 전 백업을 만듭니다...');

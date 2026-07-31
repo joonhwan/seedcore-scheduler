@@ -292,6 +292,11 @@ export function formatMigrateInProgressNotice(params: {
     '',
     `  "업그레이드 완료" 가 표시된 뒤에 ${retryCommand} 를 실행하십시오.`,
     '',
+    // 위에서 "죽이지 말고 기다려라" 고 해 놓고 바로 "이 파일을 지워라" 를 붙이면, 참지 못한
+    // 관리자가 뒷부분만 읽고 진행 중인 업그레이드를 끊어버릴 수 있다. 조건을 먼저 못박는다.
+    '  ※ 아래는 sp-migrate.exe 가 실제로는 돌고 있지 않은 경우에만 해당합니다.',
+    '     실행 중인 sp-migrate.exe 창이 하나도 없는 것을 확인한 뒤에만 하십시오.',
+    '',
     ...staleLockEscapeLines({
       ownerName: 'sp-migrate.exe',
       lockPath,

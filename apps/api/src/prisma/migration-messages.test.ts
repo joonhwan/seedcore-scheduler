@@ -379,6 +379,15 @@ describe('formatMigrateInProgressNotice', () => {
     );
   });
 
+  it('탈출구를 쓰기 전에 실행 중인 창이 없는지 확인하라는 조건을 먼저 못박는다', () => {
+    // "기다리라" 와 "지워라" 가 나란히 있으면, 참지 못한 관리자가 뒷부분만 읽고 진행 중인
+    // 업그레이드를 끊을 수 있다.
+    const escapeIndex = notice.indexOf('이 파일을 지운 뒤');
+    const guardIndex = notice.indexOf('실행 중인 sp-migrate.exe 창이 하나도 없는 것을 확인한 뒤에만');
+    expect(guardIndex).toBeGreaterThan(-1);
+    expect(guardIndex).toBeLessThan(escapeIndex);
+  });
+
   it('탈출구는 마이그레이션 잠금 파일 경로를 가리키고, 다시 실행할 대상도 맞춘다', () => {
     expect(notice).toContain('D:/data/sp-migrate.lock');
     expect(notice).toContain('sp-migrate.exe 를 이미 종료한 것이 확실하다면');

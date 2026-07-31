@@ -4,16 +4,11 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   checkLock,
-  checkServerLock,
   isProcessAlive,
   readLock,
-  readServerLock,
   removeLock,
-  removeServerLock,
   resolveLockPath,
-  resolveServerLockPath,
   writeLock,
-  writeServerLock,
 } from './process-lock';
 
 // 어떤 OS 에서도 배정되지 않는 값 → process.kill(pid, 0) 이 확실히 ESRCH 를 낸다.
@@ -177,22 +172,6 @@ describe('process-lock', () => {
     it('잠금 파일이 아예 없으면 free 다', () => {
       expect(checkLock('server')).toEqual({ kind: 'free' });
       expect(checkLock('migrate')).toEqual({ kind: 'free' });
-    });
-  });
-
-  describe('이전 이름 (server 전용 API)', () => {
-    // role 파라미터가 생기기 전의 호출부/테스트가 그대로 동작해야 한다.
-    it('server 역할로 위임한다', () => {
-      expect(resolveServerLockPath()).toBe(resolveLockPath('server'));
-      expect(writeServerLock(777)).toBe(true);
-      expect(readServerLock()).toBe(777);
-      removeServerLock(777);
-      expect(readServerLock()).toBeUndefined();
-
-      // 판정도 위임한다 — 살아 있는 PID 여야 'locked' 가 나온다.
-      writeServerLock(process.pid);
-      expect(checkServerLock().kind).toBe('locked');
-      removeServerLock();
     });
   });
 });

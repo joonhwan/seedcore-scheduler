@@ -64,15 +64,16 @@ export function resolveLockPath(role: LockRole): string {
 /**
  * 잠금 파일을 만든다.
  *
- * 호출자는 반드시 **먼저 checkLock() 으로 충돌을 확인한 뒤** 이 함수를 불러야 한다. 여기서는
- * 이미 있는 파일을 그냥 덮어쓴다 — 낡은(죽은 PID) 잠금을 정리하는 경로가 필요하기 때문이다.
- * 순서를 뒤집으면 두 번째 인스턴스가 첫 번째의 PID 를 지워버리고, 그 뒤에 두 번째가 끝나면서
- * 자기 잠금을 지우는 순간 첫 번째가 살아 있는데도 잠금이 사라진다.
+ * 이 함수를 직접 부르지 말고 `acquireLock()`(src/prisma/lock-decision.ts)을 쓰십시오. 그쪽이
+ * "확인 → 기록 → 되읽어 검증" 을 한 경로로 묶는다. 여기서는 이미 있는 파일을 그냥 덮어쓴다 —
+ * 낡은(죽은 PID) 잠금을 정리하는 경로가 필요하기 때문이다. 확인 없이 부르면 두 번째 인스턴스가
+ * 첫 번째의 PID 를 지워버리고, 그 뒤에 두 번째가 끝나면서 자기 잠금을 지우는 순간 첫 번째가
+ * 살아 있는데도 잠금이 사라진다.
  *
- * 검사와 쓰기가 원자적이지 않은 점(TOCTOU)은 알고 남겨 둔다. 두 실행 파일은 관리자가 손으로
- * 실행하는 도구라 경쟁 구간이 사람의 조작 속도 단위이고, O_EXCL 로 만들어도 낡은 잠금을 정리하려면
- * 결국 "확인 후 삭제" 가 필요해 같은 창이 남는다. 여기서 막으려는 것은 악의적 경쟁이 아니라
- * "서버를 끄지 않고 업그레이드" 같은 운영 실수다.
+ * 확인과 기록이 원자적이지 않은 점(TOCTOU)은 `acquireLock()` 의 되읽어 검증이 처리한다: 같은 순간
+ * 두 프로세스가 모두 기록했다면 파일에 자기 PID 가 남은 하나만 진행하고 나머지는 멈춘다.
+ *
+ * 여기서 막으려는 것은 악의적 경쟁이 아니라 "서버를 끄지 않고 업그레이드" 같은 운영 실수다.
  *
  * 실패해도 예외를 던지지 않는다(호출자가 판단할 수 있게 boolean 을 돌려준다). 잠금을 못 만들었다고
  * 서버 시작을 막으면, 안전장치가 서비스 중단 사유로 바뀐다.
@@ -195,32 +196,4 @@ export function checkLock(role: LockRole): LockCheck {
   return liveness.note === undefined
     ? { kind: 'locked', role, pid, lockPath }
     : { kind: 'locked', role, pid, lockPath, note: liveness.note };
-}
-
-// ── 이전 이름 (role 파라미터가 생기기 전 API) ────────────────────────────────
-// 서버 잠금만 있던 시절의 호출부/테스트가 그대로 동작하도록 남겨 둔다.
-
-/** @deprecated resolveLockPath('server') 를 쓰십시오. */
-export function resolveServerLockPath(): string {
-  return resolveLockPath('server');
-}
-
-/** @deprecated writeLock('server', pid) 를 쓰십시오. */
-export function writeServerLock(pid: number = process.pid): boolean {
-  return writeLock('server', pid);
-}
-
-/** @deprecated removeLock('server', pid) 를 쓰십시오. */
-export function removeServerLock(pid: number = process.pid): void {
-  removeLock('server', pid);
-}
-
-/** @deprecated readLock('server') 를 쓰십시오. */
-export function readServerLock(): number | undefined {
-  return readLock('server');
-}
-
-/** @deprecated checkLock('server') 를 쓰십시오. */
-export function checkServerLock(): LockCheck {
-  return checkLock('server');
 }
