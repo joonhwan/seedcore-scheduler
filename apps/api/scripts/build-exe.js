@@ -66,12 +66,18 @@ async function main() {
   const serverPublicDir = path.join(serverBundleDir, 'public');
   copyDirRecursive(apiPublic, serverPublicDir);
 
+  // 마이그레이션 SQL 을 번들 디렉터리로 복사해 pkg assets 로 내장한다.
+  // sp-server.exe 도 판정에 파일 목록이 필요하므로 함께 내장한다 (SQL 내용은 쓰지 않지만 이름 비교용).
+  const migrationsSrcDir = path.join(apiDir, 'prisma', 'migrations');
+  copyDirRecursive(migrationsSrcDir, path.join(serverBundleDir, 'migrations'));
+  console.log('✅ 마이그레이션 SQL 내장 (server)');
+
   // PKG가 정적 자원을 .exe 내부 가상 파일시스템(snapshot)으로 임베딩하도록 package.json 생성
   const serverPkgConfig = {
     name: 'seedcore-scheduler-server',
     bin: 'index.js',
     pkg: {
-      assets: ['public/**/*'],
+      assets: ['public/**/*', 'migrations/**/*'],
     },
   };
   fs.writeFileSync(
@@ -83,6 +89,24 @@ async function main() {
   run(`npx ncc build dist/scripts/backup-cli.js -o dist-bundle/backup --no-cache`, apiDir);
   // 암호 재설정 CLI 번들링
   run(`npx ncc build dist/scripts/reset-admin-cli.js -o dist-bundle/reset-admin --no-cache`, apiDir);
+
+  // 마이그레이션 CLI 번들링 (src/migrate-main.ts → nest build 산출물)
+  const migrateBundleDir = path.join(bundleOutDir, 'migrate');
+  run(`npx ncc build dist/migrate-main.js -o dist-bundle/migrate --no-cache`, apiDir);
+  copyDirRecursive(migrationsSrcDir, path.join(migrateBundleDir, 'migrations'));
+
+  const migratePkgConfig = {
+    name: 'seedcore-scheduler-migrate',
+    bin: 'index.js',
+    pkg: {
+      assets: ['migrations/**/*'],
+    },
+  };
+  fs.writeFileSync(
+    path.join(migrateBundleDir, 'package.json'),
+    JSON.stringify(migratePkgConfig, null, 2),
+  );
+  console.log('✅ 마이그레이션 SQL 내장 (migrate)');
 
   log('5/5. PKG를 이용한 Windows 단일 Executable (.exe) 생성 (100% 자원 내장)');
   if (!fs.existsSync(outputDistDir)) {
@@ -98,6 +122,8 @@ async function main() {
   run(`npx pkg dist-bundle/backup/index.js --target ${pkgTarget} --output ${path.join(outputDistDir, 'sp-backup.exe')}`, apiDir);
   // 3) sp-reset-admin.exe
   run(`npx pkg dist-bundle/reset-admin/index.js --target ${pkgTarget} --output ${path.join(outputDistDir, 'sp-reset-admin.exe')}`, apiDir);
+  // 4) sp-migrate.exe (마이그레이션 SQL 내장)
+  run(`npx pkg dist-bundle/migrate/package.json --target ${pkgTarget} --output ${path.join(outputDistDir, 'sp-migrate.exe')}`, apiDir);
 
   // Prisma Query Engine 바이너리 탐색 및 복사
   function findEngineFiles(dir, fileList = []) {
@@ -147,7 +173,8 @@ async function main() {
   console.log(`    1) ${path.join(outputDistDir, 'sp-server.exe')}`);
   console.log(`    2) ${path.join(outputDistDir, 'sp-backup.exe')}`);
   console.log(`    3) ${path.join(outputDistDir, 'sp-reset-admin.exe')}`);
-  console.log(`    4) ${path.join(outputDistDir, 'README.txt')}`);
+  console.log(`    4) ${path.join(outputDistDir, 'sp-migrate.exe')}`);
+  console.log(`    5) ${path.join(outputDistDir, 'README.txt')}`);
   console.log('====================================================\n');
 
 
