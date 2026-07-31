@@ -15,6 +15,7 @@ import {
   listMigrationFiles,
   listPending,
   MigrationFailedError,
+  resolveMigrationsDir,
   snapshotTo,
 } from './migration-runner';
 import { createTempDb, type TempDb } from './test-helpers';
@@ -530,5 +531,12 @@ describe('실제 prisma/migrations 적용', () => {
       'PRAGMA foreign_keys',
     );
     expect(Number(fkStatus[0]!.foreign_keys)).toBe(1);
+  });
+});
+
+describe('resolveMigrationsDir', () => {
+  it('로컬 개발 환경에서 실제 마이그레이션 디렉터리를 찾는다', () => {
+    const dir = resolveMigrationsDir();
+    expect(fs.existsSync(path.join(dir, 'migration_lock.toml'))).toBe(true);
   });
 });

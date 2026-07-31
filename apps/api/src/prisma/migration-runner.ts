@@ -259,3 +259,27 @@ export async function snapshotTo(client: RawClient, destPath: string): Promise<v
   const escaped = destPath.replace(/'/g, "''");
   await client.$executeRawUnsafe(`VACUUM INTO '${escaped}'`);
 }
+
+/**
+ * migrations 디렉터리 위치를 찾는다.
+ *
+ * exe 에서는 pkg snapshot 안에 'migrations' 로 내장되고, 로컬에서는 prisma/migrations 에 있다.
+ * 후보 경로 중 존재하는 첫 항목을 쓰는 방식은 app.module.ts:26-30 의 정적 자원 탐색과 같은 패턴이다.
+ */
+export function resolveMigrationsDir(): string {
+  const candidates = [
+    path.join(__dirname, 'migrations'),
+    path.join(__dirname, '..', 'migrations'),
+    path.join(process.cwd(), 'migrations'),
+    path.join(__dirname, '..', '..', 'prisma', 'migrations'),
+    path.join(process.cwd(), 'prisma', 'migrations'),
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) {
+      return dir;
+    }
+  }
+  throw new Error(
+    `마이그레이션 디렉터리를 찾을 수 없습니다. 탐색한 경로:\n${candidates.join('\n')}`,
+  );
+}

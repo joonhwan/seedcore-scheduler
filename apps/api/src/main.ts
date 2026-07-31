@@ -2,39 +2,17 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import * as path from 'path';
-import * as fs from 'fs';
 import * as os from 'os';
 import { AppModule } from './app.module';
 import { DailyLoggerService } from './common/daily-logger.service';
+import { bindPrismaQueryEngine, resolveDatabaseUrl } from './common/db-path';
 
 
 function setupEnvironment() {
   if (!process.env.DATABASE_URL) {
-    const dataDir = path.join(process.cwd(), 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    const dbPath = path.join(dataDir, 'sam.db');
-    // Prisma SQLite connection string format
-    process.env.DATABASE_URL = `file:${dbPath.replace(/\\/g, '/')}`;
+    process.env.DATABASE_URL = resolveDatabaseUrl();
   }
-
-  // Prisma Engine 바이너리 경로 바인딩 (exe 동일 디렉터리 탐색)
-  if (!process.env.PRISMA_QUERY_ENGINE_LIBRARY) {
-    const candidateFiles = [
-      path.join(process.cwd(), 'query_engine-windows.dll.node'),
-      path.join(path.dirname(process.execPath), 'query_engine-windows.dll.node'),
-      path.join(__dirname, 'query_engine-windows.dll.node'),
-      path.join(__dirname, 'client', 'query_engine-windows.dll.node'),
-    ];
-    for (const f of candidateFiles) {
-      if (fs.existsSync(f)) {
-        process.env.PRISMA_QUERY_ENGINE_LIBRARY = f;
-        break;
-      }
-    }
-  }
+  bindPrismaQueryEngine();
 }
 
 
