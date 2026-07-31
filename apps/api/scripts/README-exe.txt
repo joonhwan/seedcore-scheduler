@@ -20,7 +20,12 @@
                           sp-migrate.exe 의 업그레이드 기록(백업 경로, 실패 안내)도 같은 파일에 함께 남습니다.
   ./backups/            : 수동 백업(sp-backup.exe backup) 및 업그레이드 직전 백업 저장 폴더
                           - ./backups/sam_YYYYMMDD_HHMMSS.db          : sp-backup.exe 로 만든 수동 백업
+                          - ./backups/sam_before_restore_YYYYMMDD_HHMMSS.db : sp-backup.exe restore 가
+                                                                        복구 직전에 자동으로 남기는 백업
                           - ./backups/pre-migrate/sam_YYYYMMDD_HHMMSS.db : sp-migrate.exe 가 업그레이드 직전에 만드는 백업
+                          * 위 두 가지 백업 옆에 같은 이름의 "-wal" 파일이 함께 생길 수 있습니다.
+                            아직 본체에 반영되지 않은 최근 저장 내용이 들어 있는 짝꿍 파일이므로
+                            지우지 마십시오. 복구할 때 자동으로 함께 되돌아갑니다.
   ./data/backup/        : 매일 정해진 시각에 자동으로 만들어지는 백업 폴더
                           (./data/backup/YYYYMMDD/app.db.gz 형태, 기본 30일 보존 후 자동 삭제)
                           * 위 ./backups/ 와는 다른 폴더입니다. 자동 백업의 보존 기간 정리는
@@ -51,7 +56,10 @@
   프로그램이 같은 데이터베이스를 고치면, 그때 저장된 내용이 사라지거나 구조가 절반만 바뀐 상태로
   남을 수 있습니다. 이 손실은 업그레이드 직전 백업으로도 되돌릴 수 없습니다.
 
-  * sp-backup.exe 와 sp-reset-admin.exe 는 이 제한과 무관합니다 (구조를 바꾸지 않습니다).
+  * sp-reset-admin.exe 는 이 제한과 무관합니다 (구조를 바꾸지 않습니다).
+  * sp-backup.exe 의 backup / list 도 마찬가지로 언제든 실행할 수 있습니다. 다만 restore 는
+    데이터베이스 파일을 통째로 바꿔치는 작업이라 예외입니다 — sp-server.exe 나 sp-migrate.exe 가
+    실행 중이면 아무 작업도 하지 않고 안내를 출력한 뒤 종료 코드 7 로 멈춥니다.
 
 --------------------------------------------------------------------
 3. 기본 관리자 계정 정보
@@ -146,21 +154,31 @@
               표시된 backups/pre-migrate/ 백업 파일로 아래 순서대로 복구하십시오.
 
                 1) sp-server.exe 와 sp-migrate.exe 가 모두 종료된 것을 확인합니다.
-                2) 아래 세 파일을 **모두** 지웁니다. (화면 안내에 경로가 그대로 나옵니다)
+                2) sp-backup.exe 로 백업 목록을 확인한 뒤, 화면에 표시된 파일 이름을
+                   폴더까지 그대로 넘겨 복구합니다.
+                     > sp-backup.exe list
+                     > sp-backup.exe restore pre-migrate/sam_20260723_120000.db
+                   * 이 명령이 data\sam.db-wal / data\sam.db-shm 정리까지 대신 합니다.
+                     아래 [직접 복구하는 방법]의 파일 삭제를 따로 하지 않아도 됩니다.
+                   * 복구 직전의 현재 DB 도 backups\ 에 한 번 더 자동 저장되므로,
+                     복구한 뒤 마음이 바뀌어도 되돌릴 수 있습니다.
+                   * sp-server.exe 나 sp-migrate.exe 가 아직 실행 중이면 이 명령은 아무
+                     작업도 하지 않고 종료 코드 7 로 멈춥니다. 종료한 뒤 다시 실행하십시오.
+                3) sp-server.exe 를 실행해 정상 동작을 확인한 뒤, 원인을 담당 개발팀에
+                   문의하십시오.
+
+              [직접 복구하는 방법] sp-backup.exe 를 쓸 수 없는 상황에서만 사용하십시오.
+                (화면 안내에도 같은 내용과 전체 경로가 그대로 나옵니다)
+                1) 아래 세 파일을 **모두** 지웁니다.
                      - data\sam.db
                      - data\sam.db-wal
                      - data\sam.db-shm
                    * -wal 파일을 남겨두면 안 됩니다. 다음 실행 때 SQLite 가 그 -wal 의
                      내용을 복원한 DB 에 다시 얹어, 절반만 적용된 상태가 되살아나거나
                      복원한 백업 자체가 깨질 수 있습니다.
-                3) 화면에 표시된 backups\pre-migrate\sam_*.db 파일을 탐색기에서 복사해
+                2) 화면에 표시된 backups\pre-migrate\sam_*.db 파일을 탐색기에서 복사해
                    data\sam.db 라는 이름으로 붙여넣습니다.
-                4) sp-server.exe 를 실행해 정상 동작을 확인한 뒤, 원인을 담당 개발팀에
-                   문의하십시오.
-
-              * 이 복구에 sp-backup.exe restore 를 쓰지 마십시오. 그 명령은
-                backups/pre-migrate/ 를 목록에 보여주지 않으며, 위 2)의 -wal/-shm 삭제도
-                하지 않습니다. 업그레이드 실패 복구는 위 절차대로 파일을 직접 다루십시오.
+                3) sp-server.exe 를 실행해 정상 동작을 확인합니다.
       2 : DB 가 비어 있습니다. DB 를 새로 만드는 것은 sp-migrate.exe 의 역할이 아닙니다.
           sp-server.exe 를 먼저 실행해 DB 를 만드십시오.
       4 : 오래된 방식으로 만들어진 DB 라 지원하지 않습니다. 담당 개발팀에 문의하십시오.
@@ -183,7 +201,8 @@
 
     * 코드 2 는 sp-migrate.exe 에서만, 코드 3 은 sp-server.exe 에서만 나옵니다.
       코드 7 은 두 실행 파일 모두에서 나오며, 뜻은 같습니다 — "다른 프로그램이 데이터베이스를
-      쓰고 있어 시작하지 않았다".
+      쓰고 있어 시작하지 않았다". sp-backup.exe restore 도 같은 뜻으로 7 을 씁니다
+      (5절 [A] 참고).
 
 [업그레이드 관련 주의 사항 (알아두어야 할 두 가지)]
 
@@ -197,7 +216,7 @@
       이력에는 아직 안 된 것으로 남아, 다음 실행 때 같은 업그레이드를 처음부터 다시
       시도합니다. 이런 상황을 만나면 화면에 표시된 backups/pre-migrate/ 백업으로
       복구한 뒤 담당 개발팀에 문의하십시오. 복구 절차는 위 [종료 코드 안내]
-      sp-migrate.exe 1번 (나) 항목과 같습니다 (파일 세 개 삭제 후 직접 복사).
+      sp-migrate.exe 1번 (나) 항목과 같습니다 (sp-backup.exe restore 사용).
 
 --------------------------------------------------------------------
 5. 관리자 보조 도구 사용 설명서
@@ -205,17 +224,36 @@
 [A] DB 백업 및 특정 시점 복구 (sp-backup.exe)
     - 수동 백업 수행 (backups/ 폴더에 sam_YYYYMMDD_HHMMSS.db 스냅샷 생성):
       > sp-backup.exe backup
+      * 같은 이름의 "-wal" 파일이 함께 만들어질 수 있습니다. 백업의 일부이므로
+        지우지 마십시오 (아직 본체에 반영되지 않은 최근 저장 내용이 여기 들어 있습니다).
 
     - 백업 목록 확인:
       > sp-backup.exe list
+      * backups/ 바로 아래의 수동 백업과 backups/pre-migrate/ 의 업그레이드 직전 백업을
+        모두 보여주며, 종류별로 묶어 표시합니다. 목록 맨 아래에 그대로 복사해 쓸 수 있는
+        restore 명령 예시가 함께 나옵니다.
 
     - 특정 날짜 백업 파일로 DB 복구 (복구 전 현재 DB는 자동 안전 백업됨):
       > sp-backup.exe restore sam_20260723_120000.db
+      > sp-backup.exe restore pre-migrate/sam_20260723_120000.db
+      * list 에 보이는 이름을 하위 폴더까지 그대로 넘기십시오.
+      * 복구 전 현재 DB 는 backups/sam_before_restore_*.db 로 자동 저장됩니다
+        (-wal 짝꿍 파일까지 함께 저장하므로 그대로 되돌릴 수 있습니다).
+        화면에 되돌리는 명령이 그대로 표시됩니다.
+      * 복구할 때 data/sam.db-wal 과 data/sam.db-shm 을 자동으로 정리합니다.
+        (이 정리를 하지 않으면 SQLite 가 옛 데이터를 복구한 DB 위에 다시 얹어
+         복구가 무효가 되거나 파일이 깨집니다. 직접 지우실 필요 없습니다.)
+      * sp-server.exe 나 sp-migrate.exe 가 실행 중이면 아무 작업도 하지 않고 안내를
+        출력한 뒤 종료 코드 7 로 멈춥니다. 두 프로그램을 먼저 종료하십시오.
+        종료한 것이 확실한데도 계속 7 이 나오면 잠금 파일(data\sp-server.lock 또는
+        data\sp-migrate.lock)이 남은 것이며, 화면 안내에 지울 파일의 전체 경로가 나옵니다.
       * 복구 후 sp-server.exe를 재시작해 주세요.
-      * 이 명령은 backups/ 폴더 바로 아래의 파일만 다룹니다. 하위 폴더인
-        backups/pre-migrate/ 의 업그레이드 직전 백업은 list 에도 나오지 않습니다.
-        업그레이드 실패 복구는 위 4절 [종료 코드 안내] sp-migrate.exe 1번 (나) 항목의
-        절차(파일 세 개 삭제 후 직접 복사)를 따르십시오.
+
+    [종료 코드]
+      0 : 정상 처리
+      1 : 백업 파일을 찾을 수 없는 등 입력 오류 (DB 는 변경되지 않았습니다)
+      7 : sp-server.exe 또는 sp-migrate.exe 가 실행 중이라 복구하지 않았습니다
+          (DB 도 백업 파일도 전혀 변경되지 않았습니다)
 
 [B] 관리자 비밀번호 재설정 (sp-reset-admin.exe)
     - sp-server.exe 가 실행 중일 때 (또는 최초 구동되어 DB가 생성된 후) 동작합니다.
