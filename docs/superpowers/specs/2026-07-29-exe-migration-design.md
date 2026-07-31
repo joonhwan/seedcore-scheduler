@@ -111,12 +111,25 @@ if (tables.length === 0) {   // users 가 있으면 DDL 블록 전체를 건너�
 
 | 구성 요소 | 위치 | 역할 | 의존 |
 |---|---|---|---|
-| `MigrationRunner` | `apps/api/src/prisma/migration-runner.ts` (신규) | 이력 읽기, 미적용 목록 산출, SQL 문장 분할, 순차 적용 | `PrismaClient` 인스턴스 + 디렉터리 경로. **Nest 의존 없음** |
+| `MigrationRunner` | `apps/api/src/prisma/migration-runner.ts` (신규) | 이력 읽기, 미적용 목록 산출, 순차 적용, `VACUUM INTO` 스냅샷 | `PrismaClient` 인스턴스 + 디렉터리 경로. **Nest 의존 없음** |
 | `resolveMigrationsDir()` | `apps/api/src/prisma/migration-runner.ts` | exe/로컬 양쪽에서 `migrations/` 위치 탐색 | `app.module.ts:26-30` 의 후보 경로 패턴 재사용 |
+| `splitSqlStatements()` | `apps/api/src/prisma/sql-statements.ts` (신규) | `migration.sql` 을 실행 가능한 문장 배열로 분할 (문자열 리터럴/`--` 주석 처리) | 없음 (순수 함수) |
+| **`decideBoot()`** | `apps/api/src/prisma/boot-decision.ts` (신규) | `sp-server.exe` 의 DB 상태 판정. 부작용 없이 `boot` / `apply` / `halt(exitCode, notice)` 판별 유니온을 돌려준다 | `MigrationRunner` + `migration-messages` |
+| **`decideMigrate()`** | `apps/api/src/prisma/migrate-decision.ts` (신규) | `sp-migrate.exe` 의 DB 상태 판정. `decideBoot()` 과 **같은 판정 순서**를 거울처럼 유지한다 (다른 점은 빈 DB → exit 2) | `MigrationRunner` + `migration-messages` |
+| `migration-messages.ts` | `apps/api/src/prisma/migration-messages.ts` (신규) | 관리자에게 보여줄 **모든 한글 안내 문구**를 한곳에 모은 순수 포매터. 문구 자체를 테스트로 고정한다 | 없음 (순수 함수) |
+| `createMigrationClient()` | `apps/api/src/prisma/migration-client.ts` (신규) | `applyMigrations()` 에 넘길 client 를 항상 `connection_limit=1` 로 만든다 (§6 의 PRAGMA 단일 커넥션 요구를 생성 경로로 강제) | `PrismaClient` |
 | `resolveDatabaseUrl()` | `apps/api/src/common/db-path.ts` (신규, `main.ts:13-20` 에서 추출) | DB 파일 경로 결정 | — |
-| `PrismaService` | `apps/api/src/prisma/prisma.service.ts` (수정) | 부팅 시 판정. 빈 DB 면 직접 적용, 기존 DB 면 안내 후 종료 | `MigrationRunner` |
-| `migrate-main.ts` | `apps/api/src/migrate-main.ts` (신규) → `sp-migrate.exe` | 백업 → 적용 → 결과 리포트 | `MigrationRunner` |
+| `appendPlainLog()` | `apps/api/src/common/plain-daily-log.ts` (신규) | Nest 없이 도는 `sp-migrate.exe` 가 `DailyLoggerService` 와 같은 파일/형식으로 로그를 남긴다 (§3 의 "로그 파일에도 기록" 요구) | 없음 |
+| `PrismaService` | `apps/api/src/prisma/prisma.service.ts` (수정) | 부팅 시 `decideBoot()` 결과를 exit code / 출력으로 옮긴다. 빈 DB 면 직접 적용 | `decideBoot`, `MigrationRunner`, `createMigrationClient` |
+| `migrate-main.ts` | `apps/api/src/migrate-main.ts` (신규) → `sp-migrate.exe` | `decideMigrate()` → 백업 → 적용 → 결과 리포트 | `decideMigrate`, `MigrationRunner`, `createMigrationClient` |
 | `build-exe.js` | (수정) | `migrations/**` 를 pkg asset 으로 내장, `sp-migrate.exe` 번들 추가 | — |
+
+**판정 계층(`boot-decision.ts` / `migrate-decision.ts`)이 이 설계의 중심이다.** 두 실행 파일이 같은 DB
+상태를 보고 서로 다른 진단을 내리면 관리자는 상반된 지시를 받게 된다 — 실제로 한 번 그런 결함이
+있었다("테이블 없음 + 적용 이력 있음 + 미적용분 있음" 상태를 `sp-migrate.exe` 는 exit 2, `sp-server.exe`
+는 최초 실행으로 진단했다). 그래서 판정은 I/O 와 분리한 순수 함수로 두고, 두 파일이 **같은 순서로
+같은 조건을 묻도록** 거울처럼 유지한다. 한쪽을 고치면 반드시 다른 쪽도 고치고, 양쪽 테스트 파일에
+같은 상태의 테스트를 함께 추가한다.
 
 `migrate-main.ts` 를 계획 당시 생각했던 `apps/api/scripts/` 가 아니라 `apps/api/src/` 에 둔 이유:
 `build-exe.js` 는 `scripts/backup-cli.ts` 와 `scripts/reset-admin-cli.ts` 를 `npx tsc scripts/...`
@@ -140,7 +153,7 @@ snapshotTo(client, destPath): Promise<void>          // VACUUM INTO 백업
 ```
 
 **오류 신호 방식.** 러너는 `process.exit` 을 호출하지 않는다. 비정상 상태는 판별 가능한 타입의
-예외로 던지고, exit code 로 옮기는 책임은 호출자(`PrismaService` 와 `migrate-cli.ts`)가 진다.
+예외로 던지고, exit code 로 옮기는 책임은 호출자(`PrismaService` 와 `src/migrate-main.ts`)가 진다.
 러너를 테스트에서 그대로 쓰기 위한 조건이다.
 
 - `listPending()` 이 던지는 것: `LegacySchemaError`(이력 테이블 없이 테이블만 존재 → exit 4),
@@ -174,6 +187,15 @@ snapshotTo(client, destPath): Promise<void>          // VACUUM INTO 백업
 변경: $connect → WAL → synchronous → [마이그레이션 판정/적용] → foreign_keys=ON
 ```
 
+판정은 `PrismaService` 자신(`this`)으로 하지만, **적용은 `createMigrationClient()` 로 만든 단기
+client** 로 한다. `applyMigrations()` 는 커넥션이 하나로 고정된 client 를 요구하고(§6), Nest 가 만든
+`PrismaService` 의 풀은 그 조건을 만족하지 않는다. 적용이 끝나면 즉시 `$disconnect()` 한다.
+
+한때 "빈 DB 초기화 경로는 지울 데이터가 없으니 `this` 로도 안전하다" 고 두었는데, 그 근거는 현재
+마이그레이션 목록에서만 성립한다 — seed 마이그레이션(`20260714121735_seed_initial_autocomplete`)
+뒤에 `RedefineTables` 가 하나라도 추가되면 빈 DB 초기화 도중에도 지울 데이터가 존재하게 되고 같은
+결함이 조용히 되살아난다. 그래서 근거가 아니라 생성 경로로 막았다.
+
 ### 실패 모드
 
 | 상황 | 판정 방법 | 동작 | exit |
@@ -182,10 +204,25 @@ snapshotTo(client, destPath): Promise<void>          // VACUUM INTO 백업
 | 이력 있음 + 미적용분 있음 | 이력 ↔ 파일 목록 비교 | 안내 출력 후 종료 | 3 |
 | **테이블 있음 + 이력 테이블 없음** | 위 두 조건 모두 불성립 | **거부.** 구 `ensureSchema()` 가 만든 DB 이며 어디까지 적용됐는지 알 수 없다 | 4 |
 | 이력에는 있는데 파일이 없음 | 이력 ⊄ 파일 목록 | 거부. exe 가 DB 보다 구버전(다운그레이드 시도) | 5 |
+| **migrations 디렉터리 자체가 없음** | `resolveMigrationsDir()` 이 후보 경로를 모두 못 찾고 예외 | 거부. pkg 내장이 깨진 설치 손상 상태. 안내(`formatNoMigrationFilesNotice`) + 후보 경로 목록을 로그에 남긴다 | 6 |
+| **migrations 디렉터리가 비어 있음** | `listMigrationFiles()` 결과 0개 | 같은 진단, 같은 안내 | 6 |
+| **테이블 0개 + 적용 완료 이력 있음** | `isFreshDatabase()` && `listApplied().length > 0` | 거부. 손상된 백업 복원/DB 파일 오교체. 미적용분 개수와 무관하게 이 판정이 먼저다 (`formatSchemaMissingNotice`) | 6 |
 | 적용 중 SQL 실패 | `$executeRawUnsafe` 예외 | 즉시 중단. 해당 마이그레이션은 이력에 `finished_at` **NULL 인 미완료 행으로 남는다** (기록 자체는 실행 전에 이미 해뒀다 — §6 참고). 백업 복원 안내 | 1 |
 
 exit code 3 을 일반 오류(1)와 구분하는 이유: nssm 같은 서비스 래퍼나 배치 스크립트가
 "재시도해도 소용없는 상태" 를 알아보고 무한 재기동을 피할 수 있다.
+
+**exit 1 은 "신규 DB 초기화 실패" 전용이 아니다.** `README-exe.txt` 는 `sp-server.exe` 의 exit 1 을
+"DB 파일과 `-wal`/`-shm` 을 지우고 다시 실행" 으로 안내하는데, 그 지시는 화면에 "데이터베이스
+초기화에 실패했습니다" 안내가 실제로 나온 경우에만 유효하다. 그 밖의 예상하지 못한 예외도 Node 의
+기본 동작상 exit 1 로 끝나므로 — 그래서 위 표의 exit 6 세 줄이 중요하다. 설치 손상을 exit 1 로
+흘려보내면 관리자가 유일한 설명서를 따라 데이터가 들어 있는 DB 를 지우게 된다.
+
+테이블 0개 판정을 "이력에 완료 행이 있는지" 와 함께 묻는 이유(위 표 여덟 번째 줄): 이력만 남고
+테이블이 사라진 파일을 "최초 실행" 으로 오인하면 뒤쪽 마이그레이션만 빈 파일에 적용하게 되고,
+`INSERT INTO new_x SELECT ... FROM x` 에서 죽는다. 반대로 "이력 테이블 존재 여부" 로 물으면
+`ensureMigrationsTable()` 직후 첫 INSERT 전에 죽어 빈 이력 테이블만 남은 진짜 최초 실행을 손상으로
+오진한다. 그래서 `listApplied().length > 0` 로 판정한다.
 
 세 번째 항목(이력 테이블 없음)이 특히 중요하다. 조용히 처음부터 재적용하면 `CREATE TABLE` 이 실패하거나
 최악의 경우 `RedefineTables` 가 기존 데이터를 날린다.
@@ -289,6 +326,32 @@ CREATE TABLE "_prisma_migrations" (
 6. 실패          → 실패 지점 + 백업 파일 경로로 복원 안내, exit 1
 ```
 
+### `sp-migrate.exe` 종료 코드
+
+`README-exe.txt` 의 [종료 코드 안내] 와 **같은 내용이어야 한다.** 현장 관리자가 읽는 문서가
+`README-exe.txt` 이므로, 계약이 어긋나면 그쪽이 맞고 이 표가 틀린 것이다.
+
+| exit | 상황 | 화면 안내 | DB 상태 |
+|---|---|---|---|
+| 0 | 이미 최신, 또는 업그레이드 성공 | "이미 최신입니다" / "업그레이드 완료 — N건 적용" | 정상 |
+| 1 | 업그레이드 **전 백업** 실패 (폴더 생성 / `VACUUM INTO`) | `formatBackupFailedNotice` | **전혀 변경되지 않음.** 적용을 시작하지도 않았다 |
+| 1 | 적용 **도중** 실패 (SQL 실패, 이력 기록 실패, `migration.sql` 읽기 실패 등 예외 전부) | `formatMigrateFailureNotice` | 중간 상태 가능. 백업 경로 + 지울 파일 3개 + 이번에 성공한 목록을 출력 |
+| 2 | 진짜 빈 DB (테이블도 이력도 없음) | `formatEmptyDatabaseNotice` | 변경 없음. 최초 초기화는 `sp-server.exe` 의 몫 |
+| 4 | 레거시 DB (테이블 있음 + 이력 테이블 없음) | `formatLegacySchemaNotice` | 변경 없음 |
+| 5 | 다운그레이드 (이력 ⊄ 파일 목록) | `formatDowngradeNotice` | 변경 없음 |
+| 6 | 설치 손상 (migrations 디렉터리 없음/비어 있음), 또는 테이블 0개 + 적용 이력 있음 | `formatNoMigrationFilesNotice` / `formatSchemaMissingNotice` | 변경 없음 |
+
+exit 1 이 두 줄인 것이 이 표의 요점이다. 관리자가 "DB 를 건드렸나?" 를 종료 코드만으로는 구분할
+수 없고 **화면 안내 제목으로 구분해야 한다.** 그래서 `runMigrate()` 의 적용 루프 catch 는
+`MigrationFailedError` 뿐 아니라 **어떤 예외든** `formatMigrateFailureNotice` 로 수렴시킨다 —
+그러지 않으면 백업이 이미 만들어졌는데 관리자에게는 원문 스택만 보이고, 복구에 필요한 백업 경로가
+화면에서 사라진다. `runMigrate()` 자체는 `process.exit` 을 부르지 않고 exit code 를 돌려주므로
+테스트에서 이 표 전체를 값으로 확인할 수 있다.
+
+모든 출력은 콘솔과 `logs/sp-YYYY-MM-DD.log` 양쪽에 남는다(`appendPlainLog()`). 관리자가 탐색기에서
+더블클릭해 실행하면 종료와 함께 창이 사라지는데, 그때 백업 경로를 잃으면 복구 수단 자체를 잃는다 —
+`sp-backup.exe list` 는 `backups/pre-migrate/` 를 훑지 않기 때문이다.
+
 백업 방식은 `BackupService` 와 같은 `VACUUM INTO` 를 쓴다 (`backup.service.ts:109`). WAL 모드에서
 아직 병합되지 않은 내용까지 포함한 일관된 단일 파일을 만들어 주므로 파일 복사보다 안전하다.
 
@@ -297,10 +360,17 @@ CREATE TABLE "_prisma_migrations" (
 초기화 도중에 일어난다. 재사용하면 순환 의존이 생긴다.
 
 백업을 **별도 `pre-migrate/` 폴더**에 두는 이유는 일상 자동 백업(`BackupService`, 기본 보존
-`BACKUP_RETENTION_DAYS`=30일)의 정리 대상에 섞여 지워지지 않게 하기 위해서다. 실제로도 섞일 수
-없다 — `BackupService.cleanupOld()`(`backup.service.ts`)는 백업 디렉터리 하위 항목 중 이름이
-8자리 숫자(`YYYYMMDD`)인 것만 정리 대상으로 보는데, `pre-migrate` 는 이 패턴에 맞지 않아 애초에
-스캔 대상에 잡히지 않는다. 업그레이드 직전 스냅샷은 문제가 뒤늦게 발견될 수 있어 더 오래 남아야 한다.
+`BACKUP_RETENTION_DAYS`=30일)의 정리 대상에 섞여 지워지지 않게 하기 위해서다. 업그레이드 직전
+스냅샷은 문제가 뒤늦게 발견될 수 있어 더 오래 남아야 한다.
+
+실제로 섞이지 않는 이유는 두 겹이고, **지금 실제로 지켜 주는 쪽은 첫 번째다.**
+
+1. **애초에 다른 트리다.** `BackupService.backupDir` 의 기본값은 `<cwd>/data/backup`
+   (`backup.service.ts:44-48`)이고, `sp-migrate.exe` 의 스냅샷은 `<cwd>/backups/pre-migrate` 다.
+   `cleanupOld()` 는 자기 `backupDir` 아래만 훑으므로 이 경로는 스캔 대상에 들어오지도 않는다.
+2. **이름 패턴도 걸리지 않는다.** `cleanupOld()` 는 하위 항목 중 이름이 8자리 숫자(`YYYYMMDD`)인
+   것만 정리 대상으로 보는데 `pre-migrate` 는 그 패턴이 아니다. 이 두 번째 방어선은 누군가
+   `BACKUP_DIR=./backups` 로 설정해 두 트리가 겹쳤을 때에만 의미가 있다.
 
 ---
 
@@ -327,14 +397,33 @@ CREATE TABLE "_prisma_migrations" (
 | 종류 | 대상 |
 |---|---|
 | 단위 | `splitSqlStatements` — 문자열 내 세미콜론, `''` 이스케이프, `--` 주석, 여러 줄 INSERT |
-| 단위 | `checksum` 이 Prisma 값과 일치 (기존 dev DB 이력과 대조) |
+| 단위 | `checksumOf()` 가 실제 마이그레이션 6개에 대해 dev DB 의 `_prisma_migrations.checksum` (정식 prisma CLI 가 기록한 값)과 일치. 그 값을 테스트에 그대로 고정해 두었다 — 정식 도구로 돌아갈 여지를 지키는 동시에, 줄바꿈이 CRLF 로 오염되면(`.gitattributes` 의 `text eol=lf` 가 무너지면) 빨간불이 난다 |
+| 단위 | `migration-messages.ts` 의 안내 문구 — 관리자가 읽고 행동하는 텍스트이므로 문구 자체를 고정한다 (백업 경로, 지울 파일 3개, 문장 번호를 특정할 수 없는 경우 등) |
+| 단위 | `createMigrationClient()` / `withSingleConnection()` — 결과 URL 에 항상 `connection_limit=1` 이 들어간다 |
 | 통합 | 임시 SQLite 파일에 전체 적용 → pending 0, 테이블·인덱스 존재 확인 |
 | 통합 | 일부만 적용된 DB + 신규 마이그레이션 → pending 산출 정확성 |
+| 통합 | 데이터가 들어 있는 DB 에 `RedefineTables` 마이그레이션 적용 → 행 보존 |
+| 통합 | `decideBoot()` / `decideMigrate()` 의 여덟 가지 상태 — 두 파일에 **같은 상태의 테스트를 짝으로** 둔다 |
 | 통합 | 레거시 DB(테이블 있음 + 이력 없음) → 거부, exit 4 |
 | 통합 | 다운그레이드(이력 > 파일) → 거부, exit 5 |
+| 통합 | `runMigrate()` 정상 경로 — 데이터가 있는 DB 에 실제 마이그레이션 적용, exit 0. **백업 스냅샷에 이번 마이그레이션이 없다**는 것까지 확인해 "백업이 적용보다 먼저" 를 고정한다 (트랜잭션을 쓰지 않는 이 설계에서 원자성을 대신하는 것이 그 순서다) |
+| 통합 | `runMigrate()` 백업 실패 경로 — exit 1 + `formatBackupFailedNotice`, `process.env.DATABASE_URL` 오염 없음 |
 
 통합 테스트는 실제 SQLite 파일을 임시 디렉터리에 만들어 돌린다. 마이그레이션 SQL 이 진짜 실행되는지가
 이 설계의 유일한 위험 지점이므로, 여기는 목(mock)으로 대체하지 않는다.
+
+`vitest.config.ts` 는 `fileParallelism: false` 다 (실제 파일을 다루는 통합 테스트가 있어서다).
+그래서 `process.chdir()` 을 쓰는 테스트는 `afterEach` 에서 **임시 디렉터리를 지우기 전에** cwd 를
+되돌려야 한다 — 새면 뒤에 실행되는 모든 테스트 파일이 깨진다.
+
+### 아직 테스트로 덮이지 않은 것
+
+- **단일 커넥션(`connection_limit=1`) 불변식의 실제 효과.** 값(URL 문자열)은 고정했지만, 커넥션이
+  둘 이상일 때 `PRAGMA foreign_keys=OFF` 가 무력화되어 CASCADE 로 자식 행이 지워지는 현상 자체는
+  재현하지 못했다 (`migration-runner.test.ts` 의 데이터 보존 테스트 주석 참고 — `connection_limit=1`
+  을 지워도 그 테스트는 통과한다). 동시 쿼리를 강제하는 별도 테스트가 필요하다.
+- **`PrismaService` 의 부팅 판정 경로.** Nest 컨텍스트와 `process.exit` 이 얽혀 있어 판정 로직만
+  `decideBoot()` 으로 떼어내 테스트했다. exit code 로 옮기는 얇은 층은 검증되지 않는다.
 
 ---
 
@@ -349,7 +438,7 @@ CREATE TABLE "_prisma_migrations" (
 | `ensureSchema()` DDL | 삭제, `prisma/migrations` 로 단일화 | 이중 원본 제거가 이 작업의 실익 |
 | 트랜잭션 | 사용하지 않음 | PRAGMA 가 트랜잭션 안에서 무시됨. 원자성은 사전 백업으로 확보 |
 | 레거시 DB baseline | 지원하지 않고 거부 | 현장 배포 이력이 없음을 확인. 잘못된 추정으로 데이터를 날리는 위험이 더 크다 |
-| 백업 위치 | `backups/pre-migrate/` | 일상 자동 백업의 보존 기간 정리(`cleanupOld()`, 폴더명 8자리 숫자 패턴만 정리)에서 자연히 제외됨 |
+| 백업 위치 | `backups/pre-migrate/` | 일상 자동 백업의 보존 기간 정리(`cleanupOld()`)에서 제외된다. 결정적인 이유는 `BackupService.backupDir` 기본값이 `<cwd>/data/backup` 이라 **트리 자체가 다르다**는 것이고, 폴더명 8자리 숫자 패턴에 걸리지 않는다는 점은 `BACKUP_DIR=./backups` 로 두 트리를 겹쳤을 때만 작동하는 두 번째 방어선이다 (§7 참고) |
 | 이력 기록 시점 | 적용 "전"에 미완료 행 INSERT, 성공 시 UPDATE | 최초 계획(적용 후 기록)은 SQL 전부 성공 + 기록 실패 시 이력에 아무 흔적이 안 남아 다음 실행이 이미 적용된 파괴적 SQL 을 재실행함. Prisma 자신의 방식과 동일하게 맞춰 이 위험을 줄임 (담당자 승인, 2026-07-31). 남은 잔여 위험(성공 직후 완료 처리만 실패)은 §6 참고, 복구는 사전 백업 |
 
 ---
