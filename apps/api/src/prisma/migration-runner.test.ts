@@ -452,10 +452,18 @@ describe('실제 prisma/migrations 적용', () => {
 
   it('중간에 실제 데이터가 있어도 이후 RedefineTables 마이그레이션에서 데이터가 보존된다', async () => {
     // 앞의 통합 테스트들은 전부 빈 DB 에 적용하기 때문에, RedefineTables 마이그레이션의
-    // "INSERT INTO new_x ... SELECT ... FROM x" 문장이 언제나 0행을 복사한다. 즉 그 경로가
-    // 실제로 동작하는지, 그리고 PRAGMA foreign_keys=OFF 가 DROP TABLE 시점까지 유지되는지는
-    // 이 테스트가 아니면 검증되지 않는다. (커넥션이 여러 개면 PRAGMA 가 무력화되어
-    // ON DELETE CASCADE 로 node_comments/node_history 가 조용히 삭제될 수 있다 — 회귀 방지용.)
+    // "INSERT INTO new_x ... SELECT ... FROM x" 문장이 언제나 0행을 복사한다. 이 테스트는
+    // 그 데이터 복사 경로가 실제로 동작해서 테이블 재생성(rebuild) 후에도 기존 행이
+    // (schedule_nodes, node_comments 모두) 살아남는지를 검증한다.
+    //
+    // 주의: 이 테스트는 커넥션 풀 관련 회귀(PRAGMA foreign_keys=OFF 가 다른 커넥션에서
+    // 무력화되는 문제, 즉 이 파일의 applyMigrations() docstring 과 test-helpers.ts 의
+    // connection_limit=1 주석이 설명하는 위험)를 검증하지 않는다. 실제로 test-helpers.ts 에서
+    // connection_limit=1 을 제거하고 이 테스트만 단독 실행해봤는데, 여전히 통과했다 — 이
+    // Prisma/SQLite 커넥터가 순차(비동시) 실행에서는 유휴 커넥션을 재사용하는 것으로 보인다.
+    // 즉 단일 커넥션 고정은 이 테스트 스위트 어디서도 증명되지 않는 방어적 불변식이고,
+    // connection_limit=1 을 지워도 이 테스트는 빨간불이 되지 않는다. 그 회귀를 실제로
+    // 재현하려면 동시 쿼리를 강제로 발생시키는 별도 테스트가 필요하다.
     const dir = path.resolve(__dirname, '../../prisma/migrations');
     const allNames = listMigrationFiles(dir);
     // 1번째(initial), 2번째(m1_auth_lockout) 까지만 먼저 적용해 실제 스키마에 데이터를 채운다.
@@ -491,12 +499,25 @@ describe('실제 prisma/migrations 적용', () => {
     // 나머지(m2b_node_history_snapshot, m3_node_progress 등 RedefineTables 포함)를 적용한다.
     await applyMigrations(db.client, dir, rest);
 
+    // 위 applyMigrations 호출이 실제로 나머지 마이그레이션을 실행했는지부터 확인한다.
+    // (이 확인이 없으면, rest 를 건너뛰는 회귀 — 예: names 순회의 off-by-one, 혹은
+    // "이미 _prisma_migrations 행이 있으니 건너뛴다" 는 식의 잘못된 조기 continue —
+    // 가 있어도 아래의 데이터 보존 단언들은 애초에 INSERT 직후부터 참이었으므로
+    // 테스트가 초록불로 통과해버린다. progress 컬럼은 m3_node_progress 가 실행돼야만
+    // 생기므로, rest 가 실제로 적용됐다는 직접적인 증거가 된다.)
+    const scheduleNodeCols = await db.client.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT name FROM pragma_table_info('schedule_nodes')`,
+    );
+    expect(scheduleNodeCols.map((c) => c.name)).toContain('progress');
+
     const nodes = await db.client.$queryRawUnsafe<Array<{ id: string }>>(
       `SELECT id FROM "schedule_nodes" WHERE id = '${nodeId}'`,
     );
     expect(nodes).toEqual([{ id: nodeId }]);
 
-    // C1 이 고쳐지지 않았다면 이 행이 ON DELETE CASCADE 로 조용히 사라진다.
+    // RedefineTables 는 DROP TABLE 로 재생성하므로, FK 제어(PRAGMA foreign_keys=OFF)가
+    // 제대로 걸리지 않으면 이 행이 ON DELETE CASCADE 로 조용히 사라질 수 있다.
+    // (다만 이 단언 자체가 커넥션 풀 회귀를 잡아낸다는 뜻은 아니다 — 위 주석 참고.)
     const comments = await db.client.$queryRawUnsafe<Array<{ id: string }>>(
       `SELECT id FROM "node_comments" WHERE id = '${commentId}'`,
     );
