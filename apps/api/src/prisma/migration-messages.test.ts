@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatDowngradeNotice,
+  formatEmptyDatabaseNotice,
   formatInitFailureNotice,
   formatLegacySchemaNotice,
+  formatMigrateFailureNotice,
   formatNoMigrationFilesNotice,
   formatPendingMigrationsNotice,
   formatSchemaMissingNotice,
@@ -84,6 +86,107 @@ describe('formatSchemaMissingNotice', () => {
 
   it('백업 복원 또는 개발자 문의를 안내한다', () => {
     expect(notice).toContain('백업으로 복원');
+  });
+});
+
+describe('formatEmptyDatabaseNotice', () => {
+  const notice = formatEmptyDatabaseNotice('file:./data/app.db');
+
+  it('비어 있다고 알린다', () => {
+    expect(notice).toContain('데이터베이스가 비어 있습니다');
+  });
+
+  it('전달받은 dbUrl 을 그대로 포함한다', () => {
+    expect(notice).toContain('file:./data/app.db');
+  });
+
+  it('sp-server.exe 를 먼저 실행하라고 안내한다', () => {
+    expect(notice).toContain('sp-server.exe');
+    expect(notice).toContain('자동으로 만들어지고 초기화');
+  });
+});
+
+describe('formatMigrateFailureNotice', () => {
+  const notice = formatMigrateFailureNotice({
+    migrationName: '20260101000000_a',
+    statementIndex: 2,
+    causeMessage: 'near "THIS": syntax error',
+    failingStatement: 'THIS IS NOT SQL;',
+    succeeded: ['20250101000000_z'],
+    backupPath: 'D:/backups/pre-migrate/sam_20260731_215740.db',
+    dbPath: 'D:/data/app.db',
+  });
+
+  it('실패 지점(마이그레이션 이름과 문장 번호)을 포함한다', () => {
+    expect(notice).toContain('20260101000000_a');
+    expect(notice).toContain('2번째 문장');
+  });
+
+  it('원인 메시지를 포함하되 한 번만 담는다 (err.message 중복 금지)', () => {
+    const occurrences = notice.split('near "THIS": syntax error').length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it('실패한 SQL 문장 원문을 포함한다', () => {
+    expect(notice).toContain('THIS IS NOT SQL;');
+  });
+
+  it('이미 적용 완료된 마이그레이션 목록을 포함한다', () => {
+    expect(notice).toContain('20250101000000_z');
+  });
+
+  it('적용 완료분이 없으면 그 사실을 명시한다', () => {
+    const empty = formatMigrateFailureNotice({
+      migrationName: '20260101000000_a',
+      statementIndex: 1,
+      causeMessage: 'boom',
+      failingStatement: undefined,
+      succeeded: [],
+      backupPath: 'D:/backups/pre-migrate/sam_20260731_215740.db',
+      dbPath: 'D:/data/app.db',
+    });
+    expect(empty).toContain('없음');
+  });
+
+  it('실패한 문장이 문장 배열 밖(이력 기록 단계)이면 그 사실을 설명한다', () => {
+    const noStatement = formatMigrateFailureNotice({
+      migrationName: '20260101000000_a',
+      statementIndex: 1,
+      causeMessage: 'boom',
+      failingStatement: undefined,
+      succeeded: [],
+      backupPath: 'D:/backups/pre-migrate/sam_20260731_215740.db',
+      dbPath: 'D:/data/app.db',
+    });
+    expect(noStatement).toContain('이력 기록 단계');
+  });
+
+  it('긴 SQL 문장은 잘라서 보여준다', () => {
+    const long = formatMigrateFailureNotice({
+      migrationName: '20260101000000_a',
+      statementIndex: 1,
+      causeMessage: 'boom',
+      failingStatement: 'X'.repeat(1000),
+      succeeded: [],
+      backupPath: 'D:/backups/pre-migrate/sam_20260731_215740.db',
+      dbPath: 'D:/data/app.db',
+    });
+    expect(long).toContain('…(생략)');
+    expect(long.length).toBeLessThan(1000 + 500);
+  });
+
+  it('삭제할 파일로 DB 본체와 WAL/SHM 사이드카를 모두 지목한다', () => {
+    expect(notice).toContain('D:/data/app.db');
+    expect(notice).toContain('D:/data/app.db-wal');
+    expect(notice).toContain('D:/data/app.db-shm');
+  });
+
+  it('복원할 백업 파일 경로를 포함한다', () => {
+    expect(notice).toContain('D:/backups/pre-migrate/sam_20260731_215740.db');
+  });
+
+  it('담당 개발자에게 전달하라고 안내한다', () => {
+    expect(notice).toContain('담당 개발자에게 이 메시지를 그대로 전달하십시오.');
   });
 });
 

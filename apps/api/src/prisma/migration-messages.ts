@@ -114,6 +114,103 @@ export function formatSchemaMissingNotice(): string {
 }
 
 /**
+ * sp-migrate.exe 가 판정 결과 진짜 빈 DB(테이블도 이력도 없음)를 만난 상태.
+ * 이 상태는 sp-migrate.exe 가 손댈 대상이 아니다 — 최초 초기화는 sp-server.exe 몫이다.
+ *
+ * dbUrl 을 그대로 보여준다. resolveDbFilePath() 는 'file:' 접두어만 벗기고 상대경로는
+ * 그대로 두는데, DATABASE_URL 이 상대경로(예: "file:./data/app.db")이면 Node 와 Prisma 가
+ * 서로 다른 기준 디렉터리로 해석해 실제로 연 파일과 다른 경로를 보여줄 위험이 있다. dbUrl 은
+ * Prisma 에게 그대로 넘긴 값이라 그런 위험이 없다.
+ */
+export function formatEmptyDatabaseNotice(dbUrl: string): string {
+  return [
+    LINE,
+    '  데이터베이스가 비어 있습니다',
+    LINE,
+    '',
+    '  아직 초기화되지 않은 새 데이터베이스입니다 (테이블이 하나도 없습니다).',
+    `  DB: ${dbUrl}`,
+    '',
+    '  sp-migrate.exe 는 여기서 할 일이 없습니다 (적용할 변경사항이 아니라 최초 초기화 대상입니다).',
+    '  먼저 sp-server.exe 를 실행하면 데이터베이스가 자동으로 만들어지고 초기화됩니다.',
+    '',
+    LINE,
+  ].join('\n');
+}
+
+/**
+ * sp-migrate.exe 가 마이그레이션 적용 도중 실패한 상태.
+ *
+ * 이 실행 파일이 하는 유일한 쓰기 작업이 실패한 것이므로, 관리자가 다음 두 가지를
+ * 스스로 판단할 수 있어야 한다: (1) DB 가 지금 어디까지 적용된 상태인지, (2) 백업으로
+ * 되돌릴 때 무엇을 지워야 하는지. `succeeded` 로 (1)을, `dbPath` 로 (2)를 채운다.
+ *
+ * `dbPath` 는 실제 파일 경로(문자열, fs 판단에는 쓰지 않는다) — formatInitFailureNotice() 와
+ * 같은 이유로 WAL/SHM 사이드카까지 나란히 지목해야 한다. runMigrate() 가 이미
+ * `PRAGMA journal_mode=WAL` 을 걸어 두었으므로 실패 시점에 `${dbPath}-wal` 이 존재하며,
+ * 거기에 커밋된 절반만 적용된 페이지가 남아 있다. 그 WAL 을 지우지 않고 백업 파일만
+ * `.db` 위에 덮어쓰면 SQLite 가 재시작 시 이 WAL 을 엉뚱한 DB 이미지에 재적용해 백업이
+ * 오염되거나 절반짜리 스키마가 되살아난다 — 실패 시 유일한 복구 수단인 백업 자체가
+ * 무력화되는 것이므로 반드시 셋 다 지우라고 명시한다.
+ *
+ * causeMessage 만 쓰고 err.message 전체를 쓰지 않는 이유: MigrationFailedError.message 는
+ * 이미 "마이그레이션 'X' 의 Y번째 문장에서 실패했습니다: <원인>" 형태라, 아래에서
+ * migrationName/statementIndex 를 따로 한 번 더 보여주면 같은 문장을 두 번 읽게 된다.
+ */
+export function formatMigrateFailureNotice(params: {
+  migrationName: string;
+  statementIndex: number;
+  causeMessage: string;
+  failingStatement: string | undefined;
+  succeeded: string[];
+  backupPath: string;
+  dbPath: string;
+}): string {
+  const { migrationName, statementIndex, causeMessage, failingStatement, succeeded, backupPath, dbPath } =
+    params;
+
+  const MAX_STATEMENT_LEN = 300;
+  const truncatedStatement =
+    failingStatement === undefined
+      ? '(마이그레이션 SQL 문장이 아니라 이력 기록 단계 자체에서 실패했습니다)'
+      : failingStatement.length > MAX_STATEMENT_LEN
+        ? `${failingStatement.slice(0, MAX_STATEMENT_LEN)} …(생략)`
+        : failingStatement;
+
+  const succeededList =
+    succeeded.length === 0
+      ? '    없음 — 이번 실행에서 하나도 적용되지 못했습니다.'
+      : succeeded.map((name) => `    - ${name}`).join('\n');
+
+  return [
+    LINE,
+    '  업그레이드가 실패했습니다',
+    LINE,
+    '',
+    `  실패 지점: ${migrationName} 의 ${statementIndex}번째 문장`,
+    `  원인: ${causeMessage}`,
+    `  실패한 문장: ${truncatedStatement}`,
+    '',
+    '  이번 실행에서 이미 적용 완료된 마이그레이션:',
+    succeededList,
+    '',
+    '  DB 가 중간 상태일 수 있습니다. 아래 파일을 모두 삭제한 뒤 백업 파일로 되돌리십시오.',
+    '',
+    '    삭제할 파일:',
+    `      - ${dbPath}`,
+    `      - ${dbPath}-wal`,
+    `      - ${dbPath}-shm`,
+    '',
+    '    복원할 백업 파일:',
+    `      - ${backupPath}`,
+    '',
+    '  담당 개발자에게 이 메시지를 그대로 전달하십시오.',
+    '',
+    LINE,
+  ].join('\n');
+}
+
+/**
  * 빈 DB 에 sp-server.exe 가 마이그레이션을 직접 적용하다가 중간에 실패한 상태.
  * 반쪽 스키마가 남아 있어 조용히 재시작하면 안 되고, DB 파일과 WAL/SHM 사이드카까지
  * 모두 지워야 한다 — WAL 은 마이그레이션 시작 전에 이미 켜 두었으므로 실패 시점에 남아 있고,

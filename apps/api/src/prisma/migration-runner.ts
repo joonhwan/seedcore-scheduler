@@ -138,12 +138,25 @@ export async function listPending(client: RawClient, dir: string): Promise<strin
   return files.filter((name) => !applied.includes(name));
 }
 
-/** 마이그레이션 적용 중 SQL 이 실패한 경우. 어느 마이그레이션의 몇 번째 문장인지 담는다. */
+/**
+ * 마이그레이션 적용 중 SQL 이 실패한 경우. 어느 마이그레이션의 몇 번째 문장인지 담는다.
+ *
+ * `failingStatement` 은 실패한 SQL 문장 원문이다(문장 배열 밖으로 벗어난 단계 — 이력 INSERT/UPDATE
+ * 자체의 실패 — 에서는 `undefined`). sp-migrate.exe 가 pkg 로 묶인 실행 파일이라 관리자에게는
+ * 열어볼 migration.sql 파일이 없다는 점 때문에 필요하다 — statementIndex 만으로는
+ * "몇 번째 문장"인지 셀 파일 자체가 없어 무용하다.
+ */
 export class MigrationFailedError extends Error {
   readonly migrationName: string;
   readonly statementIndex: number;
+  readonly failingStatement: string | undefined;
 
-  constructor(migrationName: string, statementIndex: number, cause: unknown) {
+  constructor(
+    migrationName: string,
+    statementIndex: number,
+    cause: unknown,
+    failingStatement?: string,
+  ) {
     super(
       `마이그레이션 '${migrationName}' 의 ${statementIndex}번째 문장에서 실패했습니다: ${
         cause instanceof Error ? cause.message : String(cause)
@@ -153,6 +166,7 @@ export class MigrationFailedError extends Error {
     this.migrationName = migrationName;
     this.statementIndex = statementIndex;
     this.cause = cause;
+    this.failingStatement = failingStatement;
   }
 }
 
@@ -209,7 +223,9 @@ export async function applyMigrations(
       // 1-based 로 알린다. 관리자가 파일을 열어 세기 좋다.
       // insertStartedRecord 단계 실패는 statementIndex===0 → 1 로, markFinished 단계 실패는
       // statementIndex===statements.length → 문장 수 + 1 로 보고된다.
-      throw new MigrationFailedError(name, statementIndex + 1, err);
+      // statements[statementIndex] 는 이력 기록(INSERT/UPDATE) 단계 실패 시 배열 범위를
+      // 벗어나 undefined 가 된다 — 그 경우는 실패한 "문장" 자체가 마이그레이션 SQL이 아니므로 맞다.
+      throw new MigrationFailedError(name, statementIndex + 1, err, statements[statementIndex]);
     }
   }
 }

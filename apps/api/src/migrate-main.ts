@@ -2,21 +2,15 @@ import 'reflect-metadata';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaClient } from '@prisma/client';
-import { bindPrismaQueryEngine, resolveDatabaseUrl } from './common/db-path';
+import { bindPrismaQueryEngine, resolveDatabaseUrl, resolveDbFilePath } from './common/db-path';
 import {
-  DowngradeError,
-  LegacySchemaError,
   MigrationFailedError,
   applyMigrations,
-  isFreshDatabase,
-  listPending,
   resolveMigrationsDir,
   snapshotTo,
 } from './prisma/migration-runner';
-import {
-  formatDowngradeNotice,
-  formatLegacySchemaNotice,
-} from './prisma/migration-messages';
+import { decideMigrate } from './prisma/migrate-decision';
+import { formatMigrateFailureNotice, formatNoMigrationFilesNotice } from './prisma/migration-messages';
 
 function pad(n: number): string {
   return n.toString().padStart(2, '0');
@@ -44,8 +38,11 @@ export function resolvePreMigrateBackupPath(now: Date): string {
  * node_history 같은 자식 레코드가 조용히 삭제된다 — 마이그레이션 자체는 "성공"으로 보고된다.
  * 단일 커넥션으로 고정해 이 경로를 원천적으로 막는다.
  * (apps/api/src/prisma/test-helpers.ts 의 createTempDb() 와 같은 이유, 같은 처리.)
+ *
+ * export 하는 이유: process.env.DATABASE_URL 에는 이 값이 절대 섞이면 안 된다(아래 runMigrate()
+ * 참고) — 향후 실수로 그 경계가 무너지지 않도록 이 함수 자체와 양쪽 분기를 테스트로 고정한다.
  */
-function withSingleConnection(url: string): string {
+export function withSingleConnection(url: string): string {
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}connection_limit=1`;
 }
@@ -60,7 +57,17 @@ export async function runMigrate(): Promise<number> {
   process.env.DATABASE_URL = dbUrl;
   bindPrismaQueryEngine();
 
-  const dir = resolveMigrationsDir();
+  let dir: string;
+  try {
+    dir = resolveMigrationsDir();
+  } catch {
+    // 실행 파일에 내장되어야 할 migrations 디렉터리 자체가 없다 — 설치가 손상된 상태다.
+    // DB 상태와 무관한 문제라 연결할 필요조차 없다. 이 catch 가 없으면 require.main 가드의
+    // 바깥쪽 catch 로 새어나가 관리자에게 원문 스택 트레이스가 그대로 노출된다.
+    console.error(formatNoMigrationFilesNotice());
+    return 6;
+  }
+
   const client = new PrismaClient({
     datasources: { db: { url: withSingleConnection(dbUrl) } },
   });
@@ -69,41 +76,26 @@ export async function runMigrate(): Promise<number> {
     await client.$connect();
     await client.$queryRawUnsafe('PRAGMA journal_mode=WAL;');
 
-    // "DB 가 없다" 를 fs.existsSync(경로 문자열) 로 판단하지 않는다. apps/api/.env 의
-    // DATABASE_URL 은 상대경로("file:./data/app.db")일 수 있는데, Node 는 이를
-    // process.cwd() 기준으로 해석하고 Prisma 는 schema.prisma 파일 위치 기준으로 해석해
-    // 서로 다른 파일을 가리킬 수 있다 (실행 파일에서는 절대경로라 문제 없지만, 개발 환경
-    // 검증 시에는 "파일이 없다" 는 오탐이 난다). 대신 실제로 연결한 뒤 테이블이 하나도
-    // 없는지로 판단한다 — Prisma 가 연결 과정에서 빈 DB 파일을 만드는 부작용이 있어도
-    // 무해하다. sp-server.exe 가 그 빈 DB 를 보고 정상적으로 초기화할 것이기 때문이다.
-    if (await isFreshDatabase(client)) {
-      console.error('데이터베이스가 비어 있습니다 (테이블이 하나도 없습니다).');
-      console.error(
-        '먼저 sp-server.exe 를 실행하면 데이터베이스가 자동으로 만들어지고 초기화됩니다.',
-      );
-      return 1;
+    // dbUrl 을 항상 먼저 보여준다. resolveDbFilePath() 와 달리 Prisma 에게 그대로 넘긴 값이라
+    // 상대경로("file:./data/app.db")인 경우에도 Node/Prisma 해석 차이로 인한 오해가 없다.
+    // 실행 파일이 설치 폴더가 아닌 다른 작업 디렉터리에서 실행돼 엉뚱한 빈 DB 를 새로 만드는
+    // 사고가 나더라도, 이 줄이 있으면 화면에 어떤 파일을 열었는지가 항상 남는다.
+    console.log(`DB: ${dbUrl}`);
+    console.log('');
+
+    const decision = await decideMigrate(client, dir, dbUrl);
+
+    if (decision.kind === 'halt') {
+      console.error(decision.notice);
+      return decision.exitCode;
     }
 
-    let pending: string[];
-    try {
-      pending = await listPending(client, dir);
-    } catch (err) {
-      if (err instanceof LegacySchemaError) {
-        console.error(formatLegacySchemaNotice());
-        return 4;
-      }
-      if (err instanceof DowngradeError) {
-        console.error(formatDowngradeNotice(err.missing));
-        return 5;
-      }
-      throw err;
-    }
-
-    if (pending.length === 0) {
+    if (decision.kind === 'up-to-date') {
       console.log('데이터베이스는 이미 최신입니다. 할 일이 없습니다.');
       return 0;
     }
 
+    const pending = decision.names;
     console.log(`적용할 변경사항 ${pending.length}건:`);
     for (const name of pending) {
       console.log(`  - ${name}`);
@@ -117,27 +109,30 @@ export async function runMigrate(): Promise<number> {
     console.log(`  백업 완료: ${backupPath}`);
     console.log('');
 
+    // 실패 시 관리자에게 "어디까지 적용됐는지" 를 알려주려면 실행 중 직접 추적해야 한다 —
+    // 한 번에 하나씩 적용하므로 이 배열의 앞부분은 이미 커밋되어 있다.
+    const succeeded: string[] = [];
     try {
       for (const name of pending) {
         console.log(`적용 중: ${name}`);
         await applyMigrations(client, dir, [name]);
+        succeeded.push(name);
       }
     } catch (err) {
       if (err instanceof MigrationFailedError) {
+        const causeMessage = err.cause instanceof Error ? err.cause.message : String(err.cause);
         console.error('');
-        console.error('====================================================');
-        console.error('  업그레이드가 실패했습니다');
-        console.error('====================================================');
-        console.error('');
-        console.error(`  실패 지점: ${err.migrationName} 의 ${err.statementIndex}번째 문장`);
-        console.error(`  원인: ${err.message}`);
-        console.error('');
-        console.error('  DB 가 중간 상태일 수 있습니다. 아래 백업 파일로 되돌리십시오.');
-        console.error(`    ${backupPath}`);
-        console.error('');
-        console.error('  담당 개발자에게 이 메시지를 그대로 전달하십시오.');
-        console.error('');
-        console.error('====================================================');
+        console.error(
+          formatMigrateFailureNotice({
+            migrationName: err.migrationName,
+            statementIndex: err.statementIndex,
+            causeMessage,
+            failingStatement: err.failingStatement,
+            succeeded,
+            backupPath,
+            dbPath: resolveDbFilePath(),
+          }),
+        );
         return 1;
       }
       throw err;
@@ -148,6 +143,7 @@ export async function runMigrate(): Promise<number> {
     console.log(`  업그레이드 완료 — ${pending.length}건 적용`);
     console.log('====================================================');
     console.log('');
+    console.log(`  DB: ${dbUrl}`);
     console.log('  이제 sp-server.exe 를 실행하십시오.');
     console.log('');
     return 0;
