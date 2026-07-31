@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { decideBoot } from './boot-decision';
+import { MigrationFailedError, applyMigrations, resolveMigrationsDir } from './migration-runner';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -10,153 +12,54 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     // PRAGMA journal_mode 는 결과 행을 반환하므로 $queryRawUnsafe 사용.
     await this.$queryRawUnsafe('PRAGMA journal_mode=WAL;');
     await this.$queryRawUnsafe('PRAGMA synchronous=NORMAL;');
-    await this.$queryRawUnsafe('PRAGMA foreign_keys=ON;');
 
-    await this.ensureSchema();
+    // 마이그레이션은 foreign_keys=ON 앞에서 처리한다.
+    // 마이그레이션 SQL 이 RedefineTables 패턴에서 FK 를 꺼야 동작하기 때문이다.
+    await this.handleMigrations();
+
+    await this.$queryRawUnsafe('PRAGMA foreign_keys=ON;');
   }
 
-  private async ensureSchema(): Promise<void> {
-    try {
-      const tables: any[] = await this.$queryRawUnsafe(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='users';",
-      );
-      if (tables.length === 0) {
-        this.logger.log('Database tables not found. Initializing schema automatically...');
-        const ddlStatements = [
-          `CREATE TABLE IF NOT EXISTS "users" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "username" TEXT NOT NULL,
-            "display_name" TEXT NOT NULL,
-            "password_hash" TEXT NOT NULL,
-            "password_must_change" BOOLEAN NOT NULL DEFAULT true,
-            "global_role" TEXT NOT NULL DEFAULT 'USER',
-            "is_active" BOOLEAN NOT NULL DEFAULT true,
-            "preferences_json" TEXT,
-            "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updated_at" DATETIME NOT NULL,
-            "last_login_at" DATETIME,
-            "failed_login_count" INTEGER NOT NULL DEFAULT 0,
-            "locked_until" DATETIME
-          );`,
-          `CREATE TABLE IF NOT EXISTS "projects" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "name" TEXT NOT NULL,
-            "description" TEXT,
-            "status" TEXT NOT NULL DEFAULT 'ACTIVE',
-            "created_by" TEXT NOT NULL,
-            "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updated_at" DATETIME NOT NULL,
-            CONSTRAINT "projects_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-          );`,
-          `CREATE TABLE IF NOT EXISTS "project_members" (
-            "project_id" TEXT NOT NULL,
-            "user_id" TEXT NOT NULL,
-            "role" TEXT NOT NULL,
-            "added_by" TEXT NOT NULL,
-            "added_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY ("project_id", "user_id"),
-            CONSTRAINT "project_members_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-            CONSTRAINT "project_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-            CONSTRAINT "project_members_added_by_fkey" FOREIGN KEY ("added_by") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-          );`,
-          `CREATE TABLE IF NOT EXISTS "schedule_nodes" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "project_id" TEXT NOT NULL,
-            "parent_id" TEXT,
-            "kind" TEXT NOT NULL,
-            "title" TEXT NOT NULL,
-            "description" TEXT,
-            "start_at" TEXT,
-            "end_at" TEXT,
-            "progress" INTEGER NOT NULL DEFAULT 0,
-            "sort_order" INTEGER NOT NULL,
-            "depth" INTEGER NOT NULL,
-            "created_by" TEXT NOT NULL,
-            "updated_by" TEXT NOT NULL,
-            "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updated_at" DATETIME NOT NULL,
-            CONSTRAINT "schedule_nodes_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-            CONSTRAINT "schedule_nodes_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "schedule_nodes" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
-            CONSTRAINT "schedule_nodes_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-            CONSTRAINT "schedule_nodes_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-          );`,
-          `CREATE TABLE IF NOT EXISTS "node_comments" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "node_id" TEXT NOT NULL,
-            "author_id" TEXT NOT NULL,
-            "body" TEXT NOT NULL,
-            "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updated_at" DATETIME NOT NULL,
-            "deleted_at" DATETIME,
-            CONSTRAINT "node_comments_node_id_fkey" FOREIGN KEY ("node_id") REFERENCES "schedule_nodes" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-            CONSTRAINT "node_comments_author_id_fkey" FOREIGN KEY ("author_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-          );`,
-          `CREATE TABLE IF NOT EXISTS "node_history" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "node_id" TEXT,
-            "node_id_snapshot" TEXT NOT NULL,
-            "project_id_snapshot" TEXT NOT NULL,
-            "actor_id" TEXT NOT NULL,
-            "action" TEXT NOT NULL,
-            "diff_json" TEXT NOT NULL,
-            "occurred_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT "node_history_node_id_fkey" FOREIGN KEY ("node_id") REFERENCES "schedule_nodes" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
-            CONSTRAINT "node_history_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-          );`,
-          `CREATE TABLE IF NOT EXISTS "audit_logs" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "actor_id" TEXT,
-            "action" TEXT NOT NULL,
-            "target_type" TEXT,
-            "target_id" TEXT,
-            "ip" TEXT,
-            "user_agent" TEXT,
-            "occurred_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "payload_json" TEXT,
-            CONSTRAINT "audit_logs_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE CASCADE
-          );`,
-          `CREATE TABLE IF NOT EXISTS "sessions" (
-            "sid" TEXT NOT NULL PRIMARY KEY,
-            "user_id" TEXT NOT NULL,
-            "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "last_seen_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "expires_at" DATETIME NOT NULL,
-            "ip" TEXT,
-            "user_agent" TEXT,
-            CONSTRAINT "sessions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-          );`,
-          `CREATE TABLE IF NOT EXISTS "autocomplete_terms" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "title" TEXT NOT NULL,
-            "kind" TEXT NOT NULL,
-            "is_system" BOOLEAN NOT NULL DEFAULT false,
-            "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updated_at" DATETIME NOT NULL
-          );`,
-          `CREATE UNIQUE INDEX IF NOT EXISTS "users_username_key" ON "users"("username");`,
-          `CREATE INDEX IF NOT EXISTS "project_members_user_id_idx" ON "project_members"("user_id");`,
-          `CREATE INDEX IF NOT EXISTS "schedule_nodes_project_id_parent_id_sort_order_idx" ON "schedule_nodes"("project_id", "parent_id", "sort_order");`,
-          `CREATE INDEX IF NOT EXISTS "node_comments_node_id_created_at_idx" ON "node_comments"("node_id", "created_at");`,
-          `CREATE INDEX IF NOT EXISTS "node_history_node_id_snapshot_occurred_at_idx" ON "node_history"("node_id_snapshot", "occurred_at");`,
-          `CREATE INDEX IF NOT EXISTS "node_history_project_id_snapshot_occurred_at_idx" ON "node_history"("project_id_snapshot", "occurred_at");`,
-          `CREATE INDEX IF NOT EXISTS "audit_logs_occurred_at_idx" ON "audit_logs"("occurred_at");`,
-          `CREATE INDEX IF NOT EXISTS "sessions_user_id_idx" ON "sessions"("user_id");`,
-          `CREATE INDEX IF NOT EXISTS "sessions_expires_at_idx" ON "sessions"("expires_at");`,
-          `CREATE UNIQUE INDEX IF NOT EXISTS "autocomplete_terms_title_kind_key" ON "autocomplete_terms"("title", "kind");`,
-        ];
+  private async handleMigrations(): Promise<void> {
+    const dir = resolveMigrationsDir();
+    const decision = await decideBoot(this, dir);
 
-        for (const statement of ddlStatements) {
-          await this.$executeRawUnsafe(statement);
-        }
-        this.logger.log('Database schema initialization completed successfully.');
-      }
-    } catch (err) {
-      this.logger.error('Failed to initialize database schema:', err);
+    if (decision.kind === 'boot') {
+      return;
     }
+
+    if (decision.kind === 'apply') {
+      this.logger.log(`새 데이터베이스입니다. 마이그레이션 ${decision.names.length}건을 적용합니다.`);
+      try {
+        await applyMigrations(this, dir, decision.names);
+      } catch (err) {
+        // 새 DB 초기화가 중간에 깨진 상태다. 반쪽 스키마로 서버를 띄우면 안 된다.
+        // 잃을 데이터가 없는 상태이므로 복구 방법은 DB 파일 삭제 후 재시도가 가장 확실하다.
+        const detail = err instanceof MigrationFailedError ? err.message : String(err);
+        console.error('');
+        console.error('데이터베이스 초기화에 실패했습니다.');
+        console.error(`  ${detail}`);
+        console.error('  data/sam.db 파일을 삭제한 뒤 다시 실행하십시오.');
+        console.error('  계속 실패하면 담당 개발자에게 이 메시지를 그대로 전달하십시오.');
+        console.error('');
+        this.logger.error(`database initialization failed: ${detail}`);
+        await this.$disconnect();
+        process.exit(1);
+      }
+      this.logger.log('데이터베이스 초기화를 완료했습니다.');
+      return;
+    }
+
+    // 관리자가 탐색기에서 더블클릭해 실행하면 콘솔이 순간적으로 닫힌다.
+    // 그래서 표준 출력과 로거 양쪽에 남긴다. "키를 누르면 종료" 같은 대기는 넣지 않는다 —
+    // 서비스 래퍼나 스크립트로 자동 기동할 때 프로세스가 멈춰버린다.
+    console.error(decision.notice);
+    this.logger.error(decision.notice);
+    await this.$disconnect();
+    process.exit(decision.exitCode);
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.$disconnect();
   }
 }
-
