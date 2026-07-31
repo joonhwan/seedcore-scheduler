@@ -36,6 +36,44 @@ describe('checksumOf', () => {
   it('입력이 다르면 값이 다르다', () => {
     expect(checksumOf('SELECT 1;')).not.toBe(checksumOf('SELECT 2;'));
   });
+
+  it('실제 마이그레이션 6개의 checksum 이 Prisma CLI 가 기록한 값과 같다', () => {
+    // 아래 값은 로컬 dev DB(apps/api/prisma/data/app.db)의 _prisma_migrations.checksum 에
+    // 정식 prisma CLI(`prisma migrate dev`)가 직접 기록해 둔 값을 그대로 옮긴 것이다.
+    // 이 테스트가 지키는 것은 두 가지다.
+    //
+    // 1) 우리 checksumOf() 가 Prisma 와 같은 값을 만든다는 사실. 설계 문서 6절이 약속하는
+    //    "나중에 정식 prisma migrate 도구로 돌아갈 여지" 가 이 등식에 걸려 있다.
+    // 2) 줄바꿈이 CRLF 로 바뀌지 않았다는 사실. 파일 내용을 그대로 해시하므로, clone 환경의
+    //    core.autocrlf 때문에 CRLF 로 펼쳐지면 여섯 값이 전부 달라진다 — 저장소 루트
+    //    .gitattributes 의 `text eol=lf` 지정이 무너지면 여기서 빨간불이 난다.
+    //
+    // 마이그레이션 파일은 한 번 배포되면 내용을 수정하지 않는 것이 규칙이므로, 이 값들이
+    // 바뀌었다면 그것은 실수이거나 줄바꿈 오염이다.
+    const expected: Record<string, string> = {
+      '20260430123641_initial':
+        'b417ba67944fbeb3c439ab9c05e7bbafb2ac7cee7faf55efb9d102cd3ec1eb14',
+      '20260430132204_m1_auth_lockout':
+        '9adeab42ca586f48919d5879d02c9a1d4ee9e16e27d0f460f79e9dab703fdfd2',
+      '20260430211000_m2b_node_history_snapshot':
+        'f491594e02610e0af715388d196d0a57ee3013e52366f05acf0774d73e7153a9',
+      '20260501004505_m3_node_progress':
+        '4a7c652fc5a5c13686f17cdceb6c463936f3f81df3528194b9338a6f07bb8300',
+      '20260714104304_add_autocomplete_term':
+        '1752d00b9a2122606affd003749c5b4420f98e93f53d19f5d81f6f146b97193b',
+      '20260714121735_seed_initial_autocomplete':
+        '8466571644e25df03e69ca8ae5e04141b721d0fc881f95f8cd38aade892e972f',
+    };
+
+    // 새 마이그레이션이 추가돼도 이 테스트가 막지 않도록, 알고 있는 여섯 개만 대조한다.
+    const dir = path.resolve(__dirname, '../../prisma/migrations');
+    const names = listMigrationFiles(dir);
+    for (const [name, checksum] of Object.entries(expected)) {
+      expect(names).toContain(name);
+      const sql = fs.readFileSync(path.join(dir, name, 'migration.sql'), 'utf8');
+      expect(checksumOf(sql), `${name} 의 checksum 이 달라졌습니다`).toBe(checksum);
+    }
+  });
 });
 
 describe('빈 DB 판정과 이력 테이블', () => {
@@ -281,7 +319,11 @@ describe('applyMigrations', () => {
     );
   });
 
-  it('실패한 마이그레이션은 이력에 기록하지 않는다', async () => {
+  // 이름 주의: "이력에 기록하지 않는다" 가 아니다. 실패한 마이그레이션도 finished_at 이 NULL 인
+  // 미완료 행으로 이력에 남는다(아래 "finished_at 이 NULL 인 이력 행을 남긴다" 테스트가 그 행의
+  // 존재를 직접 단언한다).
+  // 여기서 확인하는 것은 그 행이 listApplied() 에서 "적용됨" 으로 세어지지 않는다는 것뿐이다.
+  it('실패한 마이그레이션은 적용된 것으로 세지 않는다', async () => {
     const dir = createMigrationsDir([
       ['20260101000000_a', 'CREATE TABLE "t" ("id" TEXT); THIS IS NOT SQL;'],
     ]);

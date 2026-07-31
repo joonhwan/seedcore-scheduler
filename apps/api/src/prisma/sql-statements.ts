@@ -36,9 +36,18 @@ export function splitSqlStatements(sql: string): string[] {
     }
 
     // -- 부터 줄 끝까지는 주석. 개행은 남겨 문장 모양을 보존한다.
+    //
+    // 개행을 직접 붙이는 이유: 아래 while 은 '\n' 을 만나면 멈추지만, continue 로 돌아가면
+    // for 의 i += 1 이 그 '\n' 을 건너뛰어 결과 문장에서 사라진다. 그러면 "SELECT 1--c\nFROM t"
+    // 같은 입력이 "SELECT 1FROM t" 로 붙어버린다 (주석 앞에 공백이 없는 경우). 현재
+    // 마이그레이션 파일은 주석이 항상 자기 줄에 있어 문제가 드러나지 않지만, 앞으로 손으로
+    // 쓴 SQL 이 들어오면 바로 깨진다. 문장은 마지막에 trim 하므로 개행을 남겨도 손해가 없다.
     if (ch === '-' && sql[i + 1] === '-') {
       while (i < sql.length && sql[i] !== '\n') {
         i += 1;
+      }
+      if (i < sql.length) {
+        current += '\n';
       }
       continue;
     }

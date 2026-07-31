@@ -36,6 +36,12 @@ describe('splitSqlStatements', () => {
     expect(splitSqlStatements(sql)).toEqual(['SELECT 1', 'SELECT 2']);
   });
 
+  it('주석을 지우면서 그 줄의 개행은 남긴다 (앞 토큰과 뒷 토큰이 붙지 않는다)', () => {
+    // 주석 앞에 공백이 없으면 개행까지 삼켰을 때 "SELECT 1FROM t" 로 붙어버린다.
+    const sql = 'SELECT 1--c\nFROM t;';
+    expect(splitSqlStatements(sql)).toEqual(['SELECT 1\nFROM t']);
+  });
+
   it('빈 문장과 공백만 있는 문장은 버린다', () => {
     expect(splitSqlStatements('SELECT 1;;\n\n  ;SELECT 2;')).toEqual(['SELECT 1', 'SELECT 2']);
   });

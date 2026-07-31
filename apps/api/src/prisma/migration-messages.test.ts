@@ -194,6 +194,27 @@ describe('formatMigrateFailureNotice', () => {
     expect(noStatement).toContain('이력 기록 단계');
   });
 
+  it('문장 번호를 특정할 수 없으면 억지 번호 대신 그 사실을 알린다', () => {
+    // applyMigrations() 가 문장 실행 루프에 들어가기도 전에 실패한 경우
+    // (ensureMigrationsTable / readMigrationSql). "0번째 문장" 같은 셀 수 없는 번호를
+    // 보여주면 관리자가 파일에서 그 문장을 찾으려 헛수고를 한다.
+    const unknown = formatMigrateFailureNotice({
+      migrationName: '20260101000000_a',
+      statementIndex: undefined,
+      causeMessage: 'ENOENT: migration.sql',
+      failingStatement: undefined,
+      succeeded: ['20250101000000_z'],
+      backupPath: 'D:/backups/pre-migrate/sam_20260731_215740.db',
+      dbPath: 'D:/data/app.db',
+    });
+    expect(unknown).toContain('문장 번호를 특정할 수 없습니다');
+    expect(unknown).not.toContain('번째 문장');
+    // 복구에 필요한 정보(백업 경로, 지울 파일)는 그대로 나와야 한다.
+    expect(unknown).toContain('D:/backups/pre-migrate/sam_20260731_215740.db');
+    expect(unknown).toContain('D:/data/app.db-wal');
+    expect(unknown).toContain('20250101000000_z');
+  });
+
   it('긴 SQL 문장은 잘라서 보여준다', () => {
     const long = formatMigrateFailureNotice({
       migrationName: '20260101000000_a',
