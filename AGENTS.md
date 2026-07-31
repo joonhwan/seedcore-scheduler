@@ -158,6 +158,7 @@ pnpm dev
    - `docker compose` 빌드 검증 및 이미지 `tar` 파일 저장
    - `deploy/scripts` 내 설치(`install.sh`), 업그레이드(`upgrade.sh`), 시스템 복원(`restore-system.sh`) 스크립트 작성 및 dry-run 검증
    - `docs/ops-guide.md` (운영 가이드 문서) 작성
+   - exe 배포판 DB 마이그레이션 (`sp-migrate.exe`) 구현 완료 — `docs/superpowers/specs/2026-07-29-exe-migration-design.md`
 2. **M5**: 프로젝트 단위 백업 및 복원 UI
    - 특정 프로젝트를 manifest 데이터를 포함한 단일 ZIP 파일로 백업하고, 업로드 시 새 프로젝트로 시딩 및 매핑해 복원하는 관리자 플로우 구현
 3. **v1.x 이후**: 타임라인 드래그 편집 기능 지원, 캘린더 뷰, 파일 첨부 기능 등

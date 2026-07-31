@@ -2,7 +2,7 @@
 
 - 작성일: 2026-07-29
 - 대상 마일스톤: M4 (에어갭 오프라인 배포 패키징)
-- 상태: 설계 승인 완료, 구현 계획 대기
+- 상태: 구현 완료
 
 ---
 
@@ -115,8 +115,15 @@ if (tables.length === 0) {   // users 가 있으면 DDL 블록 전체를 건너�
 | `resolveMigrationsDir()` | `apps/api/src/prisma/migration-runner.ts` | exe/로컬 양쪽에서 `migrations/` 위치 탐색 | `app.module.ts:26-30` 의 후보 경로 패턴 재사용 |
 | `resolveDatabaseUrl()` | `apps/api/src/common/db-path.ts` (신규, `main.ts:13-20` 에서 추출) | DB 파일 경로 결정 | — |
 | `PrismaService` | `apps/api/src/prisma/prisma.service.ts` (수정) | 부팅 시 판정. 빈 DB 면 직접 적용, 기존 DB 면 안내 후 종료 | `MigrationRunner` |
-| `migrate-cli.ts` | `apps/api/scripts/migrate-cli.ts` (신규) → `sp-migrate.exe` | 백업 → 적용 → 결과 리포트 | `MigrationRunner` |
+| `migrate-main.ts` | `apps/api/src/migrate-main.ts` (신규) → `sp-migrate.exe` | 백업 → 적용 → 결과 리포트 | `MigrationRunner` |
 | `build-exe.js` | (수정) | `migrations/**` 를 pkg asset 으로 내장, `sp-migrate.exe` 번들 추가 | — |
+
+`migrate-main.ts` 를 계획 당시 생각했던 `apps/api/scripts/` 가 아니라 `apps/api/src/` 에 둔 이유:
+`build-exe.js` 는 `scripts/backup-cli.ts` 와 `scripts/reset-admin-cli.ts` 를 `npx tsc scripts/...`
+형태로 **별도 `tsc` 호출**로 컴파일한다. 이 항목을 `scripts/` 에 두고 `../src/` 를 import 하면
+tsc 가 두 디렉터리를 모두 아우르도록 `rootDir` 를 추론해버려 출력 경로 구조가 바뀌고, 그 결과
+ncc 가 기대하는 엔트리 경로(`dist/scripts/migrate-cli.js`)가 어긋난다. 반면 `src/migrate-main.ts` 는
+`nest build` 가 만드는 `dist/migrate-main.js` 를 그대로 ncc 에 넘기면 되므로(§8 참고) 이 문제가 없다.
 
 ### `MigrationRunner` 인터페이스
 
@@ -172,7 +179,7 @@ snapshotTo(client, destPath): Promise<void>          // VACUUM INTO 백업
 | 이력 있음 + 미적용분 있음 | 이력 ↔ 파일 목록 비교 | 안내 출력 후 종료 | 3 |
 | **테이블 있음 + 이력 테이블 없음** | 위 두 조건 모두 불성립 | **거부.** 구 `ensureSchema()` 가 만든 DB 이며 어디까지 적용됐는지 알 수 없다 | 4 |
 | 이력에는 있는데 파일이 없음 | 이력 ⊄ 파일 목록 | 거부. exe 가 DB 보다 구버전(다운그레이드 시도) | 5 |
-| 적용 중 SQL 실패 | `$executeRawUnsafe` 예외 | 즉시 중단. 해당 마이그레이션은 이력에 **기록하지 않음**. 백업 복원 안내 | 1 |
+| 적용 중 SQL 실패 | `$executeRawUnsafe` 예외 | 즉시 중단. 해당 마이그레이션은 이력에 `finished_at` **NULL 인 미완료 행으로 남는다** (기록 자체는 실행 전에 이미 해뒀다 — §6 참고). 백업 복원 안내 | 1 |
 
 exit code 3 을 일반 오류(1)와 구분하는 이유: nssm 같은 서비스 래퍼나 배치 스크립트가
 "재시도해도 소용없는 상태" 를 알아보고 무한 재기동을 피할 수 있다.
@@ -241,6 +248,31 @@ CREATE TABLE "_prisma_migrations" (
 `checksum` 은 Prisma 와 같은 방식(`migration.sql` 내용의 SHA-256)으로 채운다. 그래야 나중에 정식
 `prisma migrate` 도구로 돌아갈 여지가 남는다.
 
+### 이력 기록 순서: 적용 "전"에 남기고, 성공 시 완료 처리한다
+
+(2026-07-31 결정 변경 — 프로젝트 담당자 승인. 최초 계획은 "적용 후 기록"이었다. 아래에 이유를 남긴다.)
+
+각 마이그레이션마다 SQL 문장을 실행하기 **앞서** `finished_at = NULL` 인 행을 먼저 INSERT 하고
+(`started_at`, `applied_steps_count=0`), 문장이 전부 성공하면 그 행을 `finished_at = CURRENT_TIMESTAMP`
+로 UPDATE 한다. Prisma 자신이 쓰는 방식과 같다. `listApplied()` 는 `finished_at IS NOT NULL` 인
+행만 세므로, 중단된 행이 있어도 "적용됨" 으로 잘못 세지 않는다.
+
+**"적용 후 기록"을 버린 이유.** 원래 계획대로 SQL 을 다 실행한 뒤에야 이력을 기록하면, SQL 자체는
+전부 성공했는데 그 마지막 기록 단계(INSERT 한 번)만 실패하는 경우 이력에는 아무 흔적도 남지 않는다.
+그러면 다음 실행에서 그 마이그레이션을 미적용으로 보고 **처음부터 다시 실행**하게 되는데, 이미 적용된
+`RedefineTables` 패턴(`DROP TABLE` 포함)을 다시 돌리면 데이터를 파괴할 수 있다. "적용 전 기록, 성공 시
+완료 처리" 방식에서는 이 경우에도 최소한 `finished_at IS NULL` 인 미완료 행이 남아, 사람이 보면
+"이 마이그레이션은 시도된 적이 있다" 는 사실만은 알 수 있다.
+
+**이 방식이 만드는 새로운 위험(가장 날카로운 지점).** 반대로, SQL 실행이 전부 성공한 **직후** 완료
+처리(UPDATE)만 실패하면 DB 는 이미 마이그레이션이 적용된 상태인데 이력은 "미완료"로 남는다. 다음
+실행은 이 마이그레이션을 다시 미적용으로 보고 **SQL 을 처음부터 재실행**한다 — `CREATE TABLE` 충돌이나
+`RedefineTables` 의 데이터 유실로 이어질 수 있다. 두 실패 순서 중 어느 쪽을 택해도 "기록 실패가 재실행을
+유발"하는 위험 자체는 없앨 수 없고, 다만 어느 실패가 더 그럴듯한지가 다르다 — SQL 실행(여러 문장, DDL
+포함)이 이력 테이블에 대한 단순 INSERT/UPDATE 한 번보다 실패할 가능성이 훨씬 높으므로, "적용 전 기록"이
+전체 위험을 줄인다. 이 잔여 위험이 실제로 발생했을 때의 유일한 복구 수단은 §7 의 사전 백업이다.
+`README-exe.txt` 의 "업그레이드 관련 주의 사항"에도 이 두 가지를 적어 두었다.
+
 ---
 
 ## 7. `sp-migrate.exe` 동작
@@ -261,8 +293,11 @@ CREATE TABLE "_prisma_migrations" (
 `BackupService` 는 `PrismaService` 에 의존하는 Nest 프로바이더인데, 마이그레이션은 `PrismaService`
 초기화 도중에 일어난다. 재사용하면 순환 의존이 생긴다.
 
-백업을 **별도 `pre-migrate/` 폴더**에 두는 이유는 일상 백업(`backups/<날짜>/`)의 14일 보존 정책에
-섞여 지워지지 않게 하기 위해서다. 업그레이드 직전 스냅샷은 문제가 뒤늦게 발견될 수 있어 더 오래 남아야 한다.
+백업을 **별도 `pre-migrate/` 폴더**에 두는 이유는 일상 자동 백업(`BackupService`, 기본 보존
+`BACKUP_RETENTION_DAYS`=30일)의 정리 대상에 섞여 지워지지 않게 하기 위해서다. 실제로도 섞일 수
+없다 — `BackupService.cleanupOld()`(`backup.service.ts`)는 백업 디렉터리 하위 항목 중 이름이
+8자리 숫자(`YYYYMMDD`)인 것만 정리 대상으로 보는데, `pre-migrate` 는 이 패턴에 맞지 않아 애초에
+스캔 대상에 잡히지 않는다. 업그레이드 직전 스냅샷은 문제가 뒤늦게 발견될 수 있어 더 오래 남아야 한다.
 
 ---
 
@@ -270,7 +305,10 @@ CREATE TABLE "_prisma_migrations" (
 
 | 단계 | 변경 |
 |---|---|
-| 3/5 | `tsc` 컴파일 대상에 `scripts/migrate-cli.ts` 추가 |
+| 3/5 | 변경 없음 — `migrate-main.ts` 는 `apps/api/src/` 에 있어 기존 `pnpm -F @sam/api build`(nest build)가
+그대로 `dist/migrate-main.js` 를 만든다. `scripts/backup-cli.ts` / `scripts/reset-admin-cli.ts` 를 위한
+별도 `tsc` 호출(3/5)에는 손대지 않는다 — 4번째 대상으로 끼워 넣으면 §4 각주에 적은 `rootDir` 추론 문제가
+생긴다 |
 | 4/5 | `dist-bundle/migrate/` ncc 번들 추가. `server/` 와 `migrate/` 양쪽에 `prisma/migrations/` 복사 |
 | pkg assets | `server` / `migrate` 의 `package.json` 에 `'migrations/**/*'` 추가 (기존 `public/**/*` 옆에) |
 | 5/5 | `sp-migrate.exe` 생성 추가 |
@@ -311,7 +349,8 @@ CREATE TABLE "_prisma_migrations" (
 | `ensureSchema()` DDL | 삭제, `prisma/migrations` 로 단일화 | 이중 원본 제거가 이 작업의 실익 |
 | 트랜잭션 | 사용하지 않음 | PRAGMA 가 트랜잭션 안에서 무시됨. 원자성은 사전 백업으로 확보 |
 | 레거시 DB baseline | 지원하지 않고 거부 | 현장 배포 이력이 없음을 확인. 잘못된 추정으로 데이터를 날리는 위험이 더 크다 |
-| 백업 위치 | `backups/pre-migrate/` | 일상 백업의 14일 보존 정책에서 제외 |
+| 백업 위치 | `backups/pre-migrate/` | 일상 자동 백업의 보존 기간 정리(`cleanupOld()`, 폴더명 8자리 숫자 패턴만 정리)에서 자연히 제외됨 |
+| 이력 기록 시점 | 적용 "전"에 미완료 행 INSERT, 성공 시 UPDATE | 최초 계획(적용 후 기록)은 SQL 전부 성공 + 기록 실패 시 이력에 아무 흔적이 안 남아 다음 실행이 이미 적용된 파괴적 SQL 을 재실행함. Prisma 자신의 방식과 동일하게 맞춰 이 위험을 줄임 (담당자 승인, 2026-07-31). 남은 잔여 위험(성공 직후 완료 처리만 실패)은 §6 참고, 복구는 사전 백업 |
 
 ---
 
@@ -324,3 +363,8 @@ CREATE TABLE "_prisma_migrations" (
 - exe 내장 자원 접근은 `app.module.ts:26-30` 의 "후보 경로 목록 중 존재하는 첫 항목" 패턴을 쓴다.
 - 현재 마이그레이션 SQL 중 문자열 리터럴에 세미콜론을 포함한 것은 없다.
 - 현장(폐쇄망)에 배포된 exe 및 실제 데이터 DB 는 아직 없다.
+- **Prisma Client 는 `.env` 파일을 읽지 않는다.** `.env` 를 읽는 것은 Prisma CLI(`prisma migrate dev`
+  등) 뿐이다. 이 차이 때문에 `resolveDatabaseUrl()`(`apps/api/src/common/db-path.ts`)이 `.env` 를
+  직접 파싱하는 분기를 스스로 두고 있다 — 이 분기가 없으면 로컬 개발에서 실행 중인 앱과
+  `prisma migrate dev` 가 서로 다른 DB 파일을 열게 된다 (하나는 `process.env.DATABASE_URL` 미설정 시
+  폴백 경로를, 다른 하나는 `.env` 의 `DATABASE_URL` 을 보게 되므로).
