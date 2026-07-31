@@ -71,6 +71,15 @@ export async function decideMigrate(
   if (await isFreshDatabase(client)) {
     // 이력도 없고 테이블도 없는 진짜 빈 DB. sp-migrate.exe 가 적용할 대상이 아니다.
     // (sp-server.exe 가 최초 실행 시 직접 초기화한다.)
+    //
+    // "DB 가 없다/비어 있다" 를 fs.existsSync(경로 문자열) 로 판단하지 않는 이유: apps/api/.env 의
+    // DATABASE_URL 은 상대경로("file:./data/app.db")일 수 있는데, Node 는 이를 process.cwd()
+    // 기준으로 해석하고 Prisma 는 schema.prisma 파일 위치 기준으로 해석해 서로 다른 파일을
+    // 가리킬 수 있다 (실행 파일에서는 절대경로라 문제 없지만, 개발 환경 검증 시에는 "파일이
+    // 없다" 는 오탐이 난다). 그래서 경로 존재로 판단하지 않고, 실제로 연결한 뒤 위
+    // isFreshDatabase() 로 테이블 개수를 세어 판단한다 — 연결 과정에서 Prisma 가 빈 DB 파일을
+    // 만드는 부작용이 있어도 무해하다. sp-server.exe 가 그 빈 DB 를 보고 정상적으로
+    // 초기화할 것이기 때문이다.
     return { kind: 'halt', exitCode: 2, notice: formatEmptyDatabaseNotice(dbUrl) };
   }
 

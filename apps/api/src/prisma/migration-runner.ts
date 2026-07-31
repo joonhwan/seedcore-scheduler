@@ -141,10 +141,13 @@ export async function listPending(client: RawClient, dir: string): Promise<strin
 /**
  * 마이그레이션 적용 중 SQL 이 실패한 경우. 어느 마이그레이션의 몇 번째 문장인지 담는다.
  *
- * `failingStatement` 은 실패한 SQL 문장 원문이다(문장 배열 밖으로 벗어난 단계 — 이력 INSERT/UPDATE
- * 자체의 실패 — 에서는 `undefined`). sp-migrate.exe 가 pkg 로 묶인 실행 파일이라 관리자에게는
- * 열어볼 migration.sql 파일이 없다는 점 때문에 필요하다 — statementIndex 만으로는
- * "몇 번째 문장"인지 셀 파일 자체가 없어 무용하다.
+ * `failingStatement` 은 실패한 SQL 문장 원문이다. 문장 실행 루프 "안"에서 실패했을 때만 채워지고,
+ * 이력 기록(INSERT/UPDATE) 자체의 실패에서는 `undefined` 다 — statementIndex 값만으로는 이 둘을
+ * 구분할 수 없다(예: insertStartedRecord 실패는 항상 statementIndex===0 이라 문장 배열의 인덱스
+ * 0 과 같아 보이지만, 그 실패는 문장을 하나도 실행하기 전에 일어난 것이라 statements[0] 을
+ * 지목하면 실행된 적 없는 문장을 원인으로 지목하는 셈이 된다). sp-migrate.exe 가 pkg 로 묶인
+ * 실행 파일이라 관리자에게는 열어볼 migration.sql 파일이 없다는 점 때문에 필요하다 —
+ * statementIndex 만으로는 "몇 번째 문장"인지 셀 파일 자체가 없어 무용하다.
  */
 export class MigrationFailedError extends Error {
   readonly migrationName: string;
@@ -211,21 +214,27 @@ export async function applyMigrations(
     // MigrationFailedError 로 통일해서 던진다 — 이력 기록 실패가 관리자에게 raw Prisma
     // 에러로 노출되지 않게 하기 위해서다.
     let statementIndex = 0;
+    // 문장 실행 루프 "안"에서 실패했을 때만 채운다. insertStartedRecord/markFinished 실패는
+    // statementIndex 값만으로 구분할 수 없다 — insertStartedRecord 실패는 항상
+    // statementIndex===0 인데, 이는 우연히 statements[0] 과 같은 인덱스라 그대로 쓰면
+    // "실행된 적도 없는 첫 문장" 을 실패 원인으로 지목하는 착오가 생긴다. 그래서 인덱스로
+    // 추론하지 않고 루프 진입 여부를 이 변수로 직접 표시한다.
+    let currentStatement: string | undefined;
     try {
       await insertStartedRecord(client, id, name, checksum);
 
       for (; statementIndex < statements.length; statementIndex += 1) {
-        await client.$executeRawUnsafe(statements[statementIndex]!);
+        currentStatement = statements[statementIndex];
+        await client.$executeRawUnsafe(currentStatement!);
       }
+      currentStatement = undefined; // markFinished 단계는 SQL 문장이 아니다.
 
       await markFinished(client, id, statements.length);
     } catch (err) {
       // 1-based 로 알린다. 관리자가 파일을 열어 세기 좋다.
       // insertStartedRecord 단계 실패는 statementIndex===0 → 1 로, markFinished 단계 실패는
       // statementIndex===statements.length → 문장 수 + 1 로 보고된다.
-      // statements[statementIndex] 는 이력 기록(INSERT/UPDATE) 단계 실패 시 배열 범위를
-      // 벗어나 undefined 가 된다 — 그 경우는 실패한 "문장" 자체가 마이그레이션 SQL이 아니므로 맞다.
-      throw new MigrationFailedError(name, statementIndex + 1, err, statements[statementIndex]);
+      throw new MigrationFailedError(name, statementIndex + 1, err, currentStatement);
     }
   }
 }

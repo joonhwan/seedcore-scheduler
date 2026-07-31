@@ -17,6 +17,7 @@ import {
   MigrationFailedError,
   resolveMigrationsDir,
   snapshotTo,
+  type RawClient,
 } from './migration-runner';
 import { createTempDb, type TempDb } from './test-helpers';
 
@@ -300,6 +301,48 @@ describe('applyMigrations', () => {
     ).rejects.toMatchObject({
       migrationName: '20260101000000_a',
       statementIndex: 2,
+    });
+  });
+
+  it('실패한 문장 원문을 담는다 (문장 실행 루프 안에서 실패한 경우)', async () => {
+    const dir = createMigrationsDir([
+      ['20260101000000_a', 'CREATE TABLE "t" ("id" TEXT); THIS IS NOT SQL;'],
+    ]);
+    await expect(
+      applyMigrations(db.client, dir, ['20260101000000_a']),
+    ).rejects.toMatchObject({
+      failingStatement: 'THIS IS NOT SQL',
+    });
+  });
+
+  it('이력 기록(INSERT) 자체가 실패하면 실패한 문장을 담지 않는다 (그 문장은 실행된 적이 없다)', async () => {
+    // 회귀 테스트: statementIndex 값만으로 "문장 루프 안에서 실패" 를 추론하면,
+    // insertStartedRecord 실패는 항상 statementIndex===0 이라 마이그레이션의 첫 문장
+    // (실행된 적도 없는 문장)을 실패 원인으로 잘못 지목하게 된다. 읽기전용 DB 파일, 디스크
+    // 가득 참, DB 잠금 등은 sp-migrate.exe 가 실제로 겪을 법한 이력 기록 단계 실패 원인이다.
+    const dir = createMigrationsDir([['20260101000000_a', 'CREATE TABLE "t" ("id" TEXT);']]);
+
+    // ensureMigrationsTable() 의 CREATE TABLE IF NOT EXISTS(1번째 $executeRawUnsafe 호출)는
+    // 통과시키고, 그 다음 호출(insertStartedRecord 의 INSERT, 2번째 호출)부터 실패시켜
+    // insertStartedRecord 단계 실패를 재현한다.
+    let callCount = 0;
+    const failingClient: RawClient = {
+      $executeRawUnsafe: async (sql: string) => {
+        callCount += 1;
+        if (callCount === 2) {
+          throw new Error('강제 실패(테스트): 이력 기록 단계');
+        }
+        return db.client.$executeRawUnsafe(sql);
+      },
+      $queryRawUnsafe: <T = unknown>(sql: string) => db.client.$queryRawUnsafe<T>(sql),
+    };
+
+    await expect(
+      applyMigrations(failingClient, dir, ['20260101000000_a']),
+    ).rejects.toMatchObject({
+      migrationName: '20260101000000_a',
+      statementIndex: 1,
+      failingStatement: undefined,
     });
   });
 
