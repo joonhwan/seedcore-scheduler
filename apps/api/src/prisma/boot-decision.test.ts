@@ -82,4 +82,31 @@ describe('decideBoot', () => {
     expect(decision.exitCode).toBe(5);
     expect(decision.notice).toContain('20260901120000_future');
   });
+
+  it('migrations 디렉터리가 비어 있으면 exit 6 으로 멈추라고 한다', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-boot-empty-'));
+
+    const decision = await decideBoot(db.client, dir);
+    expect(decision.kind).toBe('halt');
+    if (decision.kind !== 'halt') return;
+    expect(decision.exitCode).toBe(6);
+    expect(decision.notice).toContain('설치가 손상되었습니다');
+  });
+
+  it('이력은 전부 적용됐는데 테이블이 없으면 exit 6 으로 멈추라고 한다', async () => {
+    const dir = createMigrationsDir([['20260101000000_a', 'CREATE TABLE "t" ("id" TEXT);']]);
+    await ensureMigrationsTable(db.client);
+    await db.client.$executeRawUnsafe(
+      `INSERT INTO "_prisma_migrations" ("id","checksum","migration_name","finished_at","applied_steps_count")
+       VALUES ('z','c','20260101000000_a',CURRENT_TIMESTAMP,1)`,
+    );
+    // 마이그레이션 이력은 있지만 실제 "t" 테이블은 만들지 않은 상태를 그대로 재현한다
+    // (백업 오복원 등으로 이력만 남고 테이블이 사라진 시나리오).
+
+    const decision = await decideBoot(db.client, dir);
+    expect(decision.kind).toBe('halt');
+    if (decision.kind !== 'halt') return;
+    expect(decision.exitCode).toBe(6);
+    expect(decision.notice).toContain('테이블은 하나도 없습니다');
+  });
 });

@@ -1,6 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { resolveDbFilePath } from '../common/db-path';
 import { decideBoot } from './boot-decision';
+import { formatInitFailureNotice } from './migration-messages';
 import { MigrationFailedError, applyMigrations, resolveMigrationsDir } from './migration-runner';
 
 @Injectable()
@@ -34,14 +36,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         await applyMigrations(this, dir, decision.names);
       } catch (err) {
         // 새 DB 초기화가 중간에 깨진 상태다. 반쪽 스키마로 서버를 띄우면 안 된다.
-        // 잃을 데이터가 없는 상태이므로 복구 방법은 DB 파일 삭제 후 재시도가 가장 확실하다.
+        // 잃을 데이터가 없는 상태이므로 복구 방법은 DB 파일(및 WAL/SHM 사이드카) 삭제 후
+        // 재시도가 가장 확실하다. 안내 문구는 migration-messages.ts 에서 관리한다.
         const detail = err instanceof MigrationFailedError ? err.message : String(err);
-        console.error('');
-        console.error('데이터베이스 초기화에 실패했습니다.');
-        console.error(`  ${detail}`);
-        console.error('  data/sam.db 파일을 삭제한 뒤 다시 실행하십시오.');
-        console.error('  계속 실패하면 담당 개발자에게 이 메시지를 그대로 전달하십시오.');
-        console.error('');
+        const notice = formatInitFailureNotice(detail, resolveDbFilePath());
+        console.error(notice);
         this.logger.error(`database initialization failed: ${detail}`);
         await this.$disconnect();
         process.exit(1);
