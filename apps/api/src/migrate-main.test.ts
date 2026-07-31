@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { PrismaClient } from '@prisma/client';
-import { applyMigrations } from './prisma/migration-runner';
-import { resolvePreMigrateBackupPath, runMigrate, withSingleConnection } from './migrate-main';
+import { applyMigrations, listMigrationFiles, listPending } from './prisma/migration-runner';
+import { resolvePreMigrateBackupPath, runMigrate } from './migrate-main';
 
 describe('resolvePreMigrateBackupPath', () => {
   const at = new Date(2026, 6, 29, 21, 5, 3); // 2026-07-29 21:05:03 (월은 0-based)
@@ -19,19 +19,8 @@ describe('resolvePreMigrateBackupPath', () => {
   });
 });
 
-describe('withSingleConnection', () => {
-  it('쿼리스트링이 없으면 ? 로 connection_limit=1 을 붙인다', () => {
-    expect(withSingleConnection('file:./data/app.db')).toBe(
-      'file:./data/app.db?connection_limit=1',
-    );
-  });
-
-  it('쿼리스트링이 이미 있으면 & 로 connection_limit=1 을 붙인다', () => {
-    expect(withSingleConnection('file:./data/app.db?mode=rwc')).toBe(
-      'file:./data/app.db?mode=rwc&connection_limit=1',
-    );
-  });
-});
+// withSingleConnection / createMigrationClient 의 단위 테스트는
+// src/prisma/migration-client.test.ts 로 옮겼다 (그 함수들이 그 모듈로 옮겨졌다).
 
 describe('runMigrate() 의 process.env.DATABASE_URL 오염 방지', () => {
   // override 1 의 두 번째 절반: connection_limit=1 은 PrismaClient 생성자에만 넘겨야 하고,
@@ -65,6 +54,141 @@ describe('runMigrate() 의 process.env.DATABASE_URL 오염 방지', () => {
 
     expect(process.env.DATABASE_URL).toBe(plainUrl);
     expect(process.env.DATABASE_URL).not.toContain('connection_limit');
+  });
+});
+
+describe('runMigrate() 의 정상 업그레이드 경로', () => {
+  // sp-migrate.exe 는 고객 DB 에 쓰기를 하는 유일한 실행 파일인데, 그 성공 경로
+  // (판정 → 백업 → 적용 → 리포트)를 끝까지 실행하는 테스트가 없었다. 데이터가 들어 있는
+  // DB 에 실제 마이그레이션 하나를 적용해 그 전체 경로를 통과시킨다.
+  //
+  // 가장 중요한 단언은 "백업이 적용보다 먼저" 다 (아래 4번). 트랜잭션을 쓰지 않는 이 설계에서
+  // 원자성을 대신하는 것이 사전 백업이므로, 스냅샷이 적용 루프 뒤로 밀리는 리팩터링은
+  // 무조건 잡아야 한다. 백업 파일 존재만 확인하면 그 회귀가 초록불로 통과한다.
+  const originalCwd = process.cwd();
+  let originalEnv: string | undefined;
+  let dbDir: string | undefined;
+  let workDir: string | undefined;
+  let logSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+  afterEach(async () => {
+    // 임시 디렉터리를 지우기 전에 cwd 를 먼저 되돌린다. vitest.config.ts 가
+    // fileParallelism: false 라 cwd 가 새면 뒤에 실행되는 모든 테스트 파일이 깨진다.
+    process.chdir(originalCwd);
+    if (originalEnv === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = originalEnv;
+    }
+    logSpy?.mockRestore();
+    if (dbDir) {
+      fs.rmSync(dbDir, { recursive: true, force: true });
+      dbDir = undefined;
+    }
+    if (workDir) {
+      fs.rmSync(workDir, { recursive: true, force: true });
+      workDir = undefined;
+    }
+  });
+
+  it('데이터가 있는 DB 를 백업한 뒤 업그레이드하고 exit 0 을 돌려준다', async () => {
+    const migrationsDir = path.resolve(__dirname, '..', 'prisma', 'migrations');
+    const allNames = listMigrationFiles(migrationsDir);
+    expect(allNames.length).toBeGreaterThan(1);
+    const lastName = allNames[allNames.length - 1]!;
+    const alreadyApplied = allNames.slice(0, allNames.length - 1);
+
+    // 1) 마지막 하나를 뺀 나머지를 미리 적용하고 실제 데이터를 넣는다.
+    //    (행 구성은 migration-runner.test.ts 의 데이터 보존 테스트와 같다.)
+    dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-migrate-main-happy-db-'));
+    const dbPath = path.join(dbDir, 'app.db').replace(/\\/g, '/');
+    const setupClient = new PrismaClient({
+      datasources: { db: { url: `file:${dbPath}?connection_limit=1` } },
+    });
+    await setupClient.$connect();
+    await applyMigrations(setupClient, migrationsDir, alreadyApplied);
+    await setupClient.$executeRawUnsafe(
+      `INSERT INTO "users" ("id","username","display_name","password_hash","updated_at")
+       VALUES ('u1','tester','Tester','hash','2026-01-01T00:00:00.000Z')`,
+    );
+    await setupClient.$executeRawUnsafe(
+      `INSERT INTO "projects" ("id","name","created_by","updated_at")
+       VALUES ('p1','Test Project','u1','2026-01-01T00:00:00.000Z')`,
+    );
+    await setupClient.$executeRawUnsafe(
+      `INSERT INTO "schedule_nodes"
+         ("id","project_id","parent_id","kind","title","sort_order","depth","created_by","updated_by","updated_at")
+       VALUES ('n1','p1',NULL,'ITEM','Test Node',1,0,'u1','u1','2026-01-01T00:00:00.000Z')`,
+    );
+    await setupClient.$executeRawUnsafe(
+      `INSERT INTO "node_comments" ("id","node_id","author_id","body","updated_at")
+       VALUES ('c1','n1','u1','a comment','2026-01-01T00:00:00.000Z')`,
+    );
+    await setupClient.$disconnect();
+
+    // 2) 그 파일을 대상으로, 백업이 떨어질 임시 작업 디렉터리에서 실행한다.
+    originalEnv = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = `file:${dbPath}`;
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sam-migrate-main-happy-cwd-'));
+    process.chdir(workDir);
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    // 3) 성공해야 한다.
+    expect(await runMigrate()).toBe(0);
+
+    // 4) 백업이 만들어졌고, 그 백업에는 이번에 적용한 마이그레이션이 **없어야** 한다.
+    //    이것이 "백업은 적용보다 먼저" 를 증명하는 유일한 단언이다.
+    const preMigrateDir = path.join(workDir, 'backups', 'pre-migrate');
+    const backups = fs.readdirSync(preMigrateDir).filter((f) => /^sam_.*\.db$/.test(f));
+    expect(backups).toHaveLength(1);
+    const backupPath = path.join(preMigrateDir, backups[0]!).replace(/\\/g, '/');
+
+    const backupClient = new PrismaClient({
+      datasources: { db: { url: `file:${backupPath}?connection_limit=1` } },
+    });
+    try {
+      const backupRows = await backupClient.$queryRawUnsafe<Array<{ migration_name: string }>>(
+        `SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`,
+      );
+      const backupNames = backupRows.map((r) => r.migration_name);
+      expect(backupNames).not.toContain(lastName);
+      expect(backupNames).toContain(alreadyApplied[alreadyApplied.length - 1]!);
+    } finally {
+      await backupClient.$disconnect();
+    }
+
+    // 5) 실제 DB: 미적용분 0, 기존 데이터 생존, FK 무결성 정상.
+    const verifyClient = new PrismaClient({
+      datasources: { db: { url: `file:${dbPath}?connection_limit=1` } },
+    });
+    try {
+      expect(await listPending(verifyClient, migrationsDir)).toEqual([]);
+
+      const comments = await verifyClient.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT id FROM "node_comments" WHERE id = 'c1'`,
+      );
+      expect(comments).toEqual([{ id: 'c1' }]);
+
+      const violations = await verifyClient.$queryRawUnsafe<unknown[]>(`PRAGMA foreign_key_check`);
+      expect(violations).toEqual([]);
+
+      // 마이그레이션 SQL 이 껐던 FK 를 다시 켜 두는지 확인한다. foreign_keys 는 커넥션 단위
+      // 설정이라 여기서 보는 값은 새 커넥션의 값이다 — 마이그레이션이 파일에 남긴 상태가
+      // 아니라 "Prisma 커넥터가 연결 시 ON 으로 맞춘다" 는 사실을 확인하는 셈이지만,
+      // 그 전제가 깨지면 앱 전체의 FK 가 조용히 꺼지는 것이므로 확인해 둘 값어치가 있다.
+      const fk = await verifyClient.$queryRawUnsafe<Array<{ foreign_keys: number | bigint }>>(
+        `PRAGMA foreign_keys`,
+      );
+      expect(Number(fk[0]!.foreign_keys)).toBe(1);
+    } finally {
+      await verifyClient.$disconnect();
+    }
+
+    // 6) README 의 복구 안내가 화면에 찍힌 백업 경로에 의존하므로, 출력에 그 경로와
+    //    완료 요약이 실제로 들어 있는지 확인한다.
+    const output = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    expect(output.replace(/\\/g, '/')).toContain(backupPath);
+    expect(output).toContain('업그레이드 완료 — 1건 적용');
   });
 });
 

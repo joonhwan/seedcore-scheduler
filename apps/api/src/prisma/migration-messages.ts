@@ -192,10 +192,15 @@ export function formatBackupFailedNotice(backupPath: string, causeMessage: strin
  * causeMessage 만 쓰고 err.message 전체를 쓰지 않는 이유: MigrationFailedError.message 는
  * 이미 "마이그레이션 'X' 의 Y번째 문장에서 실패했습니다: <원인>" 형태라, 아래에서
  * migrationName/statementIndex 를 따로 한 번 더 보여주면 같은 문장을 두 번 읽게 된다.
+ *
+ * `statementIndex` 가 `undefined` 인 경우: `applyMigrations()` 가 문장 실행 루프에 들어가기도
+ * 전에(이력 테이블 생성, migration.sql 파일 읽기) 실패하면 지목할 문장 번호가 없다. 그때
+ * 억지로 0 이나 1 을 쓰면 "0번째 문장" 처럼 셀 수 없는 번호이거나, 실행된 적도 없는 첫
+ * 문장을 원인으로 지목하는 셈이 된다. 번호를 특정할 수 없다고 그대로 말한다.
  */
 export function formatMigrateFailureNotice(params: {
   migrationName: string;
-  statementIndex: number;
+  statementIndex: number | undefined;
   causeMessage: string;
   failingStatement: string | undefined;
   succeeded: string[];
@@ -218,12 +223,17 @@ export function formatMigrateFailureNotice(params: {
       ? '    없음 — 이번 실행에서 하나도 적용되지 못했습니다.'
       : succeeded.map((name) => `    - ${name}`).join('\n');
 
+  const failurePoint =
+    statementIndex === undefined
+      ? `  실패 지점: ${migrationName} (문장 번호를 특정할 수 없습니다)`
+      : `  실패 지점: ${migrationName} 의 ${statementIndex}번째 문장`;
+
   return [
     LINE,
     '  업그레이드가 실패했습니다',
     LINE,
     '',
-    `  실패 지점: ${migrationName} 의 ${statementIndex}번째 문장`,
+    failurePoint,
     `  원인: ${causeMessage}`,
     `  실패한 문장: ${truncatedStatement}`,
     '',
