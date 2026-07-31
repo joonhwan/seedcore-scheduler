@@ -1,0 +1,102 @@
+import {
+  DowngradeError,
+  LegacySchemaError,
+  isFreshDatabase,
+  listApplied,
+  listMigrationFiles,
+  listPending,
+  type RawClient,
+} from './migration-runner';
+import {
+  formatDowngradeNotice,
+  formatEmptyDatabaseNotice,
+  formatLegacySchemaNotice,
+  formatNoMigrationFilesNotice,
+  formatSchemaMissingNotice,
+} from './migration-messages';
+
+export type MigrateDecision =
+  | { kind: 'up-to-date' }
+  | { kind: 'apply'; names: string[] }
+  | { kind: 'halt'; exitCode: number; notice: string };
+
+/**
+ * sp-migrate.exe 가 실행 시 DB 상태를 판정한다. 부작용이 없어 값으로 검증할 수 있다.
+ * `boot-decision.ts` 의 `decideBoot()` 과 같은 모양과 같은 판정 순서를 따른다 — 서버 쪽 여섯
+ * 가지 상태 판정이 한 곳에 모여 있어 테스트 가능하고 일관됐던 것과 같은 이유로, 여기서도
+ * 판정과 I/O(백업/적용/출력)를 분리한다.
+ *
+ * 판정 순서가 `decideBoot()` 과 정확히 같아야 하는 이유: `isFreshDatabase()` 를
+ * `listPending()` 보다 먼저 물으면, "이력엔 미래 마이그레이션이 기록돼 있지만 그 마이그레이션이
+ * 만든 테이블은 없는" 다운그레이드 상태를 "이력은 있는데 테이블이 없는 손상된 복원" 으로 잘못
+ * 분류해버린다(둘 다 isFreshDatabase() 는 true 를 준다). `listPending()` 을 먼저 불러 레거시/
+ * 다운그레이드부터 가려낸 뒤에만 fresh 여부를 물어야 한다.
+ *
+ * `decideBoot()` 과 다른 점(sp-migrate.exe 전용 상태): `pending.length > 0` 인데 DB 가
+ * fresh(테이블도 이력도 없음)이면, `decideBoot()` 은 'apply'(sp-server.exe 가 최초 초기화)를
+ * 돌려주지만 여기서는 halt(exit 2)로 멈춘다 — 최초 초기화는 sp-server.exe 의 몫이지
+ * sp-migrate.exe 가 손댈 대상이 아니기 때문이다.
+ */
+export async function decideMigrate(
+  client: RawClient,
+  dir: string,
+  dbUrl: string,
+): Promise<MigrateDecision> {
+  const files = listMigrationFiles(dir);
+  if (files.length === 0) {
+    return { kind: 'halt', exitCode: 6, notice: formatNoMigrationFilesNotice() };
+  }
+
+  let pending: string[];
+  try {
+    pending = await listPending(client, dir);
+  } catch (err) {
+    if (err instanceof LegacySchemaError) {
+      return { kind: 'halt', exitCode: 4, notice: formatLegacySchemaNotice() };
+    }
+    if (err instanceof DowngradeError) {
+      return { kind: 'halt', exitCode: 5, notice: formatDowngradeNotice(err.missing) };
+    }
+    throw err;
+  }
+
+  const fresh = await isFreshDatabase(client);
+
+  // 이력에 적용 완료 행이 남아 있는데 테이블이 하나도 없다 — 손상된 백업 복원 등.
+  // sp-server.exe 의 exit 6 (formatSchemaMissingNotice) 과 같은 상태이므로 같은 코드/문구를 쓴다.
+  //
+  // 미적용분 개수와 무관하게 먼저 판정한다. 이 판정을 pending.length === 0 안쪽에만 두면,
+  // "이력에 완료 행 있음 + 테이블 없음 + 미적용분도 있음"(오래된 .db 를 새 .db 위에 복원한
+  // 경우) 상태에서 아래 exit 2 로 떨어져 "비어 있으니 sp-server.exe 를 먼저 실행하라" 고
+  // 안내하게 된다. 그러면 sp-server.exe 는 같은 파일을 최초 실행으로 보고 뒤쪽 마이그레이션만
+  // 적용하려다 죽는다 — 두 실행 파일이 한 DB 상태에 서로 다른 진단을 내리는 셈이다.
+  // (`boot-decision.ts` 의 같은 위치에 같은 판정이 있어야 한다.)
+  //
+  // 테이블 존재 여부가 아니라 `listApplied()` 로 판정하는 이유: ensureMigrationsTable() 직후
+  // 첫 INSERT 전에 죽으면 빈 _prisma_migrations 테이블만 남는데, 그건 아직 아무것도 적용되지
+  // 않은 진짜 빈 DB 다. 완료된 이력 행이 있는지로 물어야 그 경우를 손상으로 오진하지 않는다.
+  if (fresh && (await listApplied(client)).length > 0) {
+    return { kind: 'halt', exitCode: 6, notice: formatSchemaMissingNotice() };
+  }
+
+  if (pending.length === 0) {
+    return { kind: 'up-to-date' };
+  }
+
+  if (fresh) {
+    // 이력도 없고 테이블도 없는 진짜 빈 DB. sp-migrate.exe 가 적용할 대상이 아니다.
+    // (sp-server.exe 가 최초 실행 시 직접 초기화한다.)
+    //
+    // "DB 가 없다/비어 있다" 를 fs.existsSync(경로 문자열) 로 판단하지 않는 이유: apps/api/.env 의
+    // DATABASE_URL 은 상대경로("file:./data/app.db")일 수 있는데, Node 는 이를 process.cwd()
+    // 기준으로 해석하고 Prisma 는 schema.prisma 파일 위치 기준으로 해석해 서로 다른 파일을
+    // 가리킬 수 있다 (실행 파일에서는 절대경로라 문제 없지만, 개발 환경 검증 시에는 "파일이
+    // 없다" 는 오탐이 난다). 그래서 경로 존재로 판단하지 않고, 실제로 연결한 뒤 위
+    // isFreshDatabase() 로 테이블 개수를 세어 판단한다 — 연결 과정에서 Prisma 가 빈 DB 파일을
+    // 만드는 부작용이 있어도 무해하다. sp-server.exe 가 그 빈 DB 를 보고 정상적으로
+    // 초기화할 것이기 때문이다.
+    return { kind: 'halt', exitCode: 2, notice: formatEmptyDatabaseNotice(dbUrl) };
+  }
+
+  return { kind: 'apply', names: pending };
+}

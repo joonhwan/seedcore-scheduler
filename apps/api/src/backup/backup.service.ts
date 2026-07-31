@@ -12,6 +12,7 @@ import { pipeline } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveDbFilePath } from '../common/db-path';
 
 export interface BackupResult {
   ok: boolean;
@@ -32,6 +33,14 @@ export class BackupService implements OnModuleInit {
   private isRunning = false;
 
   readonly backupDir: string;
+  /**
+   * 로그/진단 표시용 DB 파일 경로. **백업 동작 자체는 이 값을 쓰지 않는다** —
+   * runBackup() 은 이미 연결된 Prisma 클라이언트에 VACUUM INTO 를 걸므로 항상 실제로
+   * 열려 있는 DB 를 뜬다. 그래서 이 값이 틀려도 백업은 멀쩡했고, 대신 부팅 로그가
+   * 존재하지도 않는 파일 이름을 찍었다 (exe 배포판의 실제 DB 는 <cwd>/data/sam.db 인데
+   * <cwd>/prisma/data/app.db 로 나왔다). 백업이 제대로 돌고 있는지 판단하는 사람에게
+   * 거짓말을 하는 셈이라, 기본값을 resolveDbFilePath() 로 맞춘다.
+   */
   readonly dbPath: string;
   readonly cronExpr: string;
   readonly retentionDays: number;
@@ -46,10 +55,18 @@ export class BackupService implements OnModuleInit {
         ? process.env.BACKUP_DIR
         : path.join(cwd, 'data', 'backup'),
     );
+    // BACKUP_DB_PATH 는 .env.example / deploy/.env.example 에 남아 있는 표시용 override 다.
+    // 비어 있으면 sp-server.exe 와 sp-migrate.exe 가 쓰는 것과 같은 해석 경로를 따른다.
+    // resolveDbFilePath() 는 'file:' 접두어만 벗기므로 '?connection_limit=1' 같은 쿼리스트링이
+    // 남을 수 있다. 로그에 그대로 실으면 파일 이름이 오염되어 보이므로 여기서 떼어 낸다.
+    const dbFileFromUrl = resolveDbFilePath();
+    const queryIndex = dbFileFromUrl.indexOf('?');
+    const pureDbFile = queryIndex === -1 ? dbFileFromUrl : dbFileFromUrl.slice(0, queryIndex);
     this.dbPath = path.resolve(
+      cwd,
       process.env.BACKUP_DB_PATH && process.env.BACKUP_DB_PATH.length > 0
         ? process.env.BACKUP_DB_PATH
-        : path.join(cwd, 'prisma', 'data', 'app.db'),
+        : pureDbFile,
     );
     this.cronExpr = process.env.BACKUP_CRON ?? '0 4 * * *';
     const r = parseInt(process.env.BACKUP_RETENTION_DAYS ?? '30', 10);

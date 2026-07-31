@@ -1,0 +1,12 @@
+# 마이그레이션 SQL 은 반드시 LF 로 체크아웃되어야 한다.
+#
+# migration-runner.ts 의 checksumOf() 는 migration.sql 파일 내용을 그대로 SHA-256 해
+# _prisma_migrations.checksum 에 기록한다. 이 값이 정식 prisma CLI 가 기록하는 값과
+# 같아야 나중에 `prisma migrate deploy` 등으로 돌아갈 여지가 남는다(설계 문서 6절).
+#
+# 그런데 이 저장소는 현재 LF 로 커밋되어 있고, 개발 PC 의 core.autocrlf 는 true 다.
+# 이 지정이 없으면 새로 clone 한 환경에서 migration.sql 이 CRLF 로 펼쳐지고, 같은
+# 마이그레이션의 checksum 이 전부 달라진다 — 파일 내용은 "바뀌지 않았는데" 값이 갈린다.
+# eol=lf 로 못박아 어느 OS 에서 clone 해도 같은 checksum 이 나오게 한다.
+# (apps/api/src/prisma/migration-runner.test.ts 의 checksum 고정 테스트가 이를 감시한다.)
+apps/api/prisma/migrations/**/*.sql text eol=lf
