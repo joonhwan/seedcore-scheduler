@@ -4,6 +4,7 @@ import {
   checkDatabaseLocks,
   collectBackupEntries,
   copyDatabaseWithSidecars,
+  formatBackupBlockedNotice,
   formatBackupList,
   formatRestoreBlockedNotice,
   formatTimestamp,
@@ -37,6 +38,23 @@ function getBackupDir(): string {
 
 async function runBackup() {
   const dbPath = getDbPath();
+
+  // 서버가 켜져 있으면 백업하지 않는다. `.db` 와 `-wal` 을 연달아 복사하는 사이에 서버가
+  // 체크포인트를 돌리면 두 파일의 짝이 어긋나, 복구할 때가 되어서야 쓸 수 없다는 것을 알게
+  // 되는 백업이 만들어진다 (formatBackupBlockedNotice() 주석에 전모가 있다).
+  // 어떤 파일도 만들기 전에 판정해야 "아무 것도 하지 않았다" 가 사실이 된다.
+  const lock = checkDatabaseLocks(path.dirname(dbPath));
+  if (lock.kind === 'locked') {
+    console.error(
+      formatBackupBlockedNotice(
+        lock.note === undefined
+          ? { role: lock.role, pid: lock.pid, lockPath: lock.lockPath }
+          : { role: lock.role, pid: lock.pid, lockPath: lock.lockPath, note: lock.note },
+      ),
+    );
+    process.exit(EXIT_LOCKED);
+  }
+
   if (!fs.existsSync(dbPath)) {
     console.error(`❌ DB 파일이 존재하지 않습니다: ${dbPath}`);
     process.exit(1);
@@ -139,9 +157,11 @@ function printHelp() {
   sp-backup.exe list            : 백업 디렉터리의 파일 목록 조회 (하위 pre-migrate/ 포함)
   sp-backup.exe restore <파일명> : 지정한 백업 파일로 DB 복구
                                   (list 에 보이는 이름을 폴더까지 그대로 넘기십시오)
+  * backup 과 restore 는 sp-server.exe / sp-migrate.exe 를 먼저 종료해야 합니다.
+    서버를 켠 채로 백업을 받으려면 서버의 자동 백업(data\\backup\\)을 쓰십시오.
 종료 코드:
   0 : 정상   1 : 파일을 찾을 수 없음 등 입력 오류
-  7 : sp-server.exe / sp-migrate.exe 가 실행 중이라 복구하지 않음 (DB 변경 없음)
+  7 : sp-server.exe / sp-migrate.exe 가 실행 중이라 아무 작업도 하지 않음 (DB 변경 없음)
 ==================================================
 `);
 }

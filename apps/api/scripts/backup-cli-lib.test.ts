@@ -6,6 +6,7 @@ import {
   checkDatabaseLocks,
   collectBackupEntries,
   copyDatabaseWithSidecars,
+  formatBackupBlockedNotice,
   formatBackupList,
   formatRestoreBlockedNotice,
   formatTimestamp,
@@ -282,5 +283,37 @@ describe('formatRestoreBlockedNotice', () => {
 
     expect(out).toContain('강제로 종료하거나 그 창을 닫지 마십시오');
     expect(out).toContain('참고: EPERM');
+  });
+});
+
+describe('formatBackupBlockedNotice', () => {
+  it('서버가 켜져 있을 때는 끄지 않고 백업받는 두 가지 방법을 함께 알려준다', () => {
+    const out = formatBackupBlockedNotice({
+      role: 'server',
+      pid: 1234,
+      lockPath: 'D:\\app\\data\\sp-server.lock',
+    });
+
+    expect(out).toContain('sp-server.exe (PID 1234)');
+    expect(out).toContain('데이터베이스는 전혀 변경되지 않았습니다');
+    // (1) 이미 돌고 있는 자동 백업
+    expect(out).toContain('data\\backup\\YYYYMMDD\\app.db.gz');
+    // (2) 지금 당장 한 부 받는 관리자 API
+    expect(out).toContain('POST http://<서버주소>:3000/api/v1/admin/health/backup/run');
+    // 그리고 잠금 파일 탈출구
+    expect(out).toContain('D:\\app\\data\\sp-server.lock');
+    expect(out).toContain('sp-backup.exe backup 을 다시 실행하십시오');
+  });
+
+  it('업그레이드 중일 때는 대안을 권하지 않고 기다리라고 한다 (서버가 꺼져 있어 쓸 수 없다)', () => {
+    const out = formatBackupBlockedNotice({
+      role: 'migrate',
+      pid: 99,
+      lockPath: 'D:\\app\\data\\sp-migrate.lock',
+    });
+
+    expect(out).toContain('sp-migrate.exe (PID 99)');
+    expect(out).toContain('강제로 종료하거나 그 창을 닫지 마십시오');
+    expect(out).not.toContain('admin/health/backup/run');
   });
 });

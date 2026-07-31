@@ -5,10 +5,11 @@ import * as path from 'path';
  * sp-backup.exe 의 순수 로직 모음.
  *
  * 왜 파일을 나눴는가: `backup-cli.ts` 는 마지막 줄에서 `main()` 을 바로 호출한다. 그 파일을
- * 테스트에서 import 하면 그 자리에서 CLI 가 실행되어 버린다. `require.main === module` 로
- * 감싸는 흔한 방법은 여기서 쓸 수 없다 — ncc(webpack) 번들 안에서는 그 비교가 참이 되지
- * 않아서, exe 가 아무 일도 하지 않고 끝나는 최악의 회귀가 된다. 그래서 부작용 없는 부분만
- * 이 파일로 빼고, `backup-cli.ts` 는 이 파일을 부르는 얇은 껍데기로 둔다.
+ * 테스트에서 import 하면 그 자리에서 CLI 가 실행되어 버린다. 그래서 부작용 없는 부분만 이
+ * 파일로 빼고, `backup-cli.ts` 는 인자를 읽어 이 파일의 함수들을 부르고 결과를 출력하는 얇은
+ * 껍데기로 둔다. (`src/migrate-main.ts` 처럼 `require.main === module` 로 감싸는 방법도
+ * 있지만 — ncc 번들에서도 정상 동작한다 — 모듈을 나누는 편이 테스트에서 필요한 함수만
+ * 골라 부를 수 있어 더 낫다.)
  *
  * `../src/` 를 import 하지 않는 이유(중요): 이 두 파일은 `build-exe.js` 가 별도의
  * `npx tsc scripts/...` 로 컴파일한다. `../src/` 를 참조하는 순간 tsc 가 추론하는 rootDir 이
@@ -333,16 +334,65 @@ export function checkDatabaseLocks(dataDir: string): LockCheck {
 
 const LINE = '====================================================';
 
+/** 잠금 안내의 머리말 — 무엇이 잡고 있는지. */
+function lockHeaderLines(role: LockRole, pid: number, note: string | undefined): string[] {
+  const lines = [
+    LINE,
+    '  다른 프로그램이 데이터베이스를 쓰고 있습니다',
+    LINE,
+    '',
+    `  실행 중으로 보이는 프로세스: ${LOCK_OWNER_NAMES[role]} (PID ${pid})`,
+  ];
+  if (note !== undefined) {
+    lines.push(`  참고: ${note}`);
+  }
+  return lines;
+}
+
+/**
+ * 업그레이드 중이라면 "기다려라, 죽이지 마라" 를 못박는다.
+ * 마이그레이션은 트랜잭션 없이 문장 단위로 커밋되므로 도중에 끊기면 스키마가 절반만 남는다.
+ */
+function migrateWaitLines(role: LockRole): string[] {
+  if (role !== 'migrate') {
+    return [];
+  }
+  return [
+    '',
+    '  ※ 진행 중인 sp-migrate.exe 를 강제로 종료하거나 그 창을 닫지 마십시오.',
+    '     업그레이드는 도중에 끊기면 구조가 절반만 바뀐 상태로 남습니다.',
+    '     "업그레이드 완료" 가 표시될 때까지 기다리십시오.',
+  ];
+}
+
+/**
+ * 잠금 파일 삭제 탈출구.
+ *
+ * 윈도우는 PID 를 재사용하므로 낡은 잠금 파일의 PID 가 이미 다른 프로그램에 배정되어
+ * 생존 판정이 거짓 양성을 낼 수 있고, 폐쇄망에는 원격으로 손봐 줄 사람이 없다. 그때 남는
+ * 유일한 탈출구가 "이 파일을 지우고 다시 실행" 이라, 잠금 파일 경로를 반드시 실어 준다.
+ * (src/prisma/migration-messages.ts 의 staleLockEscapeLines() 와 같은 취지다.)
+ */
+function staleLockEscapeLines(role: LockRole, lockPath: string, retryCommand: string): string[] {
+  const owner = LOCK_OWNER_NAMES[role];
+  return [
+    '',
+    `  ${owner} 를 이미 종료한 것이 확실하다면, 아래 파일이 지워지지 않고 남은 것입니다.`,
+    '  (강제 종료나 콘솔 창을 그냥 닫은 경우 이렇게 남습니다.)',
+    `  이 파일을 지운 뒤 ${retryCommand} 를 다시 실행하십시오.`,
+    '',
+    `    ${lockPath}`,
+    '',
+    LINE,
+  ];
+}
+
 /**
  * 서버나 업그레이드가 돌고 있는 상태에서 restore 를 시도한 경우의 안내.
  *
  * 복구는 DB 파일을 통째로 바꿔치는 작업이라, 그 파일을 열어 둔 프로세스가 있으면 복구한
  * 내용이 그대로 덮어써지거나 파일이 깨진다. sp-migrate.exe 가 같은 이유로 이미 막고 있는
  * 것과 같은 위험이다.
- *
- * 잠금 파일 경로를 반드시 실어 준다. 윈도우는 PID 를 재사용하므로 낡은 잠금 파일의 PID 가
- * 이미 다른 프로그램에 배정되어 생존 판정이 거짓 양성을 낼 수 있고, 폐쇄망에는 원격으로
- * 손봐 줄 사람이 없다. 그때 남는 유일한 탈출구가 "이 파일을 지우고 다시 실행" 이다.
  */
 export function formatRestoreBlockedNotice(params: {
   role: LockRole;
@@ -352,41 +402,68 @@ export function formatRestoreBlockedNotice(params: {
 }): string {
   const { role, pid, lockPath, note } = params;
   const owner = LOCK_OWNER_NAMES[role];
-  const lines = [
-    LINE,
-    '  다른 프로그램이 데이터베이스를 쓰고 있습니다',
-    LINE,
-    '',
-    `  실행 중으로 보이는 프로세스: ${owner} (PID ${pid})`,
-  ];
-  if (note !== undefined) {
-    lines.push(`  참고: ${note}`);
-  }
-  lines.push(
+  return [
+    ...lockHeaderLines(role, pid, note),
     '',
     '  복구는 데이터베이스 파일을 통째로 바꿔치는 작업입니다. 그 파일을 열어 둔 프로그램이',
     '  있으면 복구한 내용이 곧바로 덮어써지거나 파일이 깨질 수 있어, 아무 작업도 하지 않고',
     '  멈췄습니다. 데이터베이스와 백업 파일 모두 전혀 변경되지 않았습니다.',
     '',
     `  ${owner} 를 종료한 뒤 sp-backup.exe restore 를 다시 실행하십시오.`,
-  );
-  if (role === 'migrate') {
+    ...migrateWaitLines(role),
+    ...staleLockEscapeLines(role, lockPath, 'sp-backup.exe restore'),
+  ].join('\n');
+}
+
+/**
+ * 서버나 업그레이드가 돌고 있는 상태에서 backup 을 시도한 경우의 안내.
+ *
+ * 왜 백업까지 막는가: copyDatabaseWithSidecars() 는 `.db` 와 `-wal` 을 연달아 두 번 복사한다.
+ * 그 사이에 서버가 체크포인트를 돌려 WAL 을 재설정하면, 복사된 `-wal` 은 복사된 `.db` 와
+ * salt 가 어긋난 짝이 된다. SQLite 는 그런 WAL 을 조용히 통째로 무시하고, 체크포인트 도중에
+ * 뜬 `.db` 쪽도 앞뒤가 맞지 않을 수 있다. 결과는 "복구할 때가 되어서야 쓸 수 없다는 것을
+ * 알게 되는 백업" 이다 — 복구 경로에서 막 고친 것과 같은 종류의 실패이고, 창이 좁을 뿐이다.
+ *
+ * 여기서 그냥 막기만 하면 관리자가 갈 곳이 없어지므로, 서버를 끄지 않고 백업을 받는 두 가지
+ * 방법을 함께 안내한다. 둘 다 서버가 VACUUM INTO 로 뜨는 것이라 이 문제가 없다.
+ */
+export function formatBackupBlockedNotice(params: {
+  role: LockRole;
+  pid: number;
+  lockPath: string;
+  note?: string;
+}): string {
+  const { role, pid, lockPath, note } = params;
+  const owner = LOCK_OWNER_NAMES[role];
+  const lines = [
+    ...lockHeaderLines(role, pid, note),
+    '',
+    '  서버가 켜진 채로 데이터베이스 파일을 복사하면, 복사가 끝나기 전에 서버가 내용을 옮겨',
+    '  적어 앞뒤가 맞지 않는 백업이 만들어질 수 있습니다. 그런 백업은 정작 복구할 때가 되어서야',
+    '  쓸 수 없다는 것을 알게 되므로, 백업을 만들지 않고 멈췄습니다.',
+    '  데이터베이스는 전혀 변경되지 않았습니다.',
+    '',
+    `  ${owner} 를 종료한 뒤 sp-backup.exe backup 을 다시 실행하십시오.`,
+  ];
+
+  if (role === 'server') {
     lines.push(
       '',
-      '  ※ 진행 중인 sp-migrate.exe 를 강제로 종료하거나 그 창을 닫지 마십시오.',
-      '     업그레이드는 도중에 끊기면 구조가 절반만 바뀐 상태로 남습니다.',
-      '     "업그레이드 완료" 가 표시될 때까지 기다리십시오.',
+      '  서버를 끄지 않고 백업을 받으려면 아래 두 가지를 쓰십시오. 둘 다 서버가 직접 뜨는',
+      '  방식이라 위와 같은 문제가 없습니다.',
+      '',
+      '    1) 자동 백업이 이미 돌고 있습니다.',
+      '       서버가 매일 정해진 시각(기본 새벽 4시)에 아래 위치로 백업을 남깁니다.',
+      '         data\\backup\\YYYYMMDD\\app.db.gz   (기본 30일 보관)',
+      '',
+      '    2) 지금 당장 한 부 받고 싶다면, 서버의 관리자 API 를 호출하면 같은 방식의 백업이',
+      '       즉시 만들어집니다. 응답에 만들어진 파일 경로가 담겨 옵니다.',
+      '         POST http://<서버주소>:3000/api/v1/admin/health/backup/run',
+      '       (ADMIN 계정으로 로그인한 세션 쿠키와 Origin 헤더가 필요합니다.',
+      '        자세한 사용법은 README.txt 5절 [A] 를 보십시오.)',
     );
   }
-  lines.push(
-    '',
-    `  ${owner} 를 이미 종료한 것이 확실하다면, 아래 파일이 지워지지 않고 남은 것입니다.`,
-    '  (강제 종료나 콘솔 창을 그냥 닫은 경우 이렇게 남습니다.)',
-    '  이 파일을 지운 뒤 sp-backup.exe restore 를 다시 실행하십시오.',
-    '',
-    `    ${lockPath}`,
-    '',
-    LINE,
-  );
+  lines.push(...migrateWaitLines(role));
+  lines.push(...staleLockEscapeLines(role, lockPath, 'sp-backup.exe backup'));
   return lines.join('\n');
 }
