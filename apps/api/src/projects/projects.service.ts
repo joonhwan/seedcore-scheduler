@@ -7,14 +7,18 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type {
+  CloneProjectDto,
+  CloneProjectResult,
   CreateProjectDto,
   ProjectDetail,
   ProjectListItem,
   ProjectRole,
   UpdateProjectDto,
 } from '@sam/shared';
+import { buildRemapPlan, findDateSpan } from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { buildClonedNodes } from './clone-tree';
 
 interface ActorContext {
   actorId: string;
@@ -308,6 +312,203 @@ export class ProjectsService {
         payload: { sub: 'PROJECT_DELETE' },
       });
     }
+  }
+
+  /**
+   * 프로젝트 복제. 일정 트리를 그대로 물려받고 날짜만 새 기간으로 옮긴다.
+   *
+   * 멤버 승계는 클라이언트가 원본 멤버 목록을 프리필해 보내는 방식이다. 서버가 원본을
+   * 다시 읽어 병합하지 않으므로 요청만 보면 결과가 예측되고, 매니저 교체가 목록을
+   * 바꿔 보내는 것으로 해결된다.
+   *
+   * 진행률은 전부 0 으로 초기화하고 댓글과 원본 이력은 복사하지 않는다.
+   */
+  async clone(
+    sourceId: string,
+    input: CloneProjectDto,
+    ctx: ActorContext,
+  ): Promise<CloneProjectResult> {
+    const source = await this.prisma.project.findUnique({ where: { id: sourceId } });
+    if (!source) throw new NotFoundException({ error: 'PROJECT_NOT_FOUND' });
+
+    const managerIds = Array.from(new Set(input.managerUserIds));
+    if (managerIds.length === 0) {
+      throw new BadRequestException({ error: 'MANAGER_REQUIRED' });
+    }
+    // 같은 사람이 양쪽에 오면 MANAGER 를 우선한다 (project_members 의 복합 PK 중복 방지).
+    const managerSet = new Set(managerIds);
+    const memberIds = Array.from(new Set(input.memberUserIds)).filter(
+      (id) => !managerSet.has(id),
+    );
+
+    const allIds = [...managerIds, ...memberIds];
+    const found = await this.prisma.user.findMany({
+      where: { id: { in: allIds }, isActive: true },
+      select: { id: true },
+    });
+    if (found.length !== allIds.length) {
+      const foundSet = new Set(found.map((u) => u.id));
+      throw new BadRequestException({
+        error: 'INVALID_MEMBER_IDS',
+        missing: allIds.filter((id) => !foundSet.has(id)),
+      });
+    }
+
+    const sourceNodes = await this.prisma.scheduleNode.findMany({
+      where: { projectId: sourceId },
+      select: {
+        id: true,
+        parentId: true,
+        kind: true,
+        title: true,
+        description: true,
+        startAt: true,
+        endAt: true,
+        sortOrder: true,
+        depth: true,
+      },
+    });
+
+    // span 은 ITEM 에서만 뽑는다. GROUP 은 DB 에 날짜가 비어 있다 (AGENTS.md §4.6).
+    const span = findDateSpan(sourceNodes.filter((n) => n.kind === 'ITEM'));
+    if (input.dateMode !== 'KEEP' && span === null) {
+      throw new BadRequestException({
+        error: 'NO_DATED_ITEMS',
+        message:
+          '원본 프로젝트에 날짜가 지정된 일정이 없어 일정을 옮길 수 없습니다. 원본 일정 유지로 복제하십시오.',
+      });
+    }
+    const plan = buildRemapPlan(span, {
+      mode: input.dateMode,
+      ...(input.newStartDate !== undefined ? { newStartDate: input.newStartDate } : {}),
+      ...(input.newEndDate !== undefined ? { newEndDate: input.newEndDate } : {}),
+    });
+
+    const newProjectId = randomUUID();
+    const cloned = buildClonedNodes({
+      sourceNodes,
+      newProjectId,
+      actorId: ctx.actorId,
+      plan,
+      newId: randomUUID,
+    });
+
+    const now = new Date();
+    const created = await this.prisma.$transaction(
+      async (tx) => {
+        const proj = await tx.project.create({
+          data: {
+            id: newProjectId,
+            name: input.name,
+            description: input.description ?? null,
+            // 보관된 지난 호기를 템플릿으로 써도 새 호기는 활성 상태로 시작한다.
+            status: 'ACTIVE',
+            createdById: ctx.actorId,
+          },
+        });
+
+        await tx.projectMember.createMany({
+          data: [
+            ...managerIds.map((userId) => ({
+              projectId: newProjectId,
+              userId,
+              role: 'MANAGER',
+              addedById: ctx.actorId,
+              addedAt: now,
+            })),
+            ...memberIds.map((userId) => ({
+              projectId: newProjectId,
+              userId,
+              role: 'MEMBER',
+              addedById: ctx.actorId,
+              addedAt: now,
+            })),
+          ],
+        });
+
+        // parent_id 가 자기참조 FK 라 부모 행이 먼저 있어야 한다. createMany 는 배열 순서
+        // 삽입을 보장하지 않으므로 depth 별로 호출을 쪼갠다. 최대 깊이 5 라서 5 회로 끝난다.
+        const maxDepth = cloned.reduce((m, n) => Math.max(m, n.depth), 0);
+        for (let d = 0; d <= maxDepth; d += 1) {
+          const batch = cloned.filter((n) => n.depth === d);
+          if (batch.length === 0) continue;
+          await tx.scheduleNode.createMany({
+            // sourceNodeId 는 DB 컬럼이 아니므로 떼어낸다.
+            data: batch.map(({ sourceNodeId: _drop, ...row }) => row),
+          });
+        }
+
+        if (cloned.length > 0) {
+          await tx.nodeHistory.createMany({
+            data: cloned.map((n) => ({
+              id: randomUUID(),
+              nodeId: n.id,
+              nodeIdSnapshot: n.id,
+              projectIdSnapshot: newProjectId,
+              actorId: ctx.actorId,
+              action: 'CREATE',
+              diffJson: JSON.stringify({
+                clonedFrom: { projectId: sourceId, nodeId: n.sourceNodeId },
+              }),
+            })),
+          });
+        }
+
+        return proj;
+      },
+      // 노드 5,000 개 상한을 감안해 넉넉히 잡는다. SQLite 는 단일 writer 라 이 동안 다른 쓰기는 대기한다.
+      { timeout: 30_000, maxWait: 10_000 },
+    );
+
+    await this.audit.log({
+      actorId: ctx.actorId,
+      action: 'PROJECT_CLONE',
+      targetType: 'project',
+      targetId: created.id,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      payload: {
+        sourceProjectId: sourceId,
+        sourceProjectName: source.name,
+        name: created.name,
+        dateMode: input.dateMode,
+        ...(input.newStartDate !== undefined ? { newStartDate: input.newStartDate } : {}),
+        ...(input.newEndDate !== undefined ? { newEndDate: input.newEndDate } : {}),
+        nodeCount: cloned.length,
+        managerUserIds: managerIds,
+        memberUserIds: memberIds,
+      },
+    });
+    if (ctx.adminMode) {
+      await this.audit.log({
+        actorId: ctx.actorId,
+        action: 'ADMIN_OVERRIDE_EDIT',
+        targetType: 'project',
+        targetId: created.id,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        payload: { sub: 'PROJECT_CLONE' },
+      });
+    }
+
+    return {
+      project: {
+        id: created.id,
+        name: created.name,
+        description: created.description,
+        status: 'ACTIVE',
+        myRole: managerSet.has(ctx.actorId)
+          ? 'MANAGER'
+          : memberIds.includes(ctx.actorId)
+            ? 'MEMBER'
+            : null,
+        memberCount: managerIds.length + memberIds.length,
+        createdAt: created.createdAt.toISOString(),
+        updatedAt: created.updatedAt.toISOString(),
+        createdById: created.createdById,
+      },
+      nodeCount: cloned.length,
+    };
   }
 }
 
