@@ -5,16 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="/favicon.png" type="image/png" />
     <title>시드코어 일정관리 시스템</title>
-    <script>
-      (function () {
-        try {
-          var t = localStorage.getItem('theme');
-          if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-          }
-        } catch (e) {}
-      })();
-    </script>
+    <!--
+      다크 모드 선반영. 인라인 <script> 로 두면 CSP 의 script-src 'self' 에 막힌다 —
+      이유와 대안 비교는 public/theme-init.js 앞머리 주석에 있다.
+      async/defer 를 붙이지 말 것: body 가 그려지기 전에 실행되어야 테마가 번쩍이지 않는다.
+    -->
+    <script src="/theme-init.js"></script>
   </head>
   <body class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
     <div id="root"></div>

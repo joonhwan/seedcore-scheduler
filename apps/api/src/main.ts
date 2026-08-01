@@ -131,7 +131,32 @@ async function bootstrap() {
   app.useLogger(dailyLogger);
   app.setGlobalPrefix('api/v1');
 
-  app.use(helmet());
+  // 이 서버는 사내망에서 평문 HTTP 로 직접 서비스된다. sp-server.exe 는 물론이고
+  // deploy/nginx.conf 도 `listen 80;` 뿐으로 TLS 종단이 없다. 그런데 helmet 의 기본값은
+  // HTTPS 를 전제로 하므로, 아래 두 개를 그대로 두면 사내 IP 접속이 깨진다.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          // upgrade-insecure-requests 를 지운다 (null 을 주면 기본 지시어에서 빠진다).
+          //
+          // 이게 켜져 있으면 브라우저가 페이지 안의 모든 하위 요청을 https 로 바꿔 보낸다.
+          // http://localhost:3000 은 localhost 가 "신뢰할 수 있는 출처" 로 취급되어 예외지만,
+          // http://192.168.x.x:3000 같은 사내 IP 는 예외가 아니다. 그래서 사내 IP 로 접속하면
+          //   GET https://192.168.x.x:3000/assets/index-*.js  net::ERR_SSL_PROTOCOL_ERROR
+          // 처럼 js/css/favicon 이 전부 실패하고 화면이 빈 채로 뜬다.
+          // localhost 에서만 확인하면 절대 재현되지 않는 종류의 문제다.
+          'upgrade-insecure-requests': null,
+        },
+      },
+      // HSTS 는 평문 HTTP 응답에서 브라우저가 무시하므로 지금 당장은 무해하다. 그래도 끄는
+      // 이유: 앞단에 TLS 를 한 번이라도 붙이면 "이 호스트는 1년간 https 로만 접속" 이 각인되고,
+      // 사내 IP 에 그게 박히면 평문으로 되돌릴 방법이 사용자 브라우저마다 수동 초기화뿐이다.
+      // TLS 를 정식으로 도입할 때 여기서 다시 켜는 편이 안전하다.
+      hsts: false,
+    }),
+  );
   app.use(cookieParser());
   app.enableCors({
     origin: process.env.WEB_ORIGIN ?? true,

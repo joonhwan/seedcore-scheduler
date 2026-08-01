@@ -20,7 +20,13 @@ SAM Scheduler는 외부 네트워크와 격리된 **폐쇄망(Air-gap) 환경**�
 - **Backend**: Node.js 20.x, NestJS 10, Prisma 5.22, SQLite (WAL 모드)
 - **Frontend**: React 18, Vite 5, Tailwind CSS, TanStack Query, Zustand
 - **Shared**: `packages/shared` (Zod 기반 스키마 및 공통 유틸리티)
-- **Deploy**: Docker Compose, Nginx (TLS 종단 및 정적 SPA 파일 서빙)
+- **Deploy**: Docker Compose, Nginx (정적 SPA 파일 서빙 및 API 리버스 프록시) / 또는 단일 exe 배포판
+  - **현재 어떤 자체 배포도 HTTPS를 쓰지 않습니다.** `deploy/nginx.conf`는 `listen 80;`뿐이고
+    `deploy/compose.yaml`에도 인증서나 443 설정이 없습니다. `sp-server.exe`는 평문 HTTP로 직접 서비스합니다.
+    (Fly.io 배포만 예외로, TLS는 Fly 엣지에서 끝납니다.)
+  - 이 전제는 보안 헤더 설정과 직접 얽혀 있습니다 — helmet 기본값은 HTTPS를 가정하므로
+    `upgrade-insecure-requests`와 HSTS를 껐습니다. 이유는 `apps/api/src/main.ts`의 helmet 설정 주석 참고.
+    TLS를 정식 도입할 때 그 두 개를 함께 되살려야 합니다.
 
 ### 2.2 디렉터리 구조
 ```
