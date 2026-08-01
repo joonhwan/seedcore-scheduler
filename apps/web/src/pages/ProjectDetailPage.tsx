@@ -999,6 +999,22 @@ function ProjectHeader({
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </Link>
+          {/*
+            복제는 보관/복원과 달리 프로젝트 상태와 무관하게 항상 보인다 —
+            보관된 지난 호기를 템플릿으로 쓰는 게 자연스럽기 때문이다.
+            권한은 삭제(showDelete)와 같은 ADMIN + 관리자 모드 기준.
+          */}
+          {isAdmin && adminMode && (
+            <Link
+              to={`/projects/${project.id}/clone`}
+              className="p-1.5 rounded-md border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 dark:border-sky-800/80 dark:bg-sky-950/40 dark:hover:bg-sky-950/70 dark:text-sky-300 transition-colors"
+              title="이 프로젝트를 템플릿으로 새 프로젝트 만들기 (일정 복제)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 7.5V6.108c0-1.135.845-2.098 1.976-2.192.373-.03.748-.057 1.123-.08M15.75 18H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08M15.75 18.75v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5A3.375 3.375 0 006.375 7.5H5.25m11.9-3.664A2.251 2.251 0 0015 2.25h-1.5a2.251 2.251 0 00-2.15 1.586m0 0c-.087.293-.133.6-.133.914v.117m4.416-1.031a2.25 2.25 0 01.134.914v.117m-4.55 0h4.55M5.25 7.5H4.125C3.504 7.5 3 8.004 3 8.625v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V8.625c0-.621-.504-1.125-1.125-1.125H5.25z" />
+              </svg>
+            </Link>
+          )}
           {canManage && project.status === 'ACTIVE' && (
             <button
               type="button"
