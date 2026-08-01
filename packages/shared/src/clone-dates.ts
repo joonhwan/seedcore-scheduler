@@ -31,7 +31,11 @@ export function toEpochDay(date: string): number {
   const y = Number(date.slice(0, 4));
   const m = Number(date.slice(5, 7));
   const d = Number(date.slice(8, 10));
-  return Math.floor(Date.UTC(y, m - 1, d) / MS_PER_DAY);
+  // Date.UTC(y, ...) 는 0~99 년을 1900~1999 로 매핑하는 레거시 특례가 있다 (두 자리 연도
+  // 입력이 조용히 1900년대로 밀리는 원인). setUTCFullYear 는 그 특례가 없으므로 우회용으로 쓴다.
+  const dt = new Date(0);
+  dt.setUTCFullYear(y, m - 1, d);
+  return Math.floor(dt.getTime() / MS_PER_DAY);
 }
 
 export function fromEpochDay(day: number): string {

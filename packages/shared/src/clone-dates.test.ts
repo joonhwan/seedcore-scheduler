@@ -21,6 +21,15 @@ describe('epoch-day 변환', () => {
   it('2026 년은 윤년이 아니라 2 월이 28 일이다', () => {
     expect(toEpochDay('2026-03-01') - toEpochDay('2026-02-01')).toBe(28);
   });
+
+  it('두 자리 연도가 1900년대로 밀리지 않고 그대로 왕복된다', () => {
+    expect(fromEpochDay(toEpochDay('0050-01-01'))).toBe('0050-01-01');
+    expect(fromEpochDay(toEpochDay('0099-12-31'))).toBe('0099-12-31');
+  });
+
+  it('두 자리 연도에서도 하루 차이는 1 이다', () => {
+    expect(toEpochDay('0050-01-02') - toEpochDay('0050-01-01')).toBe(1);
+  });
 });
 
 describe('findDateSpan', () => {
