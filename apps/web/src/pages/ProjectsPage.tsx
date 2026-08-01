@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { DEFAULT_COLUMN_WIDTHS, computeRenderedWidths } from '../lib/projectListColumns';
 import ProjectNameCell from '../components/ProjectNameCell';
+import ProjectArchiveButton from '../components/ProjectArchiveButton';
 
 export default function ProjectsPage() {
   const me = useMe();
@@ -214,6 +215,16 @@ export default function ProjectsPage() {
     const start = (currentPage - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
   }, [filtered, currentPage, pageSize]);
+
+  // 마지막 페이지의 마지막 항목을 보관(또는 삭제)하면 그 행이 목록에서 빠지면서
+  // currentPage 가 totalPages 를 넘어 빈 표가 남는다. 이때 마지막 페이지로 당긴다.
+  // totalPages 가 0 이면 건드리지 않는다 — 결과가 없을 때는 페이징 컨트롤 자체가 숨겨지고
+  // "조건에 부합하는 프로젝트가 없습니다" 안내가 대신 뜬다.
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   const renderSortIcon = (field: keyof ProjectListItem) => {
     if (sortBy !== field || !sortOrder) {
@@ -515,6 +526,7 @@ export default function ProjectsPage() {
                         style={{ width: `${renderedWidths.manage}px`, maxWidth: `${renderedWidths.manage}px` }}
                       >
                         <div className="flex items-center justify-center gap-1.5">
+                          <ProjectArchiveButton project={p} />
                           <Link
                             to={`/projects/${p.id}/clone`}
                             className="rounded bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:bg-sky-950/30 dark:text-sky-400 dark:hover:bg-sky-950/60 transition-colors"
