@@ -70,11 +70,23 @@ export function buildClonedNodes(args: {
         ? remapDatePair({ startAt: node.startAt, endAt: node.endAt }, plan)
         : { startAt: node.startAt, endAt: node.endAt };
 
+    // 부모 ID 가 입력 배열에 없으면 즉시 실패한다. 조용히 null 로 만들면
+    // parentId: null, depth: 3 같은 모순된 행이 생겨 트리가 조용히 망가진다.
+    let parentId: string | null = null;
+    if (node.parentId !== null) {
+      const newParentId = idMap.get(node.parentId);
+      if (newParentId === undefined) {
+        throw new Error(
+          `Source node "${node.id}" (depth ${node.depth}) refers to missing parent "${node.parentId}".`,
+        );
+      }
+      parentId = newParentId;
+    }
+
     return {
       id: idMap.get(node.id)!,
       projectId: newProjectId,
-      // 부모가 원본 목록에 없는 고아 노드는 루트로 올린다 (정상적으로는 발생하지 않는다)
-      parentId: node.parentId === null ? null : (idMap.get(node.parentId) ?? null),
+      parentId,
       kind: node.kind,
       title: node.title,
       description: node.description,

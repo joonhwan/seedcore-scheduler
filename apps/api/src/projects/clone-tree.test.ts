@@ -172,3 +172,23 @@ describe('buildClonedNodes — 날짜 처리', () => {
     expect(i1.endAt).toBe('2026-01-31');
   });
 });
+
+describe('buildClonedNodes — 에러 처리', () => {
+  it('부모 ID 가 입력 배열에 없으면 Error 를 던진다', () => {
+    const brokenTree: SourceNode[] = [
+      { id: 'parent', parentId: null, kind: 'GROUP', title: 'Parent', description: null,
+        startAt: null, endAt: null, sortOrder: 1, depth: 0 },
+      { id: 'child', parentId: 'missing-parent', kind: 'ITEM', title: 'Child', description: null,
+        startAt: '2026-01-01', endAt: '2026-01-31', sortOrder: 1, depth: 1 },
+    ];
+    expect(() =>
+      buildClonedNodes({
+        sourceNodes: brokenTree,
+        newProjectId: 'proj',
+        actorId: 'actor',
+        plan: keepPlan,
+        newId: counterIds(),
+      }),
+    ).toThrow(/refers to missing parent/);
+  });
+});
