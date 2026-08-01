@@ -42,6 +42,14 @@ export default function ProjectsPage() {
 
   // 테이블을 감싼 요소의 실제 폭. ResizeObserver 로 관찰한다.
   // 감싼 요소는 조건부로 렌더링되므로 useEffect + ref 대신 콜백 ref 로 붙인다.
+  //
+  // 이 옵저버의 주인은 콜백 ref 하나뿐이어야 한다. 정리를 useEffect cleanup 에도
+  // 걸어 두면 안 된다 — React 18 의 StrictMode 이중 호출은 이펙트만 다시 돌리고
+  // ref 콜백은 재호출하지 않으므로, cleanup 이 옵저버를 끊은 뒤 아무도 다시 붙이지
+  // 않는 상태가 된다. 그러면 containerWidth 가 0 에 머물러 테이블이 화면을 못 채운다.
+  // (목록 → 상세 → back 으로 돌아왔을 때 재현된다. 그때는 react-query 캐시 덕에
+  //  첫 커밋부터 이 div 가 렌더되어 이중 호출 구간에 걸리기 때문이다.)
+  // 언마운트 정리는 React 가 항상 ref(null) 을 호출해 주므로 아래 분기가 담당한다.
   const [containerWidth, setContainerWidth] = useState(0);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
@@ -55,13 +63,6 @@ export default function ProjectsPage() {
     });
     ro.observe(el);
     resizeObserverRef.current = ro;
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      resizeObserverRef.current?.disconnect();
-      resizeObserverRef.current = null;
-    };
   }, []);
 
   // 실제로 그릴 폭. 남는 폭은 설명 컬럼이 흡수한다.
