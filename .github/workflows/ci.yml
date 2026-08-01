@@ -37,8 +37,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          # 운영 이미지(node:20-alpine)와 맞춘다. package.json engines 는 >=20.10.0.
-          node-version: 20
+          # pnpm 11.17.0 (package.json 의 packageManager) 은 Node >= 22.13 을 요구한다.
+          # 여기를 20 으로 두면 바로 다음 줄의 cache: pnpm 이 부르는 `pnpm store path` 가
+          # node:sqlite 를 찾지 못해(ERR_UNKNOWN_BUILTIN_MODULE) 이 단계에서 죽는다.
+          # 테스트까지 가지도 못하므로 "test gate 실패"처럼 보이지만 원인은 여기다.
+          #
+          # 운영 이미지(apps/api/Dockerfile 의 node:20-alpine)와는 일부러 다르다.
+          # 이 버전은 빌드·검증 도구를 돌리는 데만 쓰이고, 산출물은 tsc/vite 가
+          # engines(>=20.10.0) 에 맞춰 내보내므로 런타임과 맞출 필요가 없다.
+          node-version: 22
           cache: pnpm
 
       # apps/api 의 postinstall 이 Prisma Client 를 생성한다 (scripts/postinstall.js).
