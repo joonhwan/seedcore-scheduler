@@ -1,0 +1,65 @@
+name: CI
+
+# 이 워크플로는 두 가지로 쓰인다.
+#   1) 기능 브랜치 push / PR 에서 직접 실행 — 배포와 무관한 검증
+#   2) deploy.yml 이 workflow_call 로 호출 — 배포 전 게이트
+# 검증 단계를 한 곳에만 두기 위해 재사용 가능(workflow_call)하게 만들었다.
+# main/master push 는 deploy.yml 이 이 워크플로를 호출하므로 branches-ignore 로
+# 중복 실행을 막는다.
+on:
+  push:
+    branches-ignore:
+      - main
+      - master
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+# 같은 브랜치에 연달아 push 하면 이전 실행을 취소한다.
+# 배포 게이트로 호출된 경우(workflow_call)에는 deploy.yml 의 concurrency 가 따로 걸린다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, Test, Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # setup-node 의 cache: 'pnpm' 이 pnpm 실행 파일을 요구하므로 순서가 중요하다.
+      # 버전은 package.json 의 packageManager 필드(pnpm@11.17.0)를 따른다.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # 운영 이미지(node:20-alpine)와 맞춘다. package.json engines 는 >=20.10.0.
+          node-version: 20
+          cache: pnpm
+
+      # apps/api 의 postinstall 이 Prisma Client 를 생성한다 (scripts/postinstall.js).
+      # 별도 prisma generate 단계가 필요 없고, 생성이 실패하면 여기서 install 이 죽는다.
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      # tsconfig.base.json 에 paths 가 없어서 api/web 은 packages/shared/dist 를 통해
+      # 타입을 해석한다(AGENTS.md 5.3). typecheck 보다 먼저 빌드해야 한다.
+      - name: Build Shared Package
+        run: pnpm -F @sam/shared build
+
+      - name: Typecheck
+        run: pnpm -r run typecheck
+
+      - name: Test
+        run: pnpm -r run test
+
+      # 프로덕션 빌드까지 돌리는 이유: vite/rollup 은 워크스페이스의 CJS dist 를
+      # 별도로 취급해서, shared 에 새 export 를 추가하면 typecheck·test 는 통과하는데
+      # 번들링에서 "X is not exported by ..." 로 깨질 수 있다(AGENTS.md 5.3~5.4).
+      # 이 단계가 없으면 그 실패를 배포 시점에야 알게 된다.
+      - name: Build All
+        run: pnpm -r run build

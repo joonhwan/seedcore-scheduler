@@ -9,8 +9,16 @@ on:
   workflow_dispatch:
 
 jobs:
+  # 배포 게이트. ci.yml 의 verify 잡을 그대로 재사용한다 — 검증 단계를 두 곳에
+  # 복사해 두면 한쪽만 고쳐져 드리프트가 생긴다.
+  verify:
+    name: Verify
+    uses: ./.github/workflows/ci.yml
+
   deploy:
     name: Deploy Application
+    # 검증이 실패하면 이 잡은 아예 시작하지 않는다.
+    needs: verify
     runs-on: ubuntu-latest
     concurrency: deploy-group    # 동시 배포 충돌 방지
     steps:
