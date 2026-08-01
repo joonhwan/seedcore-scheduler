@@ -90,7 +90,11 @@ async function main() {
   }
 
   log('3/5. TS 스크립트 컴파일 (backup-cli.ts & reset-admin-cli.ts)');
-  run('npx tsc scripts/backup-cli.ts scripts/reset-admin-cli.ts --module commonjs --target es2021 --esModuleInterop --skipLibCheck --outDir dist/scripts', apiDir);
+  // --rootDir . 이 필요한 이유: reset-admin-cli.ts 가 src/common/db-path.ts 를 가져다 쓴다
+  // (서버와 DB 경로 규칙을 공유하기 위해 — 그 파일 주석 참고). rootDir 을 주지 않으면 tsc 가
+  // 입력들의 공통 상위(= apps/api)를 rootDir 로 추론해 출력 경로가 조용히 한 단계 깊어지고,
+  // 아래 ncc 진입점 경로가 어긋난다. 명시해서 dist/cli/scripts/*.js 로 고정한다.
+  run('npx tsc scripts/backup-cli.ts scripts/reset-admin-cli.ts --rootDir . --module commonjs --target es2021 --esModuleInterop --skipLibCheck --outDir dist/cli', apiDir);
 
   log('4/5. NCC 단일 파일 번들링 (Server, Backup CLI, Reset-Admin CLI)');
   const bundleOutDir = path.join(apiDir, 'dist-bundle');
@@ -127,9 +131,9 @@ async function main() {
   );
 
   // 백업 CLI 번들링
-  run(`npx ncc build dist/scripts/backup-cli.js -o dist-bundle/backup --no-cache`, apiDir);
+  run(`npx ncc build dist/cli/scripts/backup-cli.js -o dist-bundle/backup --no-cache`, apiDir);
   // 암호 재설정 CLI 번들링
-  run(`npx ncc build dist/scripts/reset-admin-cli.js -o dist-bundle/reset-admin --no-cache`, apiDir);
+  run(`npx ncc build dist/cli/scripts/reset-admin-cli.js -o dist-bundle/reset-admin --no-cache`, apiDir);
 
   // 마이그레이션 CLI 번들링 (src/migrate-main.ts → nest build 산출물)
   const migrateBundleDir = path.join(bundleOutDir, 'migrate');

@@ -13,7 +13,7 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "reset-admin": "node scripts/reset-admin-password.js",
+    "reset-admin": "ts-node --project tsconfig.json scripts/reset-admin-cli.ts",
     "build:exe": "node scripts/build-exe.js"
   },
   "dependencies": {
