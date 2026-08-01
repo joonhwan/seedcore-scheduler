@@ -6,6 +6,8 @@ node_modules/
 dist/
 dist-exe/
 dist-bundle/
+# 고객사 전달용 배포 zip (하나가 150MB 대). build-exe.js 7단계가 여기에 쌓는다.
+dist-release/
 build/
 .next/
 .turbo/
