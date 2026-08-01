@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import type { ProjectListItem, ProjectStatus } from '@sam/shared';
 import { useMe } from '../lib/auth';
@@ -6,6 +6,7 @@ import { useAdminMode } from '../lib/adminMode';
 import { useProjects, useDeleteProject } from '../lib/projects';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
+import { DEFAULT_COLUMN_WIDTHS, computeRenderedWidths } from '../lib/projectListColumns';
 
 export default function ProjectsPage() {
   const me = useMe();
@@ -14,19 +15,14 @@ export default function ProjectsPage() {
   const deleteProject = useDeleteProject();
 
   // Local Storage 키 명칭
-  const STORAGE_KEY = 'sam_project_list_column_widths';
+  //
+  // v2 로 올린 이유: 관리 컬럼에 보관/복원 버튼이 늘면서 기본 폭을 140 → 180 으로 키웠는데,
+  // 폭 상태를 { ...defaultWidths, ...parsed } 로 합치는 구조라 이미 저장된 140 이 새 기본값을
+  // 덮어쓴다. 키를 올려 한 번만 초기화되게 했다. 옛 키는 읽지도 지우지도 않고 그냥 둔다.
+  const STORAGE_KEY = 'sam_project_list_column_widths_v2';
 
-  // 기본 컬럼 폭 (하드코딩 디폴트)
-  const defaultWidths = {
-    name: 240,
-    description: 380,
-    status: 90,
-    memberCount: 90,
-    myRole: 130,
-    createdAt: 130,
-    updatedAt: 130,
-    manage: 140,
-  };
+  // 기본 컬럼 폭은 lib/projectListColumns.ts 가 단일 원본이다.
+  const defaultWidths = DEFAULT_COLUMN_WIDTHS;
 
   // 컬럼 폭 상태 관리 (Local Storage 로드 우선)
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
@@ -42,6 +38,36 @@ export default function ProjectsPage() {
     return defaultWidths;
   });
 
+  // 테이블을 감싼 요소의 실제 폭. ResizeObserver 로 관찰한다.
+  // 감싼 요소는 조건부로 렌더링되므로 useEffect + ref 대신 콜백 ref 로 붙인다.
+  const [containerWidth, setContainerWidth] = useState(0);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+
+  const attachTableWrap = useCallback((el: HTMLDivElement | null) => {
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setContainerWidth(entry.contentRect.width);
+    });
+    ro.observe(el);
+    resizeObserverRef.current = ro;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
+    };
+  }, []);
+
+  // 실제로 그릴 폭. 남는 폭은 설명 컬럼이 흡수한다.
+  const { widths: renderedWidths, tableWidth } = useMemo(
+    () => computeRenderedWidths(columnWidths, containerWidth, adminMode),
+    [columnWidths, containerWidth, adminMode],
+  );
+
   // 드래그 상태 관리
   const resizingColumn = useRef<string | null>(null);
   const startX = useRef<number>(0);
@@ -52,7 +78,12 @@ export default function ProjectsPage() {
     e.stopPropagation();
     resizingColumn.current = columnKey;
     startX.current = e.clientX;
-    startWidth.current = columnWidths[columnKey] || defaultWidths[columnKey as keyof typeof defaultWidths];
+    // 저장값이 아니라 화면에 실제로 그려진 폭에서 출발한다.
+    // 설명 컬럼은 남는 폭이 얹혀 있어 저장값과 다르고, 저장값에서 출발하면
+    // 드래그를 시작하는 순간 폭이 뚝 튄다.
+    startWidth.current =
+      renderedWidths[columnKey as keyof typeof renderedWidths] ??
+      defaultWidths[columnKey as keyof typeof defaultWidths];
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -87,22 +118,6 @@ export default function ProjectsPage() {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
-
-  // 테이블 전체 폭 계산
-  const totalTableWidth = useMemo(() => {
-    let sum =
-      (columnWidths.name || defaultWidths.name) +
-      (columnWidths.description || defaultWidths.description) +
-      (columnWidths.status || defaultWidths.status) +
-      (columnWidths.memberCount || defaultWidths.memberCount) +
-      (columnWidths.myRole || defaultWidths.myRole) +
-      (columnWidths.createdAt || defaultWidths.createdAt) +
-      (columnWidths.updatedAt || defaultWidths.updatedAt);
-    if (adminMode) {
-      sum += (columnWidths.manage || defaultWidths.manage);
-    }
-    return sum;
-  }, [columnWidths, adminMode]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'ARCHIVED'>('ALL');
@@ -218,7 +233,7 @@ export default function ProjectsPage() {
   };
 
   return (
-    <main className="mx-auto max-w-7xl p-6">
+    <main className="px-3 py-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold">프로젝트</h1>
         {canCreate && (
@@ -313,17 +328,20 @@ export default function ProjectsPage() {
 
       {projects.data && filtered.length > 0 && (
         <div className="mt-6">
-          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div
+            ref={attachTableWrap}
+            className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
+          >
             <table
               className="divide-y divide-slate-200 dark:divide-slate-800 text-sm"
-              style={{ tableLayout: 'fixed', width: `${totalTableWidth}px` }}
+              style={{ tableLayout: 'fixed', width: `${tableWidth}px` }}
             >
               <thead className="bg-slate-50 dark:bg-slate-800/50">
                 <tr>
                   <th
                     scope="col"
                     className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
-                    style={{ width: `${columnWidths.name}px` }}
+                    style={{ width: `${renderedWidths.name}px` }}
                   >
                     <div
                       onClick={() => handleSort('name')}
@@ -339,7 +357,7 @@ export default function ProjectsPage() {
                   <th
                     scope="col"
                     className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
-                    style={{ width: `${columnWidths.description}px` }}
+                    style={{ width: `${renderedWidths.description}px` }}
                   >
                     <div className="flex items-center justify-center gap-1.5">
                       설명
@@ -352,7 +370,7 @@ export default function ProjectsPage() {
                   <th
                     scope="col"
                     className="relative select-none px-3 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
-                    style={{ width: `${columnWidths.status}px` }}
+                    style={{ width: `${renderedWidths.status}px` }}
                   >
                     <div
                       onClick={() => handleSort('status')}
@@ -368,7 +386,7 @@ export default function ProjectsPage() {
                   <th
                     scope="col"
                     className="relative select-none px-3 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
-                    style={{ width: `${columnWidths.memberCount}px` }}
+                    style={{ width: `${renderedWidths.memberCount}px` }}
                   >
                     <div
                       onClick={() => handleSort('memberCount')}
@@ -384,7 +402,7 @@ export default function ProjectsPage() {
                   <th
                     scope="col"
                     className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
-                    style={{ width: `${columnWidths.myRole}px` }}
+                    style={{ width: `${renderedWidths.myRole}px` }}
                   >
                     <div
                       onClick={() => handleSort('myRole')}
@@ -400,7 +418,7 @@ export default function ProjectsPage() {
                   <th
                     scope="col"
                     className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
-                    style={{ width: `${columnWidths.createdAt}px` }}
+                    style={{ width: `${renderedWidths.createdAt}px` }}
                   >
                     <div
                       onClick={() => handleSort('createdAt')}
@@ -416,7 +434,7 @@ export default function ProjectsPage() {
                   <th
                     scope="col"
                     className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
-                    style={{ width: `${columnWidths.updatedAt}px` }}
+                    style={{ width: `${renderedWidths.updatedAt}px` }}
                   >
                     <div
                       onClick={() => handleSort('updatedAt')}
@@ -435,7 +453,7 @@ export default function ProjectsPage() {
                     <th
                       scope="col"
                       className="px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap"
-                      style={{ width: `${columnWidths.manage}px` }}
+                      style={{ width: `${renderedWidths.manage}px` }}
                     >
                       관리
                     </th>
@@ -447,7 +465,7 @@ export default function ProjectsPage() {
                   <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                     <td
                       className="whitespace-nowrap px-4 py-4 font-semibold text-slate-950 dark:text-slate-50 truncate"
-                      style={{ width: `${columnWidths.name}px`, maxWidth: `${columnWidths.name}px` }}
+                      style={{ width: `${renderedWidths.name}px`, maxWidth: `${renderedWidths.name}px` }}
                     >
                       <Link to={`/projects/${p.id}`} className="text-sky-600 hover:text-sky-700 hover:underline dark:text-sky-400 dark:hover:text-sky-300 truncate block" title={p.name}>
                         {p.name}
@@ -455,46 +473,46 @@ export default function ProjectsPage() {
                     </td>
                     <td
                       className="px-4 py-4 text-slate-600 dark:text-slate-400 truncate"
-                      style={{ width: `${columnWidths.description}px`, maxWidth: `${columnWidths.description}px` }}
+                      style={{ width: `${renderedWidths.description}px`, maxWidth: `${renderedWidths.description}px` }}
                       title={p.description ?? ''}
                     >
                       {p.description ?? '-'}
                     </td>
                     <td
                       className="whitespace-nowrap px-3 py-4 text-center"
-                      style={{ width: `${columnWidths.status}px`, maxWidth: `${columnWidths.status}px` }}
+                      style={{ width: `${renderedWidths.status}px`, maxWidth: `${renderedWidths.status}px` }}
                     >
                       <StatusBadge status={p.status} />
                     </td>
                     <td
                       className="whitespace-nowrap px-3 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
-                      style={{ width: `${columnWidths.memberCount}px`, maxWidth: `${columnWidths.memberCount}px` }}
+                      style={{ width: `${renderedWidths.memberCount}px`, maxWidth: `${renderedWidths.memberCount}px` }}
                     >
                       {p.memberCount}명
                     </td>
                     <td
                       className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
-                      style={{ width: `${columnWidths.myRole}px`, maxWidth: `${columnWidths.myRole}px` }}
+                      style={{ width: `${renderedWidths.myRole}px`, maxWidth: `${renderedWidths.myRole}px` }}
                       title={p.myRole ?? '비멤버 (ADMIN)'}
                     >
                       {p.myRole ?? '비멤버 (ADMIN)'}
                     </td>
                     <td
                       className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
-                      style={{ width: `${columnWidths.createdAt}px`, maxWidth: `${columnWidths.createdAt}px` }}
+                      style={{ width: `${renderedWidths.createdAt}px`, maxWidth: `${renderedWidths.createdAt}px` }}
                     >
                       {p.createdAt.slice(0, 10)}
                     </td>
                     <td
                       className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
-                      style={{ width: `${columnWidths.updatedAt}px`, maxWidth: `${columnWidths.updatedAt}px` }}
+                      style={{ width: `${renderedWidths.updatedAt}px`, maxWidth: `${renderedWidths.updatedAt}px` }}
                     >
                       {p.updatedAt.slice(0, 10)}
                     </td>
                     {adminMode && (
                       <td
                         className="whitespace-nowrap px-4 py-4 text-center"
-                        style={{ width: `${columnWidths.manage}px`, maxWidth: `${columnWidths.manage}px` }}
+                        style={{ width: `${renderedWidths.manage}px`, maxWidth: `${renderedWidths.manage}px` }}
                       >
                         <div className="flex items-center justify-center gap-1.5">
                           <Link
