@@ -6,7 +6,7 @@ import { useAdminMode } from '../lib/adminMode';
 import { useProjects, useDeleteProject } from '../lib/projects';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
-import { DEFAULT_COLUMN_WIDTHS, computeRenderedWidths } from '../lib/projectListColumns';
+import { DEFAULT_COLUMN_WIDTHS, computeRenderedWidths, type ProjectColumnKey } from '../lib/projectListColumns';
 import ProjectNameCell from '../components/ProjectNameCell';
 import ProjectArchiveButton from '../components/ProjectArchiveButton';
 
@@ -71,11 +71,11 @@ export default function ProjectsPage() {
   );
 
   // 드래그 상태 관리
-  const resizingColumn = useRef<string | null>(null);
+  const resizingColumn = useRef<ProjectColumnKey | null>(null);
   const startX = useRef<number>(0);
   const startWidth = useRef<number>(0);
 
-  const handleMouseDown = (e: React.MouseEvent, columnKey: string) => {
+  const handleMouseDown = (e: React.MouseEvent, columnKey: ProjectColumnKey) => {
     e.preventDefault();
     e.stopPropagation();
     resizingColumn.current = columnKey;
@@ -83,9 +83,7 @@ export default function ProjectsPage() {
     // 저장값이 아니라 화면에 실제로 그려진 폭에서 출발한다.
     // 설명 컬럼은 남는 폭이 얹혀 있어 저장값과 다르고, 저장값에서 출발하면
     // 드래그를 시작하는 순간 폭이 뚝 튄다.
-    startWidth.current =
-      renderedWidths[columnKey as keyof typeof renderedWidths] ??
-      defaultWidths[columnKey as keyof typeof defaultWidths];
+    startWidth.current = renderedWidths[columnKey];
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);

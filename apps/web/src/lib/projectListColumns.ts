@@ -22,16 +22,10 @@ export const DEFAULT_COLUMN_WIDTHS = {
 
 export type ProjectColumnKey = keyof typeof DEFAULT_COLUMN_WIDTHS;
 
-/** 관리자 모드와 무관하게 항상 보이는 컬럼들 */
-const BASE_COLUMNS: readonly ProjectColumnKey[] = [
-  'name',
-  'description',
-  'status',
-  'memberCount',
-  'myRole',
-  'createdAt',
-  'updatedAt',
-];
+const ALL_COLUMNS = Object.keys(DEFAULT_COLUMN_WIDTHS) as ProjectColumnKey[];
+
+/** 관리자 모드와 무관하게 항상 보이는 컬럼들. 손으로 유지하지 않도록 파생시킨다. */
+const BASE_COLUMNS: readonly ProjectColumnKey[] = ALL_COLUMNS.filter((k) => k !== 'manage');
 
 /**
  * 남는 폭을 흡수하는 컬럼.
@@ -40,8 +34,6 @@ const BASE_COLUMNS: readonly ProjectColumnKey[] = [
  * 뻔한 컬럼을 넓혀 봐야 여백만 늘어난다.
  */
 export const FLEX_COLUMN: ProjectColumnKey = 'description';
-
-const ALL_COLUMNS = Object.keys(DEFAULT_COLUMN_WIDTHS) as ProjectColumnKey[];
 
 /**
  * 실제로 렌더링할 컬럼 폭과 테이블 전체 폭을 구한다.

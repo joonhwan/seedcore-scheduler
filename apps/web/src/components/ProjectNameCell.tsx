@@ -34,8 +34,9 @@ export default function ProjectNameCell({
           <button
             type="button"
             onClick={(e) => {
-              // 셀 전체가 상세 화면으로 가는 링크 영역이라, 막지 않으면
-              // 편집을 시작하려다 페이지가 넘어간다.
+              // 이 버튼은 상세 화면 링크(Link)와 형제 관계라 지금은 막을 필요가 없지만,
+              // 혹시 나중에 셀 전체가 링크로 감싸이도록 마크업이 바뀌더라도
+              // 클릭이 링크 이동으로 처리되지 않게 방어적으로 막아 둔다.
               e.preventDefault();
               e.stopPropagation();
               edit.startEdit();

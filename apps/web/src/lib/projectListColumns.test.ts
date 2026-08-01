@@ -94,7 +94,12 @@ describe('computeRenderedWidths', () => {
     expect(tableWidth).toBe(container);
   });
 
-  it('관리 컬럼 기본 폭은 180 이다 (보관/복제/삭제 세 버튼)', () => {
-    expect(DEFAULT_COLUMN_WIDTHS.manage).toBe(180);
+  it('관리자 모드와 아닌 모드의 tableWidth 차이는 정확히 manage 컬럼 폭이다', () => {
+    // container 를 0 으로 둬서 (측정 전) 남는 폭 흡수가 끼어들지 않게 한다.
+    // 그래야 두 모드의 tableWidth 차이가 오롯이 manage 컬럼 포함 여부만 반영한다.
+    const admin = computeRenderedWidths({}, 0, true);
+    const nonAdmin = computeRenderedWidths({}, 0, false);
+
+    expect(admin.tableWidth - nonAdmin.tableWidth).toBe(DEFAULT_COLUMN_WIDTHS.manage);
   });
 });

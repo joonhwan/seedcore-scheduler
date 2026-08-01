@@ -53,7 +53,7 @@ export default function ProjectArchiveButton({ project }: { project: ProjectList
       onClick={() => void toggle()}
       disabled={pending}
       title={archived ? '프로젝트를 활성 상태로 복원' : '프로젝트 보관 처리'}
-      className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50 ${cls}`}
+      className={`min-w-[3rem] rounded px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50 ${cls}`}
     >
       {pending ? '…' : archived ? '복원' : '보관'}
     </button>
