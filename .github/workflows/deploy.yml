@@ -23,7 +23,7 @@ jobs:
     concurrency: deploy-group    # 동시 배포 충돌 방지
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Flyctl CLI
         uses: superfly/flyctl-actions/setup-flyctl@master

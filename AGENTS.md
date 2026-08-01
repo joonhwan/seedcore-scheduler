@@ -17,7 +17,10 @@ SAM Scheduler는 외부 네트워크와 격리된 **폐쇄망(Air-gap) 환경**�
 ## 2. 기술 스택 및 구조
 
 ### 2.1 주요 기술
-- **Backend**: Node.js 20.x, NestJS 10, Prisma 5.22, SQLite (WAL 모드)
+- **Backend**: Node.js 22.x, NestJS 10, Prisma 5.22, SQLite (WAL 모드)
+  - **하한은 22.13 입니다.** pnpm 11(`packageManager` 로 고정)이 `node:sqlite` 를 쓰기 때문에
+    Node 20 에서는 `pnpm install` 이 `ERR_UNKNOWN_BUILTIN_MODULE` 로 죽습니다. CI(`ci.yml`)와
+    도커 이미지(`Dockerfile.fly`, `apps/*/Dockerfile`)의 Node 버전도 이 이유로 22 입니다.
 - **Frontend**: React 18, Vite 5, Tailwind CSS, TanStack Query, Zustand
 - **Shared**: `packages/shared` (Zod 기반 스키마 및 공통 유틸리티)
 - **Deploy**: Docker Compose, Nginx (정적 SPA 파일 서빙 및 API 리버스 프록시) / 또는 단일 exe 배포판

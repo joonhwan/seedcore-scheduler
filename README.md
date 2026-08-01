@@ -13,7 +13,7 @@ deploy/           docker compose, nginx, 백업 스크립트
 
 ## 사전 요구사항
 
-- Node.js 20.x 이상
+- Node.js **22.13 이상** (pnpm 11 이 `node:sqlite` 를 쓰므로 20.x 에서는 `pnpm install` 자체가 실행되지 않습니다)
 - pnpm 11.x (`corepack enable` — 버전은 루트 `package.json` 의 `packageManager` 필드가 결정하므로 별도 지정 불필요)
 - Docker (운영/오프라인 번들 시)
 
