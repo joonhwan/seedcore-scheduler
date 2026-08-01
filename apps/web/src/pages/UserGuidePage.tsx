@@ -206,11 +206,11 @@ export default function UserGuidePage() {
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                     <tr>
                       <td className="p-2 border font-medium">ID 또는 비밀번호가 올바르지 않습니다.</td>
-                      <td className="p-2 border text-slate-600 dark:text-slate-400">입력하신 계정 정보를 다시 확인하세요.</td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">입력하신 계정 정보를 다시 확인하세요. 관리자가 계정을 사용 중지한 경우에도 같은 안내가 나오므로, 계속 실패하면 관리자에게 문의하세요.</td>
                     </tr>
                     <tr>
-                      <td className="p-2 border font-medium">여러 차례 실패로 계정이 일시 잠금되었습니다.</td>
-                      <td className="p-2 border text-slate-600 dark:text-slate-400">실패가 반복되면 계정이 보호 잠금됩니다. 관리자에게 해제를 요청하세요.</td>
+                      <td className="p-2 border font-medium">요청이 너무 많습니다. 잠시 후 다시 시도하세요.</td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">짧은 시간에 로그인을 너무 자주 시도한 경우입니다. 잠시 기다렸다가 다시 시도하세요.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -221,9 +221,8 @@ export default function UserGuidePage() {
                 처음 로그인하거나 관리자가 비밀번호를 초기화한 경우 **비밀번호 변경 화면**으로 이동합니다.
               </p>
               <ul className="list-disc pl-5 space-y-1 text-xs text-slate-500 dark:text-slate-400">
-                <li>최소 10자 이상, 영문·숫자·특수문자 중 3종 이상 조합</li>
-                <li>비밀번호에 본인 ID를 포함할 수 없음</li>
-                <li>새 비밀번호는 기존 비밀번호와 달라야 함</li>
+                <li>새 비밀번호는 현재 비밀번호와 달라야 합니다.</li>
+                <li>그 밖의 제한(길이, 문자 조합 등)은 없습니다. 다만 폐쇄망이라도 계정은 개인별로 구분되므로 짐작하기 쉬운 비밀번호는 피해 주십시오.</li>
               </ul>
             </div>
           </section>
