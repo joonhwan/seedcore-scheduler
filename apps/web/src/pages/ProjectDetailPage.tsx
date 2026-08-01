@@ -25,6 +25,7 @@ import type { BarChangeProposal } from '../lib/ganttTypes';
 import { addDays } from '../lib/ganttMath';
 import { collectDeleteTargets, collectCompleteTargets, hasGroupSelected, collectSubtreeIds } from '../lib/bulkSelection';
 import ExportMenu from '../components/ExportMenu';
+import ProjectNameEditor from '../components/ProjectNameEditor';
 import GanttExportDialog from '../components/GanttExportDialog';
 import ExcelExportDialog from '../components/ExcelExportDialog';
 import { useTheme } from '../lib/theme';
@@ -861,7 +862,7 @@ function ProjectHeader({
       <header className="flex flex-col gap-1 py-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-lg font-bold">
-            <span>{project.name}</span>
+            <ProjectNameEditor project={project} canRename={isAdmin && adminMode} />
             {projectProgress !== null && (
               <span className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/80" title="프로젝트 전체 진행률">
                 진행률 {projectProgress}%
