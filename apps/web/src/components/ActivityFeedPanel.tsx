@@ -6,7 +6,11 @@ import { useComments, useDeleteComment } from '../lib/comments';
 import { useNodeHistory } from '../lib/history';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
-import { historyLabelText, formatDateTime as formatDateTimeShared } from '../lib/historyView';
+import {
+  historyLabelText,
+  clonedFromText,
+  formatDateTime as formatDateTimeShared,
+} from '../lib/historyView';
 
 interface Props {
   nodeId: string;
@@ -171,6 +175,14 @@ function DiffTooltip({ action, diff }: { action: string; diff: Record<string, an
   if (entries.length === 0) {
     if (action === 'DELETE') {
       return <p className="text-[10px] text-slate-500">노드가 영구 삭제되었습니다.</p>;
+    }
+    // 복제로 생성된 노드는 diff 가 {clonedFrom:{...}} 라 {from,to} 쌍이 없다.
+    // 안내하지 않으면 "(변경 세부내역 없음)" 만 떠서 복제 흔적이 화면에서 사라진다.
+    if (action === 'CREATE') {
+      const clonedText = clonedFromText(diff);
+      if (clonedText) {
+        return <p className="text-[10px] text-slate-500">{clonedText}</p>;
+      }
     }
     return <p className="text-[10px] text-slate-500">(변경 세부내역 없음)</p>;
   }
