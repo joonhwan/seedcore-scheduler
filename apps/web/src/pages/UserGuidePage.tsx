@@ -252,6 +252,7 @@ export default function UserGuidePage() {
               프로젝트 목록 다루기
             </h2>
             <div className="space-y-4 text-sm leading-relaxed">
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-4">3.1 목록 보기와 정렬</h3>
               <p className="text-slate-600 dark:text-slate-300">
                 홈 화면(`/`)에서는 접근 가능한 프로젝트 목록을 조율하고 검색할 수 있습니다.
               </p>
@@ -260,12 +261,97 @@ export default function UserGuidePage() {
               </div>
               <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300">
                 <li>**검색 & 정렬**: 검색창을 통한 프로젝트 이름 검색, 컬럼 헤더 클릭 시 오름차순/내림차순 정렬</li>
-                <li>**컬럼 폭 조절**: 경계선을 드래그하여 컬럼 너비를 자유롭게 조절(자동 저장)</li>
+                <li>**기본 정렬**: 헤더로 정렬을 고르기 전에는 **가장 최근에 만든 프로젝트가 맨 위**에 옵니다. 목록에서 이름을 고치거나 보관 처리해도 그 행이 다른 페이지로 튀지 않습니다.</li>
+                <li>**컬럼 폭 조절**: 경계선을 드래그하여 컬럼 너비를 자유롭게 조절(자동 저장). 표는 화면 폭을 가득 채우며, 남는 폭은 설명 컬럼이 흡수합니다.</li>
+                <li>**🔒 상태 필터**: 관리자 모드에서는 검색창 오른쪽에 **전체 / 활성 / 보관** 필터가 나타납니다.</li>
                 <li>**🔒 프로젝트 생성을 위한 새 프로젝트 화면**: 매니저/관리자는 `+ 새 프로젝트`를 클릭해 수월하게 프로젝트를 추가합니다.</li>
               </ul>
               <div className="my-3 overflow-hidden rounded-lg border border-slate-200 shadow-sm dark:border-slate-800 max-w-xl">
                 <img src="/images/03_project_new.png" alt="새 프로젝트 작성" className="w-full h-auto object-cover" />
               </div>
+
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-6">
+                3.2 프로젝트 명칭 바로 고치기 🔒 <span className="text-xs font-normal text-amber-700 dark:text-amber-400">관리자 모드 전용</span>
+              </h3>
+              <p className="text-slate-600 dark:text-slate-300">
+                ADMIN 계정이 **관리자 모드를 켠 상태**에서는 프로젝트 이름을 그 자리에서 고칠 수 있습니다.
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300">
+                <li>**목록에서**: 행에 마우스를 올리면 이름 옆에 **연필 아이콘**이 나타납니다. 누르면 그 칸이 입력창으로 바뀝니다.</li>
+                <li>**프로젝트 상세 화면에서**: 제목 옆의 연필 아이콘을 눌러 같은 방식으로 고칩니다.</li>
+                <li>**Enter** 로 저장하고 **ESC** 로 취소합니다. 앞뒤 공백은 저장할 때 자동으로 잘립니다(최대 128자).</li>
+                <li>저장하는 사이에 다른 사람이 같은 프로젝트를 먼저 고쳤다면 변경이 거부되고 안내가 뜹니다. 이때 입력한 이름은 사라지지 않으니, 화면을 새로고침해 최신 내용을 확인한 뒤 다시 저장하십시오.</li>
+              </ul>
+
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-6">
+                3.3 보관과 복원 🔒 <span className="text-xs font-normal text-amber-700 dark:text-amber-400">관리자 모드 전용</span>
+              </h3>
+              <p className="text-slate-600 dark:text-slate-300">
+                관리자 모드에서는 목록 맨 오른쪽에 **관리** 컬럼이 나타나고, 행마다 **보관 / 복제 / 삭제** 버튼이 놓입니다.
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300">
+                <li>**보관**: 끝난 프로젝트를 목록에서 걷어냅니다. 데이터는 그대로 남고 상태만 `보관` 으로 바뀝니다. 누르면 확인 창이 한 번 뜹니다.</li>
+                <li>**복원**: 보관된 프로젝트의 같은 자리에 나타납니다. 눌러서 언제든 `활성` 으로 되돌릴 수 있습니다(확인 창 없음).</li>
+                <li>**삭제**: **보관된 프로젝트에만** 보입니다. 프로젝트 이름을 정확히 입력해야 실행되며, 일정·댓글·이력이 모두 영구히 사라집니다.</li>
+              </ul>
+
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-6">
+                3.4 프로젝트 복제 🔒 <span className="text-xs font-normal text-amber-700 dark:text-amber-400">관리자 모드 전용</span>
+              </h3>
+              <p className="text-slate-600 dark:text-slate-300">
+                1호기·2호기처럼 **일정 구조가 거의 같은 프로젝트를 반복해서 만들 때** 씁니다. 잘 만들어 둔 프로젝트를
+                템플릿 삼아, 일정 트리는 그대로 물려받고 날짜만 새 기간으로 옮긴 새 프로젝트를 한 번에 만듭니다.
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300">
+                <li>**어디서 시작하나**: 목록 `관리` 컬럼의 **복제** 버튼, 또는 프로젝트 상세 화면 오른쪽 위 툴바의 복제(서류 두 장) 아이콘.</li>
+                <li>**보관된 프로젝트도 복제할 수 있습니다.** 지난 호기를 템플릿으로 써도 새로 만들어지는 프로젝트는 항상 `활성` 으로 시작합니다.</li>
+              </ul>
+              <p className="text-slate-600 dark:text-slate-300 mt-3">
+                복제 화면(`/projects/:id/clone`)에서 이름·설명·일정 처리 방식·멤버를 정합니다. 일정 처리는 세 가지 중 하나를 고릅니다.
+              </p>
+              <div className="overflow-x-auto my-3">
+                <table className="w-full text-xs text-left border-collapse border border-slate-200 dark:border-slate-800">
+                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    <tr>
+                      <th className="p-2 border w-32">일정 처리</th>
+                      <th className="p-2 border w-40">입력하는 값</th>
+                      <th className="p-2 border">결과</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                    <tr>
+                      <td className="p-2 border font-semibold">날짜 그대로</td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">없음</td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">원본 날짜를 손대지 않고 그대로 복사합니다.</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">통째로 밀기</td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">새 시작일</td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">전체 일정을 통째로 옮깁니다. **각 작업의 기간과 작업 사이 간격은 그대로** 유지됩니다.</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">기간에 맞추기</td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">새 시작일 + 새 종료일</td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">원본 전체 기간을 새 기간에 비례해 늘리거나 줄입니다. 6개월짜리를 12개월로 늘리면 2주 작업은 4주가 됩니다.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                날짜를 입력하면 `복제 후: 2026-09-01 ~ 2027-02-24` 처럼 예상 결과가 즉시 표시됩니다.
+                원본에 날짜가 들어 있는 일정이 하나도 없으면 뒤의 두 가지는 선택할 수 없습니다.
+              </p>
+              <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800 mt-3">
+                <div className="font-semibold text-slate-800 dark:text-slate-200 text-xs mb-1.5">무엇이 복사되고, 무엇이 복사되지 않나</div>
+                <ul className="list-disc pl-5 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                  <li>**복사됩니다**: 일정 트리 전체(제목·설명·그룹/일정 구분·순서·계층), 일정(ITEM)의 시작일·종료일</li>
+                  <li>**복사되지 않습니다**: 진행률(**전부 0% 로 초기화**), 댓글, 원본의 변경 이력</li>
+                  <li>**멤버**: 원본 멤버가 역할까지 채워진 채로 뜹니다. 체크를 풀어 제외하거나, MANAGER ↔ MEMBER 를 바꾸거나, 검색으로 새 인원을 추가할 수 있습니다. MANAGER 는 최소 1명이 필요합니다.</li>
+                </ul>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                복제로 만들어진 일정은 상세 편집 창의 이력에 &quot;다른 프로젝트에서 복제되어 생성됨&quot; 으로 표시되어, 어디서 온 일정인지 나중에도 확인할 수 있습니다.
+              </p>
             </div>
           </section>
 
@@ -324,13 +410,69 @@ export default function UserGuidePage() {
               <p className="text-slate-600 dark:text-slate-300">
                 시간 축에 맞춰 일정 막대를 시각화합니다. 🔒 편집 권한이 있으면 막대를 마우스 드래그하여 이동하거나 날짜 기간을 직접 확장할 수 있습니다.
               </p>
-              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-4">간트 PNG 이미지 내보내기</h3>
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-4">5.1 내보내기 메뉴</h3>
               <p className="text-slate-600 dark:text-slate-300">
-                헤더의 내보내기 메뉴에서 **이미지로 내보내기(PNG)**를 클릭하면 전체 프로젝트 간트 차트를 라이트/다크 테마 고해상도 이미지로 변환해 내보낼 수 있습니다.
+                프로젝트 헤더 오른쪽의 **내보내기(아래 화살표) 아이콘**을 누르면 세 가지 형식이 나옵니다.
               </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300">
+                <li>**엑셀 간트차트 내보내기(.xlsx)** — 아래 5.2 참고</li>
+                <li>**CSV 내보내기(.csv)** — 일정 목록을 표 형태로 저장합니다. `일정1~일정5`(단계별 제목), `시작일`, `종료일`, `진척율` 8개 컬럼이며, 그룹은 자동 계산된 기간과 평균 진행률이 들어갑니다. 엑셀에서 한글이 깨지지 않게 저장됩니다.</li>
+                <li>**이미지로 내보내기(PNG)** — 전체 간트 차트를 라이트/다크 테마 고해상도 이미지로 저장합니다.</li>
+              </ul>
               <div className="my-3 overflow-hidden rounded-lg border border-slate-200 shadow-sm dark:border-slate-800 max-w-xl">
                 <img src="/images/06_gantt_export_dialog.png" alt="간트 내보내기 설정" className="w-full h-auto object-cover" />
               </div>
+
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-6">5.2 엑셀 간트차트 내보내기 (.xlsx)</h3>
+              <p className="text-slate-600 dark:text-slate-300">
+                화면의 간트 차트를 **엑셀 파일 그대로** 받는 기능입니다. 이미지가 아니라 실제 셀로 만들어지므로,
+                엑셀에서 열어 편집하거나 보고서에 붙여 쓸 수 있습니다. 일정 막대는 셀 배경색으로 그려집니다.
+              </p>
+              <p className="text-slate-600 dark:text-slate-300">
+                만들어지는 시트(`일정표`)의 왼쪽에는 `일정 1단계 ~ 일정 5단계`, `구분`, `시작일`, `종료일`, `진행률`
+                컬럼이 놓이고, 그 오른쪽으로 시간 축이 이어집니다.
+              </p>
+              <p className="text-slate-600 dark:text-slate-300 mt-3">
+                메뉴에서 고르면 설정 창이 뜹니다. 정한 뒤 **엑셀 다운로드**를 누르면 파일이 내려받아집니다(취소는 **ESC**).
+              </p>
+              <div className="overflow-x-auto my-3">
+                <table className="w-full text-xs text-left border-collapse border border-slate-200 dark:border-slate-800">
+                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    <tr>
+                      <th className="p-2 border w-36">설정</th>
+                      <th className="p-2 border">설명</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                    <tr>
+                      <td className="p-2 border font-semibold">시간 단위</td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">
+                        일 / 주 / 월 / 분기 중 선택합니다. 고른 단위에 맞춰 엑셀 컬럼이 만들어지며, 처음에는 지금 화면에서 보고 있는 단위가 선택되어 있습니다.
+                        긴 프로젝트를 `일` 단위로 내보내면 컬럼이 아주 많아지니 주의하십시오.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">엑셀 색상 테마</td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">
+                        Light(기본) / Dark 중 선택합니다. 화면 테마와 별개로 정하며, 인쇄하거나 문서에 붙일 것이라면 Light 를 권합니다.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">
+                        윤곽(Outline) 접기 포함
+                        <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/70 dark:text-amber-300">베타</span>
+                      </td>
+                      <td className="p-2 border text-slate-600 dark:text-slate-400">
+                        켜면 엑셀에서 하위 일정을 레벨 단추(1, 2, 3…)로 접고 펼칠 수 있게 됩니다. 기본은 꺼져 있으며, 아직 베타 기능입니다.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                시간 축에는 프로젝트 시작 전과 종료 후로 각각 **1단위씩 여유 기간**이 함께 들어갑니다.
+                일정이 많으면 파일을 만드는 데 몇 초 걸릴 수 있으며, 그동안 버튼에 &quot;엑셀 생성 중…&quot; 이 표시됩니다.
+              </p>
             </div>
           </section>
 
@@ -383,6 +525,13 @@ export default function UserGuidePage() {
               <p className="text-slate-600 dark:text-slate-300">
                 프로젝트 매니저(MANAGER) 및 관리자(ADMIN)는 멤버 관리, 계정 관리, 자동완성 단어 동기화 등을 수행합니다.
               </p>
+              <div className="rounded-lg bg-amber-50 p-3 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/50 text-xs text-amber-900 dark:text-amber-200">
+                아래 기능은 ADMIN 계정이 헤더의 **관리자 모드 스위치를 켠 상태**에서만 화면에 나타납니다.
+                끄면 본인이 멤버로 속한 프로젝트만 보이고 관리 버튼도 함께 사라집니다.
+                <span className="block mt-1">
+                  프로젝트 생성 · 명칭 변경(3.2) · 보관/복원(3.3) · 복제(3.4) · 영구 삭제 · 상태 필터
+                </span>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-3">
                 <div className="rounded-lg border border-slate-200 p-2 shadow-sm dark:border-slate-800">
