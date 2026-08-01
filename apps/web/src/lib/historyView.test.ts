@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { historyLabelText } from './historyView';
+import { historyLabelText, clonedFromText } from './historyView';
 
 describe('historyLabelText', () => {
   it('진행률 내림', () => {
@@ -26,5 +26,18 @@ describe('historyLabelText', () => {
     expect(historyLabelText('DELETE', {})).toBe('삭제');
     expect(historyLabelText('MOVE', {})).toBe('위치 이동');
     expect(historyLabelText('RESTORE', {})).toBe('복구');
+  });
+});
+
+describe('clonedFromText', () => {
+  it('clonedFrom 이 있으면 복제 안내 문구를 돌려준다', () => {
+    expect(
+      clonedFromText({ clonedFrom: { projectId: 'p1', nodeId: 'n1' } }),
+    ).toBe('다른 프로젝트에서 복제되어 생성됨');
+  });
+
+  it('clonedFrom 이 없으면 null 이다', () => {
+    expect(clonedFromText({})).toBeNull();
+    expect(clonedFromText({ title: { from: 'a', to: 'b' } })).toBeNull();
   });
 });

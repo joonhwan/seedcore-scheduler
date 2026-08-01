@@ -1,6 +1,7 @@
 import type { NodeHistoryItem } from '@sam/shared';
 import { useNodeHistory } from '../lib/history';
 import { apiErrorMessage } from '../lib/errors';
+import { clonedFromText } from '../lib/historyView';
 
 interface Props {
   nodeId: string;
@@ -85,6 +86,12 @@ function DiffBlock({
       return (
         <p className="mt-1 text-[11px] text-slate-500">노드가 삭제되었습니다.</p>
       );
+    }
+    if (action === 'CREATE') {
+      const clonedText = clonedFromText(diff);
+      if (clonedText) {
+        return <p className="mt-1 text-[11px] text-slate-500">{clonedText}</p>;
+      }
     }
     return <p className="mt-1 text-[11px] text-slate-500">(변경 없음)</p>;
   }

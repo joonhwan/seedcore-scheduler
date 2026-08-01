@@ -78,6 +78,17 @@ function periodText(diff: Record<string, unknown>): string {
   return '변경';
 }
 
+/**
+ * 복제 시 남긴 CREATE 이력은 diffJson 이 {clonedFrom:{projectId,nodeId}} 형태라
+ * {from,to} 쌍이 없다. 원본 프로젝트는 나중에 삭제될 수 있으므로 ID 를 그대로 노출하지
+ * 않고, 복제로 생성됐다는 사실만 짧게 안내한다. clonedFrom 이 없으면 null.
+ */
+export function clonedFromText(diff: Record<string, unknown>): string | null {
+  const v = diff.clonedFrom;
+  if (v && typeof v === 'object') return '다른 프로젝트에서 복제되어 생성됨';
+  return null;
+}
+
 export function formatDateTime(iso: string): string {
   try {
     return new Date(iso).toLocaleString();
