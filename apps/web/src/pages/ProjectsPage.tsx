@@ -7,6 +7,7 @@ import { useProjects, useDeleteProject } from '../lib/projects';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { DEFAULT_COLUMN_WIDTHS, computeRenderedWidths } from '../lib/projectListColumns';
+import ProjectNameCell from '../components/ProjectNameCell';
 
 export default function ProjectsPage() {
   const me = useMe();
@@ -135,6 +136,7 @@ export default function ProjectsPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   const canCreate = me.data?.globalRole === 'ADMIN' && adminMode;
+  const canRename = me.data?.globalRole === 'ADMIN' && adminMode;
 
   const handleSort = (field: keyof ProjectListItem) => {
     if (sortBy === field) {
@@ -462,14 +464,12 @@ export default function ProjectsPage() {
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
                 {paginated.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                  <tr key={p.id} className="group/row hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                     <td
-                      className="whitespace-nowrap px-4 py-4 font-semibold text-slate-950 dark:text-slate-50 truncate"
+                      className="px-4 py-4 font-semibold text-slate-950 dark:text-slate-50"
                       style={{ width: `${renderedWidths.name}px`, maxWidth: `${renderedWidths.name}px` }}
                     >
-                      <Link to={`/projects/${p.id}`} className="text-sky-600 hover:text-sky-700 hover:underline dark:text-sky-400 dark:hover:text-sky-300 truncate block" title={p.name}>
-                        {p.name}
-                      </Link>
+                      <ProjectNameCell project={p} canRename={canRename} />
                     </td>
                     <td
                       className="px-4 py-4 text-slate-600 dark:text-slate-400 truncate"
