@@ -1,17 +1,13 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { ProjectDetail } from '@sam/shared';
-import { useUpdateProject } from '../lib/projects';
-import { apiErrorMessage } from '../lib/errors';
-import { toast } from '../lib/toast';
-import {
-  canSubmitProjectName,
-  normalizeProjectName,
-  PROJECT_NAME_MAX_LENGTH,
-} from '../lib/projectName';
+import { useProjectNameEdit } from '../lib/useProjectNameEdit';
+import { PROJECT_NAME_MAX_LENGTH } from '../lib/projectName';
 
 /**
- * 프로젝트 명칭 인라인 편집.
+ * 프로젝트 명칭 인라인 편집 — 상세 화면 헤더용.
  * 설계: docs/superpowers/specs/2026-08-01-project-rename-inline-design.md
+ *
+ * 편집 로직은 lib/useProjectNameEdit.ts 에 있다. 목록 셀(ProjectNameCell)과
+ * 같은 로직을 쓰되 겉모습만 다르다.
  *
  * 권한 판단은 하지 않는다. 호출부가 `canRename` 으로 넘겨준다 (isAdmin && adminMode).
  */
@@ -22,64 +18,15 @@ export default function ProjectNameEditor({
   project: ProjectDetail;
   canRename: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(project.name);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const updateProject = useUpdateProject(project.id);
+  const edit = useProjectNameEdit(project);
 
-  // 편집 진입 시 자동 포커스 + 전체 선택
-  useEffect(() => {
-    if (!editing) return;
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, [editing]);
-
-  const startEdit = () => {
-    setDraft(project.name);
-    setEditing(true);
-  };
-
-  const cancelEdit = () => {
-    setEditing(false);
-    setDraft(project.name);
-  };
-
-  const canSubmit = canSubmitProjectName(draft, project.name);
-
-  const submit = async () => {
-    if (!canSubmit || updateProject.isPending) return;
-    try {
-      await updateProject.mutateAsync({
-        // 앞뒤 공백은 버리고 저장한다. 서버는 trim 하지 않는다.
-        name: normalizeProjectName(draft),
-        expectedUpdatedAt: project.updatedAt,
-      });
-      setEditing(false);
-      toast.success('프로젝트 명칭이 변경되었습니다.');
-    } catch (err) {
-      // 409 를 포함해 실패 시에는 편집 모드를 유지한다. 방금 친 이름을 잃지 않게 하기 위함.
-      // apiErrorMessage 가 409 를 CONFLICT 안내 문구로 바꿔 준다 (lib/errors.ts:36).
-      toast.error(apiErrorMessage(err, '명칭 변경에 실패했습니다.'));
-    }
-  };
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      void submit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelEdit();
-    }
-  };
-
-  if (!editing) {
+  if (!edit.editing) {
     return (
       <span className="flex items-center gap-1.5">
         {canRename && (
           <button
             type="button"
-            onClick={startEdit}
+            onClick={edit.startEdit}
             title="프로젝트 명칭 변경"
             aria-label="프로젝트 명칭 변경"
             className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
@@ -94,25 +41,25 @@ export default function ProjectNameEditor({
     );
   }
 
-  const pending = updateProject.isPending;
+  const pending = edit.pending;
 
   return (
     <span className="flex items-center gap-1.5">
       <input
-        ref={inputRef}
+        ref={edit.inputRef}
         type="text"
-        value={draft}
+        value={edit.draft}
         maxLength={PROJECT_NAME_MAX_LENGTH}
         disabled={pending}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={handleKeyDown}
+        onChange={(e) => edit.setDraft(e.target.value)}
+        onKeyDown={edit.handleKeyDown}
         aria-label="프로젝트 명칭"
         className="w-64 rounded-md border border-slate-300 bg-white px-2 py-1 text-lg font-bold text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
       />
       <button
         type="button"
-        onClick={() => void submit()}
-        disabled={!canSubmit || pending}
+        onClick={() => void edit.submit()}
+        disabled={!edit.canSubmit || pending}
         title="확인"
         aria-label="명칭 변경 확인"
         className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors dark:text-emerald-400 dark:hover:bg-emerald-950/40"
@@ -130,7 +77,7 @@ export default function ProjectNameEditor({
       </button>
       <button
         type="button"
-        onClick={cancelEdit}
+        onClick={edit.cancelEdit}
         disabled={pending}
         title="취소"
         aria-label="명칭 변경 취소"

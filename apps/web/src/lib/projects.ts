@@ -44,7 +44,11 @@ export function useUpdateProject(id: string) {
       api.patch<ProjectDetail>(`/admin/projects/${id}`, input),
     onSuccess: (data) => {
       qc.setQueryData(projectKey(id), data);
-      qc.invalidateQueries({ queryKey: projectsKey });
+      // invalidateQueries 의 프라미스를 돌려줘야 목록이 실제로 다시 받아올 때까지
+      // mutation 이 pending 으로 남는다. 돌려주지 않으면 재요청이 도착하기 전에
+      // 성공 토스트가 뜨고, 그 짧은 창에서 다시 누르면 낡은 expectedUpdatedAt 으로
+      // 409 가 난다.
+      return qc.invalidateQueries({ queryKey: projectsKey });
     },
   });
 }
