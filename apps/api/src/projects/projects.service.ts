@@ -348,9 +348,13 @@ export class ProjectsService {
     });
     if (found.length !== allIds.length) {
       const foundSet = new Set(found.map((u) => u.id));
+      const missing = allIds.filter((id) => !foundSet.has(id));
+      // 매니저 쪽에 없는 ID 가 하나라도 있으면 INVALID_MANAGER_IDS 를 우선한다 — 매니저가
+      // 없으면 복제 자체가 불가능하므로 그쪽이 더 중요한 정보다 (create() 와 동일한 관례).
+      const missingHasManager = missing.some((id) => managerSet.has(id));
       throw new BadRequestException({
-        error: 'INVALID_MEMBER_IDS',
-        missing: allIds.filter((id) => !foundSet.has(id)),
+        error: missingHasManager ? 'INVALID_MANAGER_IDS' : 'INVALID_MEMBER_IDS',
+        missing,
       });
     }
 
