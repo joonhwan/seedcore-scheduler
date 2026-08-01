@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  CloneProjectDto,
+  CloneProjectResult,
   CreateProjectDto,
   ProjectDetail,
   ProjectListItem,
@@ -72,5 +74,14 @@ export function useImportCsv(projectId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['projects', projectId, 'nodes'] });
     },
+  });
+}
+
+export function useCloneProject(sourceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CloneProjectDto) =>
+      api.post<CloneProjectResult>(`/admin/projects/${sourceId}/clone`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectsKey }),
   });
 }
