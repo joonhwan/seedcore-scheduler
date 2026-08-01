@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1.7
-FROM node:20-alpine AS builder
+# Node 22 인 이유는 Dockerfile.fly 와 같다 — pnpm 11 이 node:sqlite 를 쓰므로
+# Node >= 22.13 이 아니면 `pnpm install` 이 죽는다. (런타임은 nginx 라 무관하다)
+FROM node:22-alpine AS builder
 RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml tsconfig.base.json ./

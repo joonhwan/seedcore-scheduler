@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1.7
-FROM node:20-alpine AS base
+# Node 22 인 이유는 Dockerfile.fly 와 같다 — pnpm 11 이 node:sqlite 를 쓰므로
+# Node >= 22.13 이 아니면 `pnpm install` 이 죽는다. 런타임도 기동 시 pnpm 을 부른다.
+FROM node:22-alpine AS base
 RUN corepack enable && apk add --no-cache sqlite gzip tini openssl
 WORKDIR /app
 
