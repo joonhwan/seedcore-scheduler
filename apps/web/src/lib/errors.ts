@@ -19,6 +19,11 @@ const KNOWN: Record<string, string> = {
   CSRF_ORIGIN_MISMATCH: '요청 출처 검증 실패. 새로고침 후 다시 시도하세요.',
   CSRF_ORIGIN_MISSING: '요청 출처 검증 실패. 새로고침 후 다시 시도하세요.',
   RATE_LIMITED: '요청이 너무 많습니다. 잠시 후 다시 시도하세요.',
+  MANAGER_REQUIRED: '매니저를 최소 1명 지정해야 합니다.',
+  INVALID_MANAGER_IDS: '지정한 매니저 중 존재하지 않거나 비활성화된 사용자가 있습니다.',
+  INVALID_MEMBER_IDS: '지정한 멤버 중 존재하지 않거나 비활성화된 사용자가 있습니다.',
+  NO_DATED_ITEMS:
+    '원본 프로젝트에 날짜가 지정된 일정이 없어 일정을 옮길 수 없습니다. 원본 일정 유지로 복제하십시오.',
 };
 
 export function apiErrorMessage(err: unknown, fallback?: string): string {

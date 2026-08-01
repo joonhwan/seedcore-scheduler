@@ -24,6 +24,8 @@ interface MemberDraft {
   displayName: string;
   username: string;
   role: ProjectRole | null;
+  /** 활성 사용자 목록(users.data)에 없는 사용자. 서버가 복제를 거부하므로 제외를 강제한다. */
+  inactive: boolean;
 }
 
 export default function ProjectClonePage() {
@@ -57,19 +59,26 @@ export default function ProjectClonePage() {
     setPrefilled(true);
   }, [source.data, prefilled]);
 
-  // 원본 멤버를 역할 그대로 프리필한다.
+  // 원본 멤버를 역할 그대로 프리필한다. 활성 사용자 목록(users.data)이 아직 로딩 중일 때
+  // 판정하면 전부 비활성으로 오판하므로, 두 쿼리가 모두 도착한 뒤에만 시딩한다.
   useEffect(() => {
-    if (draftsSeeded || !sourceMembers.data) return;
+    if (draftsSeeded || !sourceMembers.data || !users.data) return;
+    const activeIds = new Set(users.data.map((u) => u.id));
     setDrafts(
-      sourceMembers.data.map((m) => ({
-        userId: m.userId,
-        displayName: m.displayName,
-        username: m.username,
-        role: m.role,
-      })),
+      sourceMembers.data.map((m) => {
+        const isActive = activeIds.has(m.userId);
+        return {
+          userId: m.userId,
+          displayName: m.displayName,
+          username: m.username,
+          // 비활성 사용자는 서버가 어차피 거부하므로 기본값을 제외로 둔다.
+          role: isActive ? m.role : null,
+          inactive: !isActive,
+        };
+      }),
     );
     setDraftsSeeded(true);
-  }, [sourceMembers.data, draftsSeeded]);
+  }, [sourceMembers.data, users.data, draftsSeeded]);
 
   // 원본 일정 span. ITEM 만 본다 — GROUP 은 DB 에 날짜가 비어 있다.
   const span = useMemo(() => {
@@ -134,7 +143,14 @@ export default function ProjectClonePage() {
   function addUser(u: { id: string; displayName: string; username: string }) {
     setDrafts((prev) => [
       ...prev,
-      { userId: u.id, displayName: u.displayName, username: u.username, role: 'MEMBER' },
+      {
+        userId: u.id,
+        displayName: u.displayName,
+        username: u.username,
+        role: 'MEMBER',
+        // 검색 후보는 useUsers({ status: 'active' }) 목록에서만 뽑으므로 항상 활성 사용자다.
+        inactive: false,
+      },
     ]);
     setSearch('');
   }
@@ -176,6 +192,26 @@ export default function ProjectClonePage() {
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
         원본: {source.data?.name ?? '…'}
       </p>
+
+      {(source.isError || sourceMembers.isError || sourceNodes.isError || users.isError) && (
+        <div className="mt-3 space-y-1 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
+          {source.isError && (
+            <p>원본 프로젝트 정보를 불러오지 못했습니다: {apiErrorMessage(source.error)}</p>
+          )}
+          {sourceMembers.isError && (
+            <p>원본 멤버 목록을 불러오지 못했습니다: {apiErrorMessage(sourceMembers.error)}</p>
+          )}
+          {sourceNodes.isError && (
+            <p>
+              원본 일정 목록을 불러오지 못했습니다: {apiErrorMessage(sourceNodes.error)} (일정
+              이동 옵션을 선택할 수 없습니다)
+            </p>
+          )}
+          {users.isError && (
+            <p>사용자 목록을 불러오지 못했습니다: {apiErrorMessage(users.error)}</p>
+          )}
+        </div>
+      )}
 
       <form onSubmit={onSubmit} className="mt-4 space-y-4">
         <label className="block text-sm">
@@ -322,14 +358,23 @@ export default function ProjectClonePage() {
                 <span className="flex-1 text-sm">
                   {d.displayName}{' '}
                   <span className="text-xs text-slate-500">@{d.username}</span>
+                  {d.inactive && (
+                    <span className="block text-xs text-amber-600 dark:text-amber-400">
+                      비활성 사용자 — 복제 대상에서 제외됩니다
+                    </span>
+                  )}
                 </span>
                 <div className="flex gap-3 text-xs">
                   {(['MANAGER', 'MEMBER'] as const).map((role) => (
-                    <label key={role} className="flex items-center gap-1">
+                    <label
+                      key={role}
+                      className={`flex items-center gap-1 ${d.inactive ? 'opacity-50' : ''}`}
+                    >
                       <input
                         type="radio"
                         name={`role-${d.userId}`}
                         checked={d.role === role}
+                        disabled={d.inactive}
                         onChange={() => setRole(d.userId, role)}
                       />
                       {role}
