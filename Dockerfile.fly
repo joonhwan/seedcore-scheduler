@@ -22,6 +22,11 @@ RUN pnpm --filter @sam/shared build \
 FROM base AS builder-api
 COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/api/package.json ./apps/api/
+# apps/api 의 postinstall 이 이 파일을 실행하므로 install 보다 먼저 들어와야 한다.
+# (소스 전체는 캐시 효율 때문에 install 뒤에 복사한다. 이 한 파일만 예외.)
+# 스크립트 자체는 prisma/schema.prisma 가 아직 없는 것을 알고 조용히 건너뛴다 —
+# 아래에서 소스를 복사한 뒤 prisma:generate 를 명시적으로 부른다.
+COPY apps/api/scripts/postinstall.js ./apps/api/scripts/
 COPY packages/shared/package.json ./packages/shared/
 RUN pnpm install --no-frozen-lockfile
 COPY packages/shared ./packages/shared

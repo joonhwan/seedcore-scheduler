@@ -8,6 +8,8 @@ WORKDIR /app
 FROM base AS builder
 COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/api/package.json ./apps/api/
+# postinstall 이 실행하는 파일이라 install 보다 먼저 들어와야 한다 (Dockerfile.fly 와 같은 이유).
+COPY apps/api/scripts/postinstall.js ./apps/api/scripts/
 COPY packages/shared/package.json ./packages/shared/
 RUN pnpm install --no-frozen-lockfile
 COPY packages/shared ./packages/shared
