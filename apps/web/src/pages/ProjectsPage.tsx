@@ -25,7 +25,7 @@ export default function ProjectsPage() {
     myRole: 130,
     createdAt: 130,
     updatedAt: 130,
-    manage: 90,
+    manage: 140,
   };
 
   // 컬럼 폭 상태 관리 (Local Storage 로드 우선)
@@ -496,17 +496,24 @@ export default function ProjectsPage() {
                         className="whitespace-nowrap px-4 py-4 text-center"
                         style={{ width: `${columnWidths.manage}px`, maxWidth: `${columnWidths.manage}px` }}
                       >
-                        {p.status === 'ARCHIVED' ? (
-                          <button
-                            type="button"
-                            onClick={() => setDeleteTarget(p)}
-                            className="rounded bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/60 transition-colors"
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Link
+                            to={`/projects/${p.id}/clone`}
+                            className="rounded bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:bg-sky-950/30 dark:text-sky-400 dark:hover:bg-sky-950/60 transition-colors"
+                            title="이 프로젝트를 템플릿으로 새 프로젝트 만들기"
                           >
-                            삭제
-                          </button>
-                        ) : (
-                          <span className="text-xs text-slate-400 dark:text-slate-600">-</span>
-                        )}
+                            복제
+                          </Link>
+                          {p.status === 'ARCHIVED' && (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(p)}
+                              className="rounded bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/60 transition-colors"
+                            >
+                              삭제
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>

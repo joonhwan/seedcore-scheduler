@@ -11,6 +11,7 @@ import ProjectNewPage from './pages/ProjectNewPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import ProjectMembersPage from './pages/ProjectMembersPage';
 import ProjectHistoryPage from './pages/ProjectHistoryPage';
+import ProjectClonePage from './pages/ProjectClonePage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AdminAutocompletePage from './pages/AdminAutocompletePage';
 import UserGuidePage from './pages/UserGuidePage';
@@ -444,6 +445,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <ProjectHistoryPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/projects/:id/clone"
+            element={
+              <RequireAuth>
+                <ProjectClonePage />
               </RequireAuth>
             }
           />
