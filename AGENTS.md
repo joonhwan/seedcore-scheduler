@@ -150,6 +150,44 @@ pnpm dev
 - **증상**: 프론트엔드나 백엔드에서 `@sam/shared` 모듈의 타입을 가져올 수 없다는 에러 발생.
 - **해결**: 패키지 간의 가벼운 의존성 관리를 위해 `tsconfig.base.json`의 `paths`는 제거되어 있습니다. 반드시 로컬 개발 전 `pnpm -F @sam/shared build`를 먼저 수행하여 패키지 내 `dist` 폴더를 컴pile해야 빌드 도구(Vite, NestJS)가 정상적으로 모듈을 해석할 수 있습니다.
 
+### 5.4 Shared 에 새 export 를 추가한 뒤 웹 화면이 빈 화면으로 뜬다
+- **증상**: `packages/shared` 에 새 함수·스키마를 추가하고 그것을 쓰는 페이지로 들어가면 **아무 에러 메시지 없이 화면이 하얗게(또는 검게) 비어 있음.** 다른 페이지는 정상. `pnpm -r typecheck` 와 테스트는 전부 통과하고, vite 콘솔에도 빌드 에러가 없어서 코드 버그로 착각하기 쉽습니다.
+
+- **원인**: vite 의 의존성 사전 번들링 캐시(`apps/web/node_modules/.vite/deps/@sam_shared.js`)가 낡은 것입니다.
+  이 캐시는 **lockfile 과 vite 설정의 해시로만 무효화**되며, 워크스페이스로 링크된 `packages/shared/dist` 가
+  새로 빌드된 것은 감지하지 않습니다. 개발 서버를 띄운 뒤에 shared 에 새 export 를 추가하면
+  캐시에는 그 심볼이 없는 상태로 남습니다.
+
+  `@sam/shared` 는 CJS 출력이라 vite 가 named import 를 **속성 접근**으로 변환합니다.
+
+  ```js
+  // vite 가 변환한 결과
+  const findDateSpan = __vite__cjsImport5__sam_shared["findDateSpan"];
+  ```
+
+  캐시에 그 심볼이 없으면 로드 시점에 에러가 나지 않고 조용히 `undefined` 가 됩니다. 그래서 렌더 중
+  `findDateSpan(...)` 을 호출하는 순간 `TypeError` 로 컴포넌트 트리가 죽고, 원인 지점(임포트)이 아니라
+  한참 뒤(호출)에서 터집니다. ESM 이라면 `does not provide an export named ...` 로 즉시 알려줍니다.
+
+- **해결**: 캐시를 지우고 개발 서버를 재시작합니다.
+
+  ```bash
+  rm -rf apps/web/node_modules/.vite && pnpm dev
+  ```
+
+  vite 만 따로 띄운다면 `pnpm -F @sam/web exec vite --force` 도 같은 효과입니다.
+
+- **주의**: 루트에서 `pnpm dev --force` 는 통하지 않습니다. 루트 `dev` 스크립트가
+  `pnpm -r --parallel --filter "./apps/**" run dev` 라서 `--force` 가 **pnpm 자신의 플래그로 먹히고**
+  (pnpm 에도 동명의 옵션이 있습니다) vite 까지 전달되지 않습니다. `--` 로 넘겨도 중간 pnpm 이 가로챕니다.
+
+- **기억할 규칙**: shared 에 **새 이름(export)** 이 생기면 `.vite` 를 지운다. 기존 함수의 내용만 바꾼
+  경우에는 캐시가 심볼 목록을 이미 갖고 있으므로 `pnpm -F @sam/shared build` 만으로 반영됩니다.
+
+- **근본 해결(미적용)**: shared 를 ESM/CJS dual output 으로 바꾸면 vite 가 사전 번들링 없이 소스로
+  취급해 이 캐시가 개입하지 않고, 심볼 누락도 즉시 에러로 드러납니다. 단 `apps/api`(NestJS, CJS)가
+  같은 `dist` 를 쓰므로 `package.json` 의 `exports` 를 import/require 로 분리해야 합니다.
+
 ---
 
 ## 6. 마일스톤 상황 및 향후 방향
