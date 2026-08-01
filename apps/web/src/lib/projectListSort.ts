@@ -3,9 +3,11 @@ import type { ProjectListItem } from '@sam/shared';
 /**
  * 프로젝트 목록의 기본 정렬 (사용자가 컬럼 헤더로 정렬을 고르기 전).
  *
- * 생성 순서(오래된 것부터)로 세운다.
+ * 최근에 만든 것부터 세운다. 새로 만든 프로젝트가 첫 페이지 맨 위에 와서
+ * 바로 눈에 띄게 하려는 것이다.
  *
- * 예전에는 서버가 준 순서를 그대로 썼는데, 그 순서가
+ * 정렬 키를 createdAt 으로 고른 이유는 따로 있다. 예전에는 서버가 준 순서를
+ * 그대로 썼는데, 그 순서가
  * `orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }]`
  * (apps/api/src/projects/projects.service.ts) 였다. 두 키 모두 목록에서 하는 편집으로
  * 바뀌는 값이라, 보관 처리를 하면 그 행이 보관 블록 맨 뒤로, 이름을 바꾸면 활성 블록
@@ -13,15 +15,18 @@ import type { ProjectListItem } from '@sam/shared';
  * 항목이 사라진" 것으로 보였다.
  *
  * createdAt 은 한 번 정해지면 바뀌지 않으므로 무엇을 고쳐도 행이 움직이지 않는다.
+ * 표 안에서 편집을 허용하는 이상, 기본 정렬은 편집으로 변하지 않는 값이어야 한다.
  * status 를 정렬 키에서 뺀 것도 같은 이유다 — 활성/보관 구분은 상태 필터 버튼과
  * 상태 배지가 이미 담당한다.
  *
  * createdAt 이 같을 때(시드 데이터처럼 한 번에 만들어진 경우)는 id 로 갈라 순서를
  * 고정한다. 그러지 않으면 목록을 다시 받아올 때마다 그것들끼리 순서가 뒤바뀐다.
+ * 이 2차 키의 방향은 아무래도 상관없고 오름차순으로 뒀다 — 정하기만 하면 된다.
  */
-export function compareProjectsByCreation(a: ProjectListItem, b: ProjectListItem): number {
+export function compareProjectsByNewestFirst(a: ProjectListItem, b: ProjectListItem): number {
   // createdAt 은 ISO 8601 UTC 문자열이라 사전식 비교가 곧 시간 순서다.
-  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
+  // 최근 것이 앞에 와야 하므로 비교를 뒤집는다.
+  if (a.createdAt !== b.createdAt) return a.createdAt > b.createdAt ? -1 : 1;
   if (a.id !== b.id) return a.id < b.id ? -1 : 1;
   return 0;
 }

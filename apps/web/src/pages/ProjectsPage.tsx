@@ -7,7 +7,7 @@ import { useProjects, useDeleteProject } from '../lib/projects';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { DEFAULT_COLUMN_WIDTHS, computeRenderedWidths, type ProjectColumnKey } from '../lib/projectListColumns';
-import { compareProjectsByCreation } from '../lib/projectListSort';
+import { compareProjectsByNewestFirst } from '../lib/projectListSort';
 import ProjectNameCell from '../components/ProjectNameCell';
 import ProjectArchiveButton from '../components/ProjectArchiveButton';
 
@@ -206,7 +206,7 @@ export default function ProjectsPage() {
     } else {
       // 헤더로 정렬을 고르기 전의 기본 순서. 서버가 준 순서를 그대로 쓰면
       // 목록에서 뭔가를 고칠 때마다 그 행이 다른 페이지로 튄다 (lib/projectListSort.ts 주석 참고).
-      list.sort(compareProjectsByCreation);
+      list.sort(compareProjectsByNewestFirst);
     }
 
     return list;

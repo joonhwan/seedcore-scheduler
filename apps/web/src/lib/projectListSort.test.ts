@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ProjectListItem } from '@sam/shared';
-import { compareProjectsByCreation } from './projectListSort';
+import { compareProjectsByNewestFirst } from './projectListSort';
 
 /** 테스트에 필요한 필드만 채운 프로젝트 하나를 만든다. */
 function project(over: Partial<ProjectListItem>): ProjectListItem {
@@ -17,27 +17,27 @@ function project(over: Partial<ProjectListItem>): ProjectListItem {
   };
 }
 
-describe('compareProjectsByCreation', () => {
-  it('먼저 만들어진 것이 앞에 온다', () => {
+describe('compareProjectsByNewestFirst', () => {
+  it('최근에 만들어진 것이 앞에 온다', () => {
     const older = project({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z' });
     const newer = project({ id: 'b', createdAt: '2026-06-01T00:00:00.000Z' });
 
-    expect(compareProjectsByCreation(older, newer)).toBeLessThan(0);
-    expect(compareProjectsByCreation(newer, older)).toBeGreaterThan(0);
+    expect(compareProjectsByNewestFirst(newer, older)).toBeLessThan(0);
+    expect(compareProjectsByNewestFirst(older, newer)).toBeGreaterThan(0);
   });
 
   it('createdAt 이 같으면 id 로 순서를 고정한다', () => {
     const a = project({ id: 'aaa', createdAt: '2026-01-01T00:00:00.000Z' });
     const b = project({ id: 'bbb', createdAt: '2026-01-01T00:00:00.000Z' });
 
-    expect(compareProjectsByCreation(a, b)).toBeLessThan(0);
-    expect(compareProjectsByCreation(b, a)).toBeGreaterThan(0);
+    expect(compareProjectsByNewestFirst(a, b)).toBeLessThan(0);
+    expect(compareProjectsByNewestFirst(b, a)).toBeGreaterThan(0);
   });
 
   it('같은 프로젝트끼리는 0 이다', () => {
     const a = project({ id: 'aaa' });
 
-    expect(compareProjectsByCreation(a, a)).toBe(0);
+    expect(compareProjectsByNewestFirst(a, a)).toBe(0);
   });
 
   it('status 는 순서에 영향을 주지 않는다', () => {
@@ -45,7 +45,7 @@ describe('compareProjectsByCreation', () => {
     const older = project({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z', status: 'ARCHIVED' });
     const newer = project({ id: 'b', createdAt: '2026-06-01T00:00:00.000Z', status: 'ACTIVE' });
 
-    expect(compareProjectsByCreation(older, newer)).toBeLessThan(0);
+    expect(compareProjectsByNewestFirst(newer, older)).toBeLessThan(0);
   });
 
   it('updatedAt 은 순서에 영향을 주지 않는다', () => {
@@ -62,17 +62,17 @@ describe('compareProjectsByCreation', () => {
       updatedAt: '2026-06-01T00:00:00.000Z',
     });
 
-    expect(compareProjectsByCreation(older, newer)).toBeLessThan(0);
+    expect(compareProjectsByNewestFirst(newer, older)).toBeLessThan(0);
   });
 
-  it('정렬에 넣으면 생성 순서대로 늘어선다', () => {
+  it('정렬에 넣으면 최근에 만든 것부터 늘어선다', () => {
     const list = [
+      project({ id: 'b', createdAt: '2026-02-01T00:00:00.000Z' }),
       project({ id: 'c', createdAt: '2026-03-01T00:00:00.000Z' }),
       project({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z' }),
-      project({ id: 'b', createdAt: '2026-02-01T00:00:00.000Z' }),
     ];
 
-    expect([...list].sort(compareProjectsByCreation).map((p) => p.id)).toEqual(['a', 'b', 'c']);
+    expect([...list].sort(compareProjectsByNewestFirst).map((p) => p.id)).toEqual(['c', 'b', 'a']);
   });
 
   it('보관 처리로 status 와 updatedAt 이 바뀌어도 순서가 그대로다', () => {
@@ -88,8 +88,20 @@ describe('compareProjectsByCreation', () => {
         : p,
     );
 
-    expect([...after].sort(compareProjectsByCreation).map((p) => p.id)).toEqual(
-      [...before].sort(compareProjectsByCreation).map((p) => p.id),
+    expect([...after].sort(compareProjectsByNewestFirst).map((p) => p.id)).toEqual(
+      [...before].sort(compareProjectsByNewestFirst).map((p) => p.id),
     );
+  });
+
+  it('새로 만든 프로젝트가 맨 앞에 온다', () => {
+    const existing = [
+      project({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z' }),
+      project({ id: 'b', createdAt: '2026-02-01T00:00:00.000Z' }),
+    ];
+    const created = project({ id: 'new', createdAt: '2026-08-01T00:00:00.000Z' });
+
+    const sorted = [...existing, created].sort(compareProjectsByNewestFirst);
+
+    expect(sorted[0]?.id).toBe('new');
   });
 });
