@@ -96,7 +96,10 @@ pnpm dev
 ### 4.4 인증, 인가 및 관리자 모드
 - **세션 쿠키 인증**: `sam_sid` 세션 쿠키(HttpOnly + SameSite=Lax + Path=/api/v1) 방식을 취합니다. JWT는 사용하지 않습니다.
 - **인증 가드**: 백엔드는 전역으로 `AuthGuard`가 적용되어 있습니다. 비로그인 접근이 필요한 엔드포인트는 `@Public()` 데코레이터를 사용하십시오.
-- **비밀번호 정책**: 최소 10자, 영/숫/특 중 3종 조합, username 포함 금지 규칙을 따르며, 정책 로직은 `packages/shared` 내 `validatePassword`를 공통으로 호출합니다.
+- **비밀번호 해싱 (argon2id / bcrypt 두 포맷 혼재)**: 현재 해싱은 `bcryptjs`로 합니다. native 모듈인 `argon2`가 단일 exe(ncc + pkg)에 번들되지 않아 커밋 `017bca7`에서 교체했습니다. 다만 그 이전에 만들어진 계정의 해시는 DB에 `$argon2id$...` 그대로 남아 있어 **`passwordHash` 한 컬럼에 두 포맷이 섞여 있습니다**. `AuthService.verifyPassword()`가 해시 접두어로 알고리즘을 판별해 양쪽을 모두 검증하고, argon2 해시로 로그인에 성공하면 그 자리에서 bcrypt로 재해싱해 저장합니다(평문을 알 수 있는 시점이 그때뿐입니다). 각 계정이 한 번 로그인하면 자연히 bcrypt로 정리됩니다.
+  - `auth.service.ts`의 `argon2`는 `require(변수)` 형태로 느슨하게 불러옵니다. 이것을 정적 `import`로 바꾸면 ncc가 native 모듈을 번들에 끌어들여 exe 빌드가 깨집니다 — **바꾸지 마십시오.**
+- **비밀번호 정책 (현재 비활성)**: 정책 판단의 단일 지점은 `packages/shared`의 `validatePassword`이지만, 커밋 `08afd57`에서 **모든 규칙이 제거되어 항상 `null`(통과)을 돌려줍니다**. `PASSWORD_MIN_LENGTH`도 `1`입니다. 즉 "최소 10자·영숫특 3종 조합·username 포함 금지" 같은 규칙은 **현재 코드에 없습니다** — 정책이 걸려 있다고 가정하고 코드를 읽거나 쓰지 마십시오. 되살릴 때는 이 함수 한 곳만 고치면 웹 UI·API·리셋 CLI에 함께 적용됩니다.
+- **계정 잠금 (현재 비활성)**: 커밋 `c834f49`에서 비활성화되었습니다. `AuthService.login()`은 로그인 실패 시 `failedLoginCount`만 올리고 `lockedUntil`은 항상 `null`로 둡니다(`shouldLock = false`로 고정). 로그인 경로에 `lockedUntil` 검사 자체가 없으므로 값을 수동으로 넣어도 차단되지 않습니다. `FAILED_LOCK_THRESHOLD`(5)·`LOCK_DURATION_MS`(15분) 상수와 ADMIN unlock 엔드포인트(`POST /api/v1/admin/users/:id/unlock`)는 남아 있으나 실제로 잠기는 일이 없어 풀 것도 없습니다. 실패 횟수 누적과 `LOGIN_FAILURE` 감사로그 기록은 계속 동작합니다.
 - **상태 변경 보안**: 생성, 수정, 삭제 등의 상태 변화를 유발하는 모든 라우트에는 `@UseGuards(OriginGuard)`를 필수적으로 부착해야 합니다.
 - **관리자 모드 (AdminMode)**:
   - ADMIN 역할을 가진 사용자가 헤더에 `X-Admin-Mode: 1`을 포함해 보낼 때만 백엔드 가드에서 `req.adminMode = true`를 주입합니다. 일반 USER의 헤더는 무시됩니다.
