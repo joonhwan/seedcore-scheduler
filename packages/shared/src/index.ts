@@ -126,6 +126,7 @@ export const AuditAction = z.enum([
   'PROJECT_RESTORE',
   'PROJECT_DELETE',
   'PROJECT_IMPORT_CSV',
+  'PROJECT_CLONE',
   'MEMBER_ADD',
   'MEMBER_REMOVE',
   'NODE_CREATE',
@@ -183,6 +184,55 @@ export const ProjectDetail = ProjectListItem.extend({
   createdById: z.string(),
 });
 export type ProjectDetail = z.infer<typeof ProjectDetail>;
+
+// ─── 프로젝트 복제 DTO ─────────────────────────────────────────────────────────────────────────────
+// dateMode 별 필수 입력이 달라서 superRefine 으로 분기 검증한다.
+//  - KEEP: 날짜 입력 없음
+//  - SHIFT: newStartDate 필수. 기간·간격은 보존된다
+//  - FIT: newStartDate + newEndDate 필수. 기간까지 비례 사상된다
+export const CloneProjectDto = z
+  .object({
+    name: z.string().min(1).max(128),
+    description: z.string().max(2000).nullable().optional(),
+    dateMode: z.enum(['KEEP', 'SHIFT', 'FIT']),
+    newStartDate: IsoDate.optional(),
+    newEndDate: IsoDate.optional(),
+    managerUserIds: z
+      .array(z.string().min(1))
+      .min(1, '최소 1명의 MANAGER 가 필요합니다'),
+    memberUserIds: z.array(z.string().min(1)).default([]),
+  })
+  .superRefine((v, ctx) => {
+    if (v.dateMode !== 'KEEP' && !v.newStartDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['newStartDate'],
+        message: '새 시작일을 입력하세요',
+      });
+    }
+    if (v.dateMode === 'FIT') {
+      if (!v.newEndDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['newEndDate'],
+          message: '새 종료일을 입력하세요',
+        });
+      } else if (v.newStartDate && v.newEndDate < v.newStartDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['newEndDate'],
+          message: '종료일이 시작일보다 앞설 수 없습니다',
+        });
+      }
+    }
+  });
+export type CloneProjectDto = z.infer<typeof CloneProjectDto>;
+
+export const CloneProjectResult = z.object({
+  project: ProjectDetail,
+  nodeCount: z.number().int(),
+});
+export type CloneProjectResult = z.infer<typeof CloneProjectResult>;
 
 // ─── 멤버 DTO ──────────────────────────────────────────────────────────────
 export const AddMemberDto = z.object({
@@ -349,6 +399,9 @@ import {
 
 // history-utils 의 순수 함수·데이터 타입을 그대로 재노출 (백엔드·프론트 공용)
 export * from './history-utils';
+
+// 프로젝트 복제용 날짜 재매핑 함수도 같은 이유로 재노출 (API 계산 = web 미리보기)
+export * from './clone-dates';
 
 export const HistoryTopic = z.enum(HISTORY_TOPICS);
 export type HistoryTopic = z.infer<typeof HistoryTopic>;
