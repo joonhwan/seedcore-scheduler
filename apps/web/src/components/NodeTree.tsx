@@ -144,12 +144,13 @@ function NodeRow({
   // 자손 중에 지연된 노드가 있는지 확인
   const hasDelayedDescendant = useMemo(() => {
     const check = (n: TreeNode): boolean => {
-      const info = getNodeDelayInfo(n);
+      const info = getNodeDelayInfo(n, undefined, allItems);
       if (info.status === 'CRITICAL' || info.status === 'WARNING') return true;
       return n.children.some(check);
     };
     return node.children.some(check);
-  }, [node]);
+  }, [node, allItems]);
+
 
   // "지연 항목만" 필터링 시, 본인이 지연되었거나 자손이 지연된 경우만 표시
   if (onlyDelayed && !isDelayed && !hasDelayedDescendant) {
