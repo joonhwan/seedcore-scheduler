@@ -1148,7 +1148,7 @@ function Row({
             {node.title}
           </span>
           {(() => {
-            const delayInfo = getNodeDelayInfo({ startAt: start, endAt: end, progress });
+            const delayInfo = getNodeDelayInfo(node);
             if (delayInfo.status === 'CRITICAL') return <span className="text-xs shrink-0" title={`🚨 예상보다 ${delayInfo.delayGap}%p 심각하게 지연 중`}>🚨</span>;
             if (delayInfo.status === 'WARNING') return <span className="text-xs shrink-0" title={`⚠️ 예상보다 ${delayInfo.delayGap}%p 지연 중`}>⚠️</span>;
             return null;
@@ -1214,7 +1214,9 @@ function Row({
       </div>
       <div className="relative" style={{ width: totalWidth }}>
         {bar && (() => {
-          const delayInfo = getNodeDelayInfo({ startAt: start, endAt: end, progress });
+          const delayInfo = getNodeDelayInfo(node);
+
+
           const isCritical = delayInfo.status === 'CRITICAL';
           const isWarning = delayInfo.status === 'WARNING';
 

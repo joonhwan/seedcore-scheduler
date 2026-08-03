@@ -439,9 +439,23 @@ export default function UserGuidePage() {
                 </div>
               </div>
 
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/50 space-y-3">
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
+                  3. 그룹(GROUP) 노드의 지연 상태 전파(Bubble-up) 규칙
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  그룹 노드는 통째 기간의 선형 착시를 방지하기 위해 **하위 세부 일정(ITEM)들의 지연 상태를 상위 그룹으로 전파(Bubble-up)**하여 결정합니다.
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                  <li>**🚨 심각 지연**: 하위 세부 일정 중 🚨 **심각 지연 항목이 1개라도 존재하는 경우** 즉시 상위 그룹 전체로 경고가 전파됩니다.</li>
+                  <li>**⚠️ 주의 지연**: 하위 세부 일정 중 심각 지연은 없으나 ⚠️ **주의 지연 항목이 존재하는 경우** 주의 상태로 전파됩니다.</li>
+                  <li>**✅ 정상**: 하위 세부 일정이 모두 제시간에 진행 중인 경우 그룹도 **정상**으로 표기되어 억울한 허위 지연 착시가 완전히 방지됩니다.</li>
+                </ul>
+              </div>
+
               <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
                 <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
-                  3. 주요 활용 및 시각 효과
+                  4. 주요 활용 및 시각 효과
                 </h3>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>**프로젝트 목록 요약 카운터**: 상단 대시보드 위젯에서 전체/심각지연/주의/정상 개수를 한눈에 확인하고, 클릭 한 번으로 지연된 프로젝트만 모아볼 수 있습니다.</li>
@@ -449,6 +463,7 @@ export default function UserGuidePage() {
                   <li>**⚠️ 지연 항목만 보기 필터**: 일정 트리 상단의 지연 항목 버튼을 누르면 프로젝트 내 지연 중인 일정들만 빠르게 선별해 검토할 수 있습니다.</li>
                 </ul>
               </div>
+
             </div>
           </section>
 

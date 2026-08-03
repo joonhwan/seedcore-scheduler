@@ -51,7 +51,7 @@ export default function NodeTree(props: NodeTreeProps) {
   // 지연 노드 수 체크
   const delayedCount = useMemo(() => {
     return props.items.filter((item) => {
-      const info = getNodeDelayInfo(item);
+      const info = getNodeDelayInfo(item, undefined, props.items);
       return info.status === 'CRITICAL' || info.status === 'WARNING';
     }).length;
   }, [props.items]);
@@ -94,6 +94,7 @@ export default function NodeTree(props: NodeTreeProps) {
             <NodeRow
               key={n.id}
               node={n}
+              allItems={props.items}
               siblingCount={tree.length}
               indexAmongSiblings={i}
               onlyDelayed={onlyDelayed}
@@ -108,6 +109,7 @@ export default function NodeTree(props: NodeTreeProps) {
 
 interface NodeRowProps extends Omit<NodeTreeProps, 'items'> {
   node: TreeNode;
+  allItems: NodeTreeItem[];
   siblingCount: number;
   indexAmongSiblings: number;
   onlyDelayed: boolean;
@@ -115,6 +117,7 @@ interface NodeRowProps extends Omit<NodeTreeProps, 'items'> {
 
 function NodeRow({
   node,
+  allItems,
   siblingCount,
   indexAmongSiblings,
   selectedId,
@@ -133,7 +136,8 @@ function NodeRow({
   const childWouldExceedDepth = node.depth + 1 >= MAX_TREE_DEPTH;
   const subtreeMaxDepth = maxDescendantDepth(node);
 
-  const delayInfo = getNodeDelayInfo(node);
+  const delayInfo = getNodeDelayInfo(node, undefined, allItems);
+
   const isDelayed = delayInfo.status === 'CRITICAL' || delayInfo.status === 'WARNING';
   const isCritical = delayInfo.status === 'CRITICAL';
 
@@ -254,11 +258,12 @@ function NodeRow({
             <NodeRow
               key={c.id}
               node={c}
+              allItems={allItems}
               siblingCount={node.children.length}
               indexAmongSiblings={i}
+              onlyDelayed={onlyDelayed}
               selectedId={selectedId}
               canEdit={canEdit}
-              onlyDelayed={onlyDelayed}
               onSelect={onSelect}
               onAddChild={onAddChild}
               onAddSibling={onAddSibling}

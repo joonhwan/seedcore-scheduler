@@ -517,10 +517,13 @@ export default function ProjectDetailPage() {
                   ref={detailRef}
                   projectId={id}
                   node={selected}
+                  allNodes={nodes.data ?? []}
                   canEdit={canEditNodes}
                   onDirtyChange={setIsDetailDirty}
                   onSaveSuccess={handleSaveSuccess}
                 />
+
+
                 <CommentInputForm
                   ref={commentsRef}
                   nodeId={selected.id}

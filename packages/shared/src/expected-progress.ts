@@ -28,6 +28,17 @@ export interface ExpectedProgressResult {
   status: DelayStatus;            // CRITICAL(>=20%p), WARNING(>=10%p), SLIGHT(>0%p), ON_TRACK(<=0%p), UNKNOWN
 }
 
+export interface NodeDelayInput {
+  id?: string;
+  parentId?: string | null;
+  kind?: string;
+  startAt?: string | null;
+  endAt?: string | null;
+  startAtEffective?: string | null;
+  endAtEffective?: string | null;
+  progress?: number | null;
+  progressEffective?: number | null;
+}
 
 /**
  * 시작일(startAt)과 종료일(endAt), 기준일(todayIso)을 바탕으로 예상 진척률(0~100)을 계산합니다.
@@ -50,14 +61,12 @@ export function calculateExpectedProgress(
   }
 
   // startAt <= todayIso < endAt
-  // 날짜 간격 계산 (UTC 기준 일수 계산으로 타임존 왜곡 방지)
   const startDate = new Date(`${startAt}T00:00:00Z`);
   const endDate = new Date(`${endAt}T00:00:00Z`);
   const todayDate = new Date(`${todayIso}T00:00:00Z`);
 
   const totalTime = endDate.getTime() - startDate.getTime();
   if (totalTime <= 0) {
-    // startAt === endAt 또는 startAt > endAt
     return todayIso < startAt ? 0 : 100;
   }
 
@@ -69,17 +78,10 @@ export function calculateExpectedProgress(
 }
 
 /**
- * 노드의 날짜와 진척률 정보를 받아 지연 상태 및 예상 진척률을 도출합니다.
+ * 노드 단일 개체에 대한 지연 상태를 계산합니다.
  */
-export function getNodeDelayInfo(
-  node: {
-    startAt?: string | null;
-    endAt?: string | null;
-    startAtEffective?: string | null;
-    endAtEffective?: string | null;
-    progress?: number | null;
-    progressEffective?: number | null;
-  },
+export function getItemNodeDelayInfo(
+  node: NodeDelayInput,
   todayIso: string = new Date().toISOString().slice(0, 10),
 ): ExpectedProgressResult {
   const startAt = node.startAtEffective ?? node.startAt;
@@ -117,33 +119,157 @@ export function getNodeDelayInfo(
 }
 
 /**
- * 프로젝트 내 노드 목록을 바탕으로 전체 프로젝트의 지연 현황 요약을 계산합니다.
+ * 전체 노드 배열에서 특정 GROUP 노드의 모든 자손 ITEM 노드들을 수집합니다.
  */
+
+function collectSubtreeItemNodes<T extends NodeDelayInput>(
+  groupId: string,
+  allNodes: T[],
+): T[] {
+  const items: T[] = [];
+  const queue = [groupId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const children = allNodes.filter((n) => n.parentId === currentId);
+    for (const child of children) {
+      if (child.kind === 'ITEM') {
+        items.push(child);
+      } else if (child.id) {
+        queue.push(child.id);
+      }
+    }
+  }
+
+  return items;
+}
+
+/**
+ * 트리 구조 노드 배열 전체의 지연 정보 Map을 생성합니다.
+ * ITEM 노드는 선형 예상진척도 및 delayGap으로 지연 상태를 판단하고,
+ * GROUP 노드는 자손 ITEM 노드들의 지연 상태를 버블업(전파)받아 결정합니다.
+ */
+export function calculateTreeNodesDelayInfo<T extends NodeDelayInput>(
+  allNodes: T[],
+  todayIso: string = new Date().toISOString().slice(0, 10),
+): Map<string, ExpectedProgressResult> {
+  const resultMap = new Map<string, ExpectedProgressResult>();
+
+  // 1) ITEM 노드들 지연 상태 먼저 계산
+  const itemMap = new Map<string, ExpectedProgressResult>();
+  for (const node of allNodes) {
+    if (node.kind === 'ITEM' || !node.kind) {
+      const info = getItemNodeDelayInfo(node, todayIso);
+      itemMap.set(node.id || '', info);
+      if (node.id) {
+        resultMap.set(node.id, info);
+      }
+    }
+  }
+
+  // 2) GROUP 노드들 버블업(전파) 지연 상태 계산
+  for (const node of allNodes) {
+    if (node.kind === 'GROUP' && node.id) {
+      const childItems = collectSubtreeItemNodes(node.id, allNodes);
+      if (childItems.length === 0) {
+        resultMap.set(node.id, {
+          expectedProgress: null,
+          actualProgress: node.progressEffective ?? null,
+          delayGap: 0,
+          status: 'UNKNOWN',
+        });
+        continue;
+      }
+
+      // 자손 ITEM 노드들의 ExpectedProgress 평균 및 지연 상태 확인
+      let sumExpected = 0;
+      let validExpectedCount = 0;
+      let hasCritical = false;
+      let hasWarning = false;
+      let hasSlight = false;
+
+      for (const item of childItems) {
+        const itemInfo = itemMap.get(item.id || '') || getItemNodeDelayInfo(item, todayIso);
+        if (itemInfo.expectedProgress !== null) {
+          sumExpected += itemInfo.expectedProgress;
+          validExpectedCount++;
+        }
+
+        if (itemInfo.status === 'CRITICAL') hasCritical = true;
+        else if (itemInfo.status === 'WARNING') hasWarning = true;
+        else if (itemInfo.status === 'SLIGHT') hasSlight = true;
+      }
+
+      const avgExpected = validExpectedCount > 0 ? Math.round(sumExpected / validExpectedCount) : null;
+      const actualProgress = node.progressEffective ?? (validExpectedCount > 0 ? Math.round(childItems.reduce((acc, cur) => acc + (cur.progress ?? 0), 0) / childItems.length) : null);
+      const delayGap = (avgExpected !== null && actualProgress !== null) ? (avgExpected - actualProgress) : 0;
+
+      // 지연 상태 버블업(Bubble-up):
+      // 자손 중 심각이 1개라도 있으면 심각, 주의만 있으면 주의, 소폭이 있으면 소폭, 그 외는 정상
+      let status: DelayStatus = 'ON_TRACK';
+      if (hasCritical) {
+        status = 'CRITICAL';
+      } else if (hasWarning) {
+        status = 'WARNING';
+      } else if (hasSlight) {
+        status = 'SLIGHT';
+      }
+
+      resultMap.set(node.id, {
+        expectedProgress: avgExpected,
+        actualProgress,
+        delayGap,
+        status,
+      });
+    }
+  }
+
+  return resultMap;
+}
+
+/**
+ * 단일 노드 또는 노드 트리의 지연 정보를 반환합니다.
+ * allNodes가 주어지면 GROUP 노드의 서브트리 전파 상태를 정확하게 반환합니다.
+ */
+export function getNodeDelayInfo<T extends NodeDelayInput>(
+  node: T,
+  todayIso: string = new Date().toISOString().slice(0, 10),
+  allNodes?: T[],
+): ExpectedProgressResult {
+  if (allNodes && allNodes.length > 0 && node.id) {
+    const map = calculateTreeNodesDelayInfo(allNodes, todayIso);
+    const info = map.get(node.id);
+    if (info) return info;
+  }
+
+  // 단일 노드 호환 Fallback
+  return getItemNodeDelayInfo(node, todayIso);
+}
+
 export interface ProjectDelaySummary {
   totalNodes: number;
-  validNodes: number;            // 예상 진척률 계산이 가능한 노드 수
-  criticalCount: number;         // CRITICAL 지연 노드 수
-  warningCount: number;          // WARNING 지연 노드 수
-  slightCount: number;           // SLIGHT 지연 노드 수
-  onTrackCount: number;          // 정상 진행 노드 수
-  avgExpectedProgress: number | null; // 노드 평균 예상 진척률
-  avgActualProgress: number | null;   // 노드 평균 실제 진척률
+  validNodes: number;            // 계산 가능한 ITEM 노드 수
+  criticalCount: number;         // CRITICAL 지연 ITEM 노드 수
+  warningCount: number;          // WARNING 지연 ITEM 노드 수
+  slightCount: number;           // SLIGHT 지연 ITEM 노드 수
+  onTrackCount: number;          // 정상 진행 ITEM 노드 수
+  avgExpectedProgress: number | null; // ITEM 노드 평균 예상 진척률
+  avgActualProgress: number | null;   // ITEM 노드 평균 실제 진척률
   avgDelayGap: number;           // avgExpectedProgress - avgActualProgress
   status: DelayStatus;           // 프로젝트 전체 종합 지연 상태
 }
 
-export function calculateProjectDelaySummary(
-  nodes: Array<{
-    kind?: string;
-    startAt?: string | null;
-    endAt?: string | null;
-    startAtEffective?: string | null;
-    endAtEffective?: string | null;
-    progress?: number | null;
-    progressEffective?: number | null;
-  }>,
+/**
+ * 프로젝트 내 전체 노드 목록을 바탕으로 지연 현황 요약을 계산합니다.
+ * 실제 작업 단위인 ITEM 노드들을 기준으로 집계하고, 가장 심각한 지연 상태를 프로젝트 전체 상태로 전파합니다.
+ */
+export function calculateProjectDelaySummary<T extends NodeDelayInput>(
+  nodes: T[],
   todayIso: string = new Date().toISOString().slice(0, 10),
 ): ProjectDelaySummary {
+  const itemNodes = nodes.filter((n) => n.kind === 'ITEM' || (!n.kind && n.startAt && n.endAt));
+  const targetNodes = itemNodes.length > 0 ? itemNodes : nodes;
+
   let criticalCount = 0;
   let warningCount = 0;
   let slightCount = 0;
@@ -153,8 +279,8 @@ export function calculateProjectDelaySummary(
   let totalActual = 0;
   let validNodes = 0;
 
-  for (const node of nodes) {
-    const info = getNodeDelayInfo(node, todayIso);
+  for (const node of targetNodes) {
+    const info = getItemNodeDelayInfo(node, todayIso);
     if (info.status === 'UNKNOWN' || info.expectedProgress === null || info.actualProgress === null) {
       continue;
     }
@@ -188,12 +314,14 @@ export function calculateProjectDelaySummary(
   const avgActualProgress = Math.round(totalActual / validNodes);
   const avgDelayGap = avgExpectedProgress - avgActualProgress;
 
+  // 프로젝트 전체 지연 상태 전파:
+  // ITEM 노드 중 심각 지연이 1개라도 있으면 심각, 주의가 있으면 주의, 소폭이 있으면 소폭
   let status: DelayStatus = 'ON_TRACK';
-  if (criticalCount > 0 || avgDelayGap >= 15) {
+  if (criticalCount > 0) {
     status = 'CRITICAL';
-  } else if (warningCount > 0 || avgDelayGap >= 5) {
+  } else if (warningCount > 0) {
     status = 'WARNING';
-  } else if (slightCount > 0 || avgDelayGap > 0) {
+  } else if (slightCount > 0) {
     status = 'SLIGHT';
   }
 

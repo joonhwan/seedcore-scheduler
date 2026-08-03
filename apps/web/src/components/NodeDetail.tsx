@@ -13,6 +13,7 @@ import ProgressBarWithExpected from './ProgressBarWithExpected';
 interface Props {
   projectId: string;
   node: NodeTreeItem;
+  allNodes?: NodeTreeItem[];
   canEdit: boolean;
   onDirtyChange?: (dirty: boolean) => void;
   onSaveSuccess?: () => void;
@@ -24,9 +25,10 @@ export interface NodeDetailRef {
 }
 
 export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
-  { projectId, node, canEdit, onDirtyChange, onSaveSuccess },
+  { projectId, node, allNodes, canEdit, onDirtyChange, onSaveSuccess },
   ref
 ) {
+
   const [title, setTitle] = useState(node.title);
   const [description, setDescription] = useState(node.description ?? '');
   const [startAt, setStartAt] = useState(node.startAt ?? '');
@@ -197,12 +199,9 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
 
       {/* 노드 지연 상태 및 예상 진척률 요약 바 */}
       {(() => {
-        const delayInfo = getNodeDelayInfo({
-          startAt: isGroup ? node.startAtEffective : startAt,
-          endAt: isGroup ? node.endAtEffective : endAt,
-          progress: isGroup ? node.progressEffective : progress,
-        });
+        const delayInfo = getNodeDelayInfo(node, undefined, allNodes);
         if (delayInfo.status === 'UNKNOWN') return null;
+
         return (
           <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold">
