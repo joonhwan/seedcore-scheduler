@@ -505,7 +505,7 @@ export default function ProjectDetailPage() {
             <button
               type="button"
               onClick={attemptCloseDetail}
-              className="absolute right-4 top-4 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 p-1.5 transition-colors"
+              className="absolute right-4 top-4 z-10 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 p-1.5 transition-colors"
               aria-label="닫기"
             >
               <span className="text-xl font-bold">✕</span>

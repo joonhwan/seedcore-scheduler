@@ -73,6 +73,36 @@ describe('getNodeDelayInfo', () => {
     expect(res.delayGap).toBe(0);
     expect(res.status).toBe('ON_TRACK');
   });
+
+  it('완료일이 이미 지났고 진척율 100% 미만 -> delayGap 5%p여도 status CRITICAL (진척율 상관없이 일정 지연)', () => {
+    const res = getNodeDelayInfo(
+      {
+        startAt: '2026-08-01',
+        endAt: '2026-08-05',
+        progress: 95,
+      },
+      '2026-08-07',
+    );
+    expect(res.expectedProgress).toBe(100);
+    expect(res.actualProgress).toBe(95);
+    expect(res.delayGap).toBe(5);
+    expect(res.status).toBe('CRITICAL');
+  });
+
+  it('완료일이 이미 지났으나 진척율 100% 완료 -> status ON_TRACK', () => {
+    const res = getNodeDelayInfo(
+      {
+        startAt: '2026-08-01',
+        endAt: '2026-08-05',
+        progress: 100,
+      },
+      '2026-08-07',
+    );
+    expect(res.expectedProgress).toBe(100);
+    expect(res.actualProgress).toBe(100);
+    expect(res.delayGap).toBe(0);
+    expect(res.status).toBe('ON_TRACK');
+  });
 });
 
 describe('calculateTreeNodesDelayInfo (버블업 지연 전파)', () => {

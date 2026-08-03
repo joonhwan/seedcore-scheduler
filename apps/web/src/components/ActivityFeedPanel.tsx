@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { NodeCommentItem, NodeHistoryItem } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
@@ -21,7 +21,10 @@ type FeedItem =
   | { type: 'COMMENT'; timestamp: string; data: NodeCommentItem }
   | { type: 'HISTORY'; timestamp: string; data: NodeHistoryItem };
 
+type FilterMode = 'ALL' | 'COMMENT';
+
 export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
+  const [filterMode, setFilterMode] = useState<FilterMode>('ALL');
   const comments = useComments(nodeId);
   const history = useNodeHistory(nodeId);
   const removeComment = useDeleteComment(nodeId);
@@ -29,19 +32,21 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
   const { on: adminMode } = useAdminMode();
   const isAdmin = me.data?.globalRole === 'ADMIN';
 
-  // 댓글과 변경 이력을 병합하여 시간 역순(최신순) 정렬
+  // 댓글과 변경 이력을 병합하여 시간 역순(최신순) 정렬 및 필터링
   const feedItems = useMemo(() => {
     const list: FeedItem[] = [];
 
     comments.data?.forEach((c) => {
       list.push({ type: 'COMMENT', timestamp: c.createdAt, data: c });
     });
-    history.data?.forEach((h) => {
-      list.push({ type: 'HISTORY', timestamp: h.occurredAt, data: h });
-    });
+    if (filterMode === 'ALL') {
+      history.data?.forEach((h) => {
+        list.push({ type: 'HISTORY', timestamp: h.occurredAt, data: h });
+      });
+    }
 
     return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [comments.data, history.data]);
+  }, [comments.data, history.data, filterMode]);
 
   async function onDeleteComment(cId: string) {
     const ok = window.confirm('이 댓글을 삭제하시겠습니까?');
@@ -64,7 +69,33 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
 
   return (
     <section className="flex flex-col h-full">
-      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">통합 작업 히스토리 & 피드</h3>
+      <div className="flex flex-wrap items-center justify-between mb-3 gap-2 pr-8">
+        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">변경 이력</h3>
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg text-xs">
+          <button
+            type="button"
+            onClick={() => setFilterMode('ALL')}
+            className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+              filterMode === 'ALL'
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm font-semibold'
+                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            전체 보기
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterMode('COMMENT')}
+            className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+              filterMode === 'COMMENT'
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm font-semibold'
+                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            댓글만 보기
+          </button>
+        </div>
+      </div>
 
       {isLoading && <p className="text-xs text-slate-500">피드 로딩 중…</p>}
       {isError && <p className="text-xs text-rose-600">{errorMessage}</p>}
@@ -141,7 +172,9 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
         })}
 
         {feedItems.length === 0 && (
-          <p className="text-xs text-slate-500 text-center py-6">활동 내역이나 댓글이 아직 없습니다.</p>
+          <p className="text-xs text-slate-500 text-center py-6">
+            {filterMode === 'COMMENT' ? '작성된 댓글이 아직 없습니다.' : '활동 내역이나 댓글이 아직 없습니다.'}
+          </p>
         )}
       </div>
     </section>

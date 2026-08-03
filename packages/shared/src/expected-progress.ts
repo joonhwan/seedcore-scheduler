@@ -113,7 +113,8 @@ export function getItemNodeDelayInfo(
   const delayGap = expectedProgress - actualProgress;
 
   let status: DelayStatus = 'ON_TRACK';
-  if (delayGap >= 20) {
+  const isOverdue = !!endAt && todayIso > endAt && actualProgress < 100;
+  if (isOverdue || delayGap >= 20) {
     status = 'CRITICAL';
   } else if (delayGap >= 10) {
     status = 'WARNING';
