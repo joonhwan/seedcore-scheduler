@@ -59,6 +59,7 @@ export default function ProjectDetailPage() {
   const [isDetailDirty, setIsDetailDirty] = useState(false);
   const [isCommentDirty, setIsCommentDirty] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [pendingBarChange, setPendingBarChange] = useState<BarChangeProposal | null>(null);
   // 형제 추가 시 이 노드 바로 뒤에 삽입(생성 후 move). null 이면 부모 맨 끝(기존 동작).
   const [createInsertAfter, setCreateInsertAfter] = useState<NodeTreeItem | null>(null);
@@ -117,6 +118,7 @@ export default function ProjectDetailPage() {
   };
 
   const attemptCloseDetail = () => {
+    if (isSaving) return;
     const isModalDirty = isDetailDirty || isCommentDirty;
     if (isModalDirty) {
       setShowConfirmClose(true);
@@ -126,6 +128,8 @@ export default function ProjectDetailPage() {
   };
 
   const handleSaveAndClose = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
     isSaveAndCloseActionRef.current = true;
     try {
       // 1. 일정 상세 정보 저장 (변경된 경우에만)
@@ -139,11 +143,13 @@ export default function ProjectDetailPage() {
       }
 
       setIsDetailModalOpen(false);
-      isSaveAndCloseActionRef.current = false;
     } catch (err: any) {
       toast.error(err.message || apiErrorMessage(err));
+    } finally {
+      setIsSaving(false);
+      isSaveAndCloseActionRef.current = false;
+      setShowConfirmClose(false);
     }
-    setShowConfirmClose(false);
   };
 
   const handleSaveSuccess = () => {};
@@ -161,7 +167,13 @@ export default function ProjectDetailPage() {
         } else if (e.key === 'Enter') {
           if (showConfirmClose) {
             e.preventDefault();
-            handleSaveAndClose();
+            void handleSaveAndClose();
+          } else if (e.ctrlKey || e.metaKey) {
+            // Ctrl+Enter 또는 Cmd+Enter: 모달 어디에서든 저장 후 닫기 실행
+            e.preventDefault();
+            if ((isDetailDirty || isCommentDirty) && !isSaving) {
+              void handleSaveAndClose();
+            }
           }
         }
       }
@@ -170,7 +182,7 @@ export default function ProjectDetailPage() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selectedId, isDetailModalOpen, isDetailDirty, showConfirmClose]);
+  }, [selectedId, isDetailModalOpen, isDetailDirty, isCommentDirty, showConfirmClose, isSaving]);
 
   const isAdmin = me.data?.globalRole === 'ADMIN';
   const myRole = project.data?.myRole ?? null;
@@ -502,10 +514,17 @@ export default function ProjectDetailPage() {
       {selected && isDetailModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
           <div className="relative flex flex-col w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900 animate-in fade-in-50 zoom-in-95 duration-150">
+            {/* 저장 진행 중 상단 슬림 프로그레스바 */}
+            {isSaving && (
+              <div className="absolute top-0 left-0 right-0 h-1 overflow-hidden rounded-t-lg bg-sky-100 dark:bg-sky-950 z-20">
+                <div className="h-full bg-sky-600 animate-pulse w-full" />
+              </div>
+            )}
             <button
               type="button"
               onClick={attemptCloseDetail}
-              className="absolute right-4 top-4 z-10 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 p-1.5 transition-colors"
+              disabled={isSaving}
+              className="absolute right-4 top-4 z-10 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 p-1.5 transition-colors disabled:opacity-50"
               aria-label="닫기"
             >
               <span className="text-xl font-bold">✕</span>
@@ -544,17 +563,28 @@ export default function ProjectDetailPage() {
                 <button
                   type="button"
                   onClick={attemptCloseDetail}
-                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+                  disabled={isSaving}
+                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
                 >
                   취소
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveAndClose}
-                  disabled={!(isDetailDirty || isCommentDirty)}
-                  className="rounded-md bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-60 transition-colors"
+                  disabled={isSaving || !(isDetailDirty || isCommentDirty)}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-60 transition-colors shadow-sm min-w-[72px] justify-center"
                 >
-                  저장
+                  {isSaving ? (
+                    <>
+                      <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>저장 중…</span>
+                    </>
+                  ) : (
+                    <span>저장</span>
+                  )}
                 </button>
               </div>
             )}
