@@ -121,7 +121,7 @@ export default function ProjectsPage() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'ARCHIVED'>('ALL');
-  const [delayFilter, setDelayFilter] = useState<'ALL' | 'CRITICAL' | 'DELAYED'>('ALL');
+  const [delayFilter, setDelayFilter] = useState<'ALL' | 'CRITICAL' | 'DELAYED' | 'ON_TRACK'>('ALL');
   
   // 정렬 상태
   const [sortBy, setSortBy] = useState<keyof ProjectListItem | 'progress' | null>(null);
@@ -215,6 +215,8 @@ export default function ProjectsPage() {
       list = list.filter(
         (p) => p.delaySummary?.status === 'CRITICAL' || p.delaySummary?.status === 'WARNING',
       );
+    } else if (delayFilter === 'ON_TRACK') {
+      list = list.filter((p) => p.delaySummary?.status === 'ON_TRACK');
     }
 
     // 2. 정렬
@@ -349,10 +351,18 @@ export default function ProjectsPage() {
             <div className="text-lg font-bold text-amber-600 dark:text-amber-400">{delayCounts.delayed}개</div>
           </button>
 
-          <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-left">
+          <button
+            type="button"
+            onClick={() => { setDelayFilter('ON_TRACK'); setCurrentPage(1); }}
+            className={`p-3 rounded-lg border text-left transition-all ${
+              delayFilter === 'ON_TRACK'
+                ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-1 ring-emerald-500'
+                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-300'
+            }`}
+          >
             <div className="text-xs font-medium text-emerald-600 dark:text-emerald-400">✅ 정상 진행 중</div>
             <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{delayCounts.onTrack}개</div>
-          </div>
+          </button>
         </div>
       )}
 
@@ -411,6 +421,17 @@ export default function ProjectsPage() {
               }`}
             >
               ⚠️ 지연 포함
+            </button>
+            <button
+              type="button"
+              onClick={() => { setDelayFilter('ON_TRACK'); setCurrentPage(1); }}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                delayFilter === 'ON_TRACK'
+                  ? 'bg-emerald-600 text-white shadow-sm font-semibold'
+                  : 'text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300'
+              }`}
+            >
+              ✅ 정상 진행
             </button>
           </div>
 

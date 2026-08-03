@@ -3,6 +3,7 @@ import { MAX_TREE_DEPTH, getNodeDelayInfo, type NodeTreeItem, type NodeHistoryIt
 import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
 
 import { FolderIcon, ItemIcon } from './Icons';
+import ProgressPercentBadge from './ProgressPercentBadge';
 import { useNodeHistory } from '../lib/history';
 import { apiErrorMessage } from '../lib/errors';
 import { applyDrag, pxToDays, parseYmd, dayDiff, type DragMode } from '../lib/ganttMath';
@@ -1154,15 +1155,22 @@ function Row({
           </span>
           {(() => {
             const delayInfo = getNodeDelayInfo(node, undefined, allItems);
-            if (delayInfo.status === 'CRITICAL') return <span className="text-xs shrink-0" title={`🚨 예상보다 ${delayInfo.delayGap}%p 심각하게 지연 중`}>🚨</span>;
-            if (delayInfo.status === 'WARNING') return <span className="text-xs shrink-0" title={`⚠️ 예상보다 ${delayInfo.delayGap}%p 지연 중`}>⚠️</span>;
-            return null;
+            return (
+              <div className="flex items-center gap-1 shrink-0 mr-1">
+                {delayInfo.status === 'CRITICAL' && (
+                  <span className="text-xs shrink-0" title={`🚨 예상보다 ${delayInfo.delayGap}%p 심각하게 지연 중`}>🚨</span>
+                )}
+                {delayInfo.status === 'WARNING' && (
+                  <span className="text-xs shrink-0" title={`⚠️ 예상보다 ${delayInfo.delayGap}%p 지연 중`}>⚠️</span>
+                )}
+                <ProgressPercentBadge
+                  progress={progress}
+                  status={delayInfo.status}
+                  size="sm"
+                />
+              </div>
+            );
           })()}
-          {progress !== null && (
-            <span className="shrink-0 font-mono text-[10px] text-slate-500 mr-1">
-              {progress}%
-            </span>
-          )}
         </button>
 
         {canEdit && !isEmptyRow && !selectionMode && (

@@ -22,12 +22,18 @@ export default function ProgressBarWithExpected({
   const hasExpected = expectedProgress !== null && expectedProgress !== undefined;
 
   let barColorClass = 'bg-blue-600 dark:bg-blue-500';
+  let actualLabelClass = 'font-mono text-slate-700 dark:text-slate-300 font-medium';
   if (status === 'CRITICAL') {
     barColorClass = 'bg-gradient-to-r from-red-600 to-rose-500 animate-pulse';
+    actualLabelClass = 'font-mono text-red-600 dark:text-red-400 font-bold';
   } else if (status === 'WARNING') {
     barColorClass = 'bg-gradient-to-r from-amber-600 to-yellow-500';
+    actualLabelClass = 'font-mono text-amber-700 dark:text-amber-300 font-semibold';
+  } else if (status === 'SLIGHT') {
+    actualLabelClass = 'font-mono text-yellow-700 dark:text-yellow-400 font-medium';
   } else if (actual >= 100) {
     barColorClass = 'bg-emerald-600 dark:bg-emerald-500';
+    actualLabelClass = 'font-mono text-emerald-600 dark:text-emerald-400 font-medium';
   }
 
   const tooltipText = hasExpected
@@ -41,8 +47,8 @@ export default function ProgressBarWithExpected({
   return (
     <div className={`w-full flex flex-col gap-0.5 ${className}`} title={tooltipText}>
       {showLabels && (
-        <div className="flex justify-between items-center text-[11px] text-slate-600 dark:text-slate-400">
-          <span>실제 {actual}%</span>
+        <div className="flex justify-between items-center text-[11px]">
+          <span className={actualLabelClass}>실제 {actual >= 100 ? '완료' : `${actual}%`}</span>
           {hasExpected && (
             <span className="font-mono text-slate-400">예상 {expectedProgress}%</span>
           )}

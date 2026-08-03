@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { MAX_TREE_DEPTH, getNodeDelayInfo, type NodeKind, type NodeTreeItem } from '@sam/shared';
 import DelayStatusBadge from './DelayStatusBadge';
 import ProgressBarWithExpected from './ProgressBarWithExpected';
+import ProgressPercentBadge from './ProgressPercentBadge';
 
 export interface TreeNode extends NodeTreeItem {
   children: TreeNode[];
@@ -185,24 +186,31 @@ function NodeRow({
             {formatRange(node)}
           </span>
 
-          {/* 지연 경고 뱃지 */}
-          {delayInfo.status !== 'UNKNOWN' && delayInfo.status !== 'ON_TRACK' && (
-            <DelayStatusBadge
+          {/* 진척률 % 강조 배지 & 지연 경고 뱃지 & 미니 프로그레스 바 */}
+          <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            <ProgressPercentBadge
+              progress={delayInfo.actualProgress}
               status={delayInfo.status}
-              delayGap={delayInfo.delayGap}
               size="sm"
-              className="ml-auto shrink-0"
             />
-          )}
 
-          {/* 미니 프로그레스 바 */}
-          <div className="w-24 shrink-0 hidden md:block ml-2">
-            <ProgressBarWithExpected
-              actualProgress={delayInfo.actualProgress}
-              expectedProgress={delayInfo.expectedProgress}
-              status={delayInfo.status}
-              height="h-1.5"
-            />
+            {delayInfo.status !== 'UNKNOWN' && delayInfo.status !== 'ON_TRACK' && (
+              <DelayStatusBadge
+                status={delayInfo.status}
+                delayGap={delayInfo.delayGap}
+                size="sm"
+                className="shrink-0"
+              />
+            )}
+
+            <div className="w-20 shrink-0 hidden md:block ml-1">
+              <ProgressBarWithExpected
+                actualProgress={delayInfo.actualProgress}
+                expectedProgress={delayInfo.expectedProgress}
+                status={delayInfo.status}
+                height="h-1.5"
+              />
+            </div>
           </div>
         </button>
 
