@@ -130,7 +130,8 @@ export async function exportGanttExcel(params: {
   mainHeaderCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
 
   // 2행 컬럼 제목 (A2:I2)
-  const headers = ['일정 1단계', '일정 2단계', '일정 3단계', '일정 4단계', '일정 5단계', '구분', '시작일', '종료일', '진행률'];
+  const headers = ['일정 1단계', '일정 2단계', '일정 3단계', '일정 4단계', '일정 5단계', '구분', '시작일', '종료일', '진척율'];
+
   headers.forEach((h, i) => {
     const cell = row2.getCell(i + 1);
     cell.value = h;

@@ -252,7 +252,7 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
               />
             </Field>
           </div>
-          <Field label="진행율 (자손 ITEM 평균)">
+          <Field label="진척율 (자손 ITEM 평균)">
             <ProgressReadOnly value={node.progressEffective} />
           </Field>
         </>
@@ -278,7 +278,8 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
               />
             </Field>
           </div>
-          <Field label={`진행율 — ${progress}%`}>
+          <Field label={`진척율 — ${progress}%`}>
+
             <div className="flex flex-col gap-2">
               <input
                 type="range"

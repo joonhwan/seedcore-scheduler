@@ -74,7 +74,8 @@ export default function BulkActionConfirmDialog({
               100% 완료 처리
             </h3>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              선택 항목에 <b>그룹</b>이 포함되어 있습니다. 그룹은 진행률을 직접 설정할 수 없습니다.
+              선택 항목에 <b>그룹</b>이 포함되어 있습니다. 그룹은 진척율을 직접 설정할 수 없습니다.
+
               어떻게 처리할까요?
             </p>
             <div className="mt-6 flex flex-col gap-2">

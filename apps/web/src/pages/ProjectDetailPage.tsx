@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useIsMutating } from '@tanstack/react-query';
-import { MAX_TREE_DEPTH, ImportCsvDto, type NodeTreeItem, type ProjectDetail, type ProjectStatus } from '@sam/shared';
+import { MAX_TREE_DEPTH, ImportCsvDto, calculateProjectDelaySummary, type NodeTreeItem, type ProjectDetail, type ProjectStatus } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
 import {
@@ -21,6 +21,8 @@ import ActivityFeedPanel from '../components/ActivityFeedPanel';
 import Timeline, { type TimelineUnit, type TimelineHandle } from '../components/Timeline';
 import BarChangeConfirmDialog from '../components/BarChangeConfirmDialog';
 import BulkActionConfirmDialog, { type BulkCompleteMode } from '../components/BulkActionConfirmDialog';
+import DelayStatusBadge from '../components/DelayStatusBadge';
+
 import type { BarChangeProposal } from '../lib/ganttTypes';
 import { addDays } from '../lib/ganttMath';
 import { collectDeleteTargets, collectCompleteTargets, hasGroupSelected, collectSubtreeIds } from '../lib/bulkSelection';
@@ -759,7 +761,14 @@ function ProjectHeader({
       }
     }
     return count > 0 ? Math.round(sum / count) : null;
+    if (count === 0) return null;
+    return Math.round(sum / count);
   }, [nodes]);
+
+  const projectDelaySummary = useMemo(() => {
+    if (!nodes || nodes.length === 0) return project.delaySummary ?? null;
+    return calculateProjectDelaySummary(nodes);
+  }, [nodes, project.delaySummary]);
 
   async function setStatus(status: ProjectStatus) {
     if (status === 'ARCHIVED') {
@@ -830,6 +839,7 @@ function ProjectHeader({
     toast.success('일정이 CSV 파일로 내보내졌습니다.');
   };
 
+
   // CSV 가져오기 실행
   const handleImportCsvExecute = async () => {
     if (!csvInputText.trim()) return;
@@ -864,10 +874,35 @@ function ProjectHeader({
           <h1 className="flex items-center gap-2 text-lg font-bold">
             <ProjectNameEditor project={project} canRename={isAdmin && adminMode} />
             {projectProgress !== null && (
-              <span className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/80" title="프로젝트 전체 진행률">
-                진행률 {projectProgress}%
-              </span>
+              <div className="inline-flex items-center gap-1.5">
+                <span
+                  className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/80"
+                  title={`프로젝트 전체 진척율 ${projectProgress}% (예상: ${
+                    projectDelaySummary?.avgExpectedProgress !== null &&
+                    projectDelaySummary?.avgExpectedProgress !== undefined
+                      ? `${projectDelaySummary.avgExpectedProgress}%`
+                      : '-'
+                  })`}
+                >
+                  진척율 {projectProgress}%
+                  {projectDelaySummary?.avgExpectedProgress !== null &&
+                    projectDelaySummary?.avgExpectedProgress !== undefined && (
+                      <span className="ml-1 opacity-75 text-[11px] font-normal">
+                        (예상 {projectDelaySummary.avgExpectedProgress}%)
+                      </span>
+                    )}
+                </span>
+
+                {projectDelaySummary && (
+                  <DelayStatusBadge
+                    status={projectDelaySummary.status}
+                    delayGap={projectDelaySummary.avgDelayGap}
+                    size="sm"
+                  />
+                )}
+              </div>
             )}
+
             {project.status === 'ACTIVE' ? (
               <span className="group flex items-center gap-1 text-emerald-600 dark:text-emerald-400 cursor-help" title="활성 프로젝트">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">

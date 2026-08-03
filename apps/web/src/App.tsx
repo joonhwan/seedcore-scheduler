@@ -242,9 +242,10 @@ function Footer() {
                   </div>
                   <div className="space-y-1 pl-1">
                     <div className="grid grid-cols-3 gap-2 items-center">
-                      <span className="text-slate-600 dark:text-slate-400">진행률 조절</span>
+                      <span className="text-slate-600 dark:text-slate-400">진척율 조절</span>
                       <div className="col-span-2 font-mono text-[10px]"><kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">Ctrl+,</kbd>(-10%) <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">Ctrl+.</kbd>(+10%) <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">Ctrl+/</kbd>(100%)</div>
                     </div>
+
                     <div className="grid grid-cols-3 gap-2 items-center">
                       <span className="text-slate-600 dark:text-slate-400">노드 종류 전환</span>
                       <div className="col-span-2 font-mono text-[10px]"><kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">Alt+1</kbd>(일정) / <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">Alt+2</kbd>(그룹)</div>
@@ -347,9 +348,10 @@ function Footer() {
                 </h4>
                 <div className="space-y-1.5 pl-1">
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">진행률 조절 (일정)</div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">진척율 조절 (일정)</div>
                     <div className="col-span-2 font-mono text-[10px]"><kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">Ctrl+,</kbd>(-10%) <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">Ctrl+.</kbd>(+10%) <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">Ctrl+/</kbd>(100%)</div>
                   </div>
+
                   <div className="grid grid-cols-3 gap-2 items-center">
                     <div className="font-medium text-slate-800 dark:text-slate-200">노드 종류 전환</div>
                     <div className="col-span-2 font-mono text-[10px]"><kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">Alt+1</kbd>(일정) / <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">Alt+2</kbd>(그룹)</div>

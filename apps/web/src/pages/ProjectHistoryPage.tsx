@@ -13,7 +13,8 @@ import { KIND_STYLE, historyLabelText, formatDateTime } from '../lib/historyView
 
 const TOPICS: { value: HistoryTopic; label: string }[] = [
   { value: 'ALL', label: '모든 이력' },
-  { value: 'PROGRESS_DOWN', label: '진행률 낮춤' },
+  { value: 'PROGRESS_DOWN', label: '진척율 낮춤' },
+
   { value: 'DELETED', label: '삭제됨' },
   { value: 'PERIOD_CHANGE', label: '기간 변경' },
   { value: 'COMMENTS', label: '댓글' },
