@@ -21,10 +21,8 @@ type FeedItem =
   | { type: 'COMMENT'; timestamp: string; data: NodeCommentItem }
   | { type: 'HISTORY'; timestamp: string; data: NodeHistoryItem };
 
-type FilterMode = 'ALL' | 'COMMENT';
-
 export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
-  const [filterMode, setFilterMode] = useState<FilterMode>('ALL');
+  const [commentsOnly, setCommentsOnly] = useState(false);
   const comments = useComments(nodeId);
   const history = useNodeHistory(nodeId);
   const removeComment = useDeleteComment(nodeId);
@@ -39,14 +37,14 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
     comments.data?.forEach((c) => {
       list.push({ type: 'COMMENT', timestamp: c.createdAt, data: c });
     });
-    if (filterMode === 'ALL') {
+    if (!commentsOnly) {
       history.data?.forEach((h) => {
         list.push({ type: 'HISTORY', timestamp: h.occurredAt, data: h });
       });
     }
 
     return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [comments.data, history.data, filterMode]);
+  }, [comments.data, history.data, commentsOnly]);
 
   async function onDeleteComment(cId: string) {
     const ok = window.confirm('이 댓글을 삭제하시겠습니까?');
@@ -69,32 +67,22 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
 
   return (
     <section className="flex flex-col h-full">
-      <div className="flex flex-wrap items-center justify-between mb-3 gap-2 pr-8">
+      <div className="flex items-center gap-2 mb-3">
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">변경 이력</h3>
-        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg text-xs">
-          <button
-            type="button"
-            onClick={() => setFilterMode('ALL')}
-            className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
-              filterMode === 'ALL'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm font-semibold'
-                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
-            }`}
-          >
-            전체 보기
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterMode('COMMENT')}
-            className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
-              filterMode === 'COMMENT'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm font-semibold'
-                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
-            }`}
-          >
-            댓글만 보기
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setCommentsOnly((prev) => !prev)}
+          title={commentsOnly ? '전체 이력 보기' : '댓글만 보기'}
+          aria-label={commentsOnly ? '전체 이력 보기' : '댓글만 보기'}
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border transition-all ${
+            commentsOnly
+              ? 'border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-700 dark:bg-sky-900/60 dark:text-sky-200 font-semibold shadow-sm'
+              : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 dark:border-slate-700/80 dark:bg-slate-800/40 dark:text-slate-400 dark:hover:bg-slate-800'
+          }`}
+        >
+          <span>💬</span>
+          <span className="text-[11px]">댓글만</span>
+        </button>
       </div>
 
       {isLoading && <p className="text-xs text-slate-500">피드 로딩 중…</p>}
@@ -173,7 +161,7 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
 
         {feedItems.length === 0 && (
           <p className="text-xs text-slate-500 text-center py-6">
-            {filterMode === 'COMMENT' ? '작성된 댓글이 아직 없습니다.' : '활동 내역이나 댓글이 아직 없습니다.'}
+            {commentsOnly ? '작성된 댓글이 아직 없습니다.' : '활동 내역이나 댓글이 아직 없습니다.'}
           </p>
         )}
       </div>
