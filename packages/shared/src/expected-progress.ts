@@ -78,12 +78,23 @@ export function calculateExpectedProgress(
 }
 
 /**
- * 노드 단일 개체에 대한 지연 상태를 계산합니다.
+ * 단일 ITEM 노드에 대한 지연 상태를 계산합니다.
  */
 export function getItemNodeDelayInfo(
   node: NodeDelayInput,
   todayIso: string = new Date().toISOString().slice(0, 10),
 ): ExpectedProgressResult {
+  // GROUP 노드인 경우 단일 노드 정보만으로는 통째 선형 계산을 수행하지 않음 (자손 전파 전까지 ON_TRACK 기본)
+  if (node.kind === 'GROUP') {
+    const actualProgress = node.progressEffective ?? node.progress ?? null;
+    return {
+      expectedProgress: actualProgress,
+      actualProgress,
+      delayGap: 0,
+      status: 'ON_TRACK',
+    };
+  }
+
   const startAt = node.startAtEffective ?? node.startAt;
   const endAt = node.endAtEffective ?? node.endAt;
   const actualProgress = node.progressEffective ?? node.progress ?? null;
@@ -121,7 +132,6 @@ export function getItemNodeDelayInfo(
 /**
  * 전체 노드 배열에서 특정 GROUP 노드의 모든 자손 ITEM 노드들을 수집합니다.
  */
-
 function collectSubtreeItemNodes<T extends NodeDelayInput>(
   groupId: string,
   allNodes: T[],
@@ -133,7 +143,7 @@ function collectSubtreeItemNodes<T extends NodeDelayInput>(
     const currentId = queue.shift()!;
     const children = allNodes.filter((n) => n.parentId === currentId);
     for (const child of children) {
-      if (child.kind === 'ITEM') {
+      if (child.kind === 'ITEM' || (!child.kind && child.startAt && child.endAt)) {
         items.push(child);
       } else if (child.id) {
         queue.push(child.id);
@@ -158,10 +168,10 @@ export function calculateTreeNodesDelayInfo<T extends NodeDelayInput>(
   // 1) ITEM 노드들 지연 상태 먼저 계산
   const itemMap = new Map<string, ExpectedProgressResult>();
   for (const node of allNodes) {
-    if (node.kind === 'ITEM' || !node.kind) {
+    if (node.kind === 'ITEM' || (!node.kind && (node.startAt || node.endAt))) {
       const info = getItemNodeDelayInfo(node, todayIso);
-      itemMap.set(node.id || '', info);
       if (node.id) {
+        itemMap.set(node.id, info);
         resultMap.set(node.id, info);
       }
     }
@@ -242,7 +252,6 @@ export function getNodeDelayInfo<T extends NodeDelayInput>(
     if (info) return info;
   }
 
-  // 단일 노드 호환 Fallback
   return getItemNodeDelayInfo(node, todayIso);
 }
 
@@ -261,7 +270,6 @@ export interface ProjectDelaySummary {
 
 /**
  * 프로젝트 내 전체 노드 목록을 바탕으로 지연 현황 요약을 계산합니다.
- * 실제 작업 단위인 ITEM 노드들을 기준으로 집계하고, 가장 심각한 지연 상태를 프로젝트 전체 상태로 전파합니다.
  */
 export function calculateProjectDelaySummary<T extends NodeDelayInput>(
   nodes: T[],
@@ -314,8 +322,6 @@ export function calculateProjectDelaySummary<T extends NodeDelayInput>(
   const avgActualProgress = Math.round(totalActual / validNodes);
   const avgDelayGap = avgExpectedProgress - avgActualProgress;
 
-  // 프로젝트 전체 지연 상태 전파:
-  // ITEM 노드 중 심각 지연이 1개라도 있으면 심각, 주의가 있으면 주의, 소폭이 있으면 소폭
   let status: DelayStatus = 'ON_TRACK';
   if (criticalCount > 0) {
     status = 'CRITICAL';
