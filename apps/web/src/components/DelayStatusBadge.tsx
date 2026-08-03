@@ -27,8 +27,10 @@ export default function DelayStatusBadge({
   const gapText = delayGap !== undefined && delayGap > 0 ? `${delayGap}%p 지연` : '';
 
   let sizeClasses = 'px-2 py-0.5 text-xs';
-  if (size === 'sm') sizeClasses = 'px-1.5 py-0.2 text-[11px]';
+  if (size === 'sm') sizeClasses = 'px-2 py-0.5 text-xs';
   if (size === 'lg') sizeClasses = 'px-2.5 py-1 text-sm';
+
+
 
   switch (status) {
     case 'CRITICAL':
