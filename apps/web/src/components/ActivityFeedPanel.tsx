@@ -66,8 +66,8 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
     : null;
 
   return (
-    <section className="flex flex-col h-full min-h-0">
-      <div className="flex items-center gap-2 mb-3 shrink-0">
+    <section className="flex flex-col h-full">
+      <div className="flex items-center gap-2 mb-3">
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">변경 이력</h3>
         <button
           type="button"
@@ -85,10 +85,10 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
         </button>
       </div>
 
-      {isLoading && <p className="text-xs text-slate-500 shrink-0">피드 로딩 중…</p>}
-      {isError && <p className="text-xs text-rose-600 shrink-0">{errorMessage}</p>}
+      {isLoading && <p className="text-xs text-slate-500">피드 로딩 중…</p>}
+      {isError && <p className="text-xs text-rose-600">{errorMessage}</p>}
 
-      <div className="flex-1 min-h-[300px] overflow-y-auto pr-1 border border-slate-100 dark:border-slate-800/80 rounded-lg p-3 bg-slate-50/30 dark:bg-slate-900/10 space-y-3.5">
+      <div className="flex-1 overflow-y-auto pr-1 max-h-[460px] border border-slate-100 dark:border-slate-800/80 rounded-lg p-3 bg-slate-50/30 dark:bg-slate-900/10 space-y-3.5">
         {feedItems.map((item) => {
           if (item.type === 'COMMENT') {
             const c = item.data;

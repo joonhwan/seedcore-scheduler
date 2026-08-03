@@ -529,7 +529,7 @@ export default function ProjectDetailPage() {
             >
               <span className="text-xl font-bold">✕</span>
             </button>
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800/80 items-stretch">
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800/80 items-start">
               {/* 좌측 열: NodeDetail & CommentInputForm */}
               <div className="space-y-4">
                 <NodeDetail
@@ -552,7 +552,7 @@ export default function ProjectDetailPage() {
                 />
               </div>
               {/* 우측 열: 통합 피드 & 변경 이력 */}
-              <div className="flex flex-col h-full space-y-6 md:pl-6 pt-6 md:pt-0">
+              <div className="space-y-6 md:pl-6 pt-6 md:pt-0">
                 <ActivityFeedPanel nodeId={selected.id} canEdit={canEditNodes} />
               </div>
             </div>
