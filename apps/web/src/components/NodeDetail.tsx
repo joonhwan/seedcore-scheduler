@@ -1,10 +1,14 @@
 import { useEffect, useState, type FormEvent, forwardRef, useImperativeHandle } from 'react';
 import type { NodeTreeItem, UpdateNodeDto } from '@sam/shared';
+import { getNodeDelayInfo } from '@sam/shared';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { useUpdateNode } from '../lib/nodes';
 import { FolderIcon, ItemIcon, PencilIcon } from './Icons';
 import AutocompleteInput from './AutocompleteInput';
+import DelayStatusBadge from './DelayStatusBadge';
+import ProgressBarWithExpected from './ProgressBarWithExpected';
+
 
 interface Props {
   projectId: string;
@@ -191,7 +195,33 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
         )}
       </div>
 
+      {/* 노드 지연 상태 및 예상 진척률 요약 바 */}
+      {(() => {
+        const delayInfo = getNodeDelayInfo({
+          startAt: isGroup ? node.startAtEffective : startAt,
+          endAt: isGroup ? node.endAtEffective : endAt,
+          progress: isGroup ? node.progressEffective : progress,
+        });
+        if (delayInfo.status === 'UNKNOWN') return null;
+        return (
+          <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-slate-600 dark:text-slate-300">일정 달성 현황</span>
+              <DelayStatusBadge status={delayInfo.status} delayGap={delayInfo.delayGap} size="sm" />
+            </div>
+            <ProgressBarWithExpected
+              actualProgress={delayInfo.actualProgress}
+              expectedProgress={delayInfo.expectedProgress}
+              status={delayInfo.status}
+              height="h-2.5"
+              showLabels
+            />
+          </div>
+        );
+      })()}
+
       <Field label="설명">
+
         <textarea
           className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
           rows={4}

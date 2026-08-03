@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
-import { MAX_TREE_DEPTH, type NodeKind, type NodeTreeItem } from '@sam/shared';
+import { useState, useMemo } from 'react';
+import { MAX_TREE_DEPTH, getNodeDelayInfo, type NodeKind, type NodeTreeItem } from '@sam/shared';
+import DelayStatusBadge from './DelayStatusBadge';
+import ProgressBarWithExpected from './ProgressBarWithExpected';
 
 export interface TreeNode extends NodeTreeItem {
   children: TreeNode[];
@@ -43,21 +45,47 @@ export interface NodeTreeProps {
 }
 
 export default function NodeTree(props: NodeTreeProps) {
+  const [onlyDelayed, setOnlyDelayed] = useState(false);
   const tree = useMemo(() => buildTree(props.items), [props.items]);
+
+  // 지연 노드 수 체크
+  const delayedCount = useMemo(() => {
+    return props.items.filter((item) => {
+      const info = getNodeDelayInfo(item);
+      return info.status === 'CRITICAL' || info.status === 'WARNING';
+    }).length;
+  }, [props.items]);
 
   return (
     <div>
-      {props.canEdit && (
-        <div className="mb-2 flex justify-end">
+      <div className="mb-3 flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex items-center gap-2">
+          {delayedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setOnlyDelayed(!onlyDelayed)}
+              className={`rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors flex items-center gap-1 ${
+                onlyDelayed
+                  ? 'bg-amber-500 text-white shadow-sm'
+                  : 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400'
+              }`}
+            >
+              <span>⚠️ 지연 항목만 ({delayedCount})</span>
+            </button>
+          )}
+        </div>
+
+        {props.canEdit && (
           <button
             type="button"
             onClick={props.onAddRoot}
-            className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 font-medium"
           >
             + 루트 노드
           </button>
-        </div>
-      )}
+        )}
+      </div>
+
       {tree.length === 0 ? (
         <p className="text-sm text-slate-500">등록된 노드가 없습니다.</p>
       ) : (
@@ -68,6 +96,7 @@ export default function NodeTree(props: NodeTreeProps) {
               node={n}
               siblingCount={tree.length}
               indexAmongSiblings={i}
+              onlyDelayed={onlyDelayed}
               {...props}
             />
           ))}
@@ -81,6 +110,7 @@ interface NodeRowProps extends Omit<NodeTreeProps, 'items'> {
   node: TreeNode;
   siblingCount: number;
   indexAmongSiblings: number;
+  onlyDelayed: boolean;
 }
 
 function NodeRow({
@@ -89,6 +119,7 @@ function NodeRow({
   indexAmongSiblings,
   selectedId,
   canEdit,
+  onlyDelayed,
   onSelect,
   onAddChild,
   onAddSibling,
@@ -102,14 +133,38 @@ function NodeRow({
   const childWouldExceedDepth = node.depth + 1 >= MAX_TREE_DEPTH;
   const subtreeMaxDepth = maxDescendantDepth(node);
 
+  const delayInfo = getNodeDelayInfo(node);
+  const isDelayed = delayInfo.status === 'CRITICAL' || delayInfo.status === 'WARNING';
+  const isCritical = delayInfo.status === 'CRITICAL';
+
+  // 자손 중에 지연된 노드가 있는지 확인
+  const hasDelayedDescendant = useMemo(() => {
+    const check = (n: TreeNode): boolean => {
+      const info = getNodeDelayInfo(n);
+      if (info.status === 'CRITICAL' || info.status === 'WARNING') return true;
+      return n.children.some(check);
+    };
+    return node.children.some(check);
+  }, [node]);
+
+  // "지연 항목만" 필터링 시, 본인이 지연되었거나 자손이 지연된 경우만 표시
+  if (onlyDelayed && !isDelayed && !hasDelayedDescendant) {
+    return null;
+  }
+
+  let rowBgClass = 'hover:bg-slate-50 dark:hover:bg-slate-800/60';
+  if (isSelected) {
+    rowBgClass = 'bg-sky-100/90 dark:bg-sky-900/50 ring-1 ring-sky-400';
+  } else if (isCritical) {
+    rowBgClass = 'bg-red-500/10 hover:bg-red-500/15 dark:bg-red-950/25 border-l-2 border-red-500';
+  } else if (isDelayed) {
+    rowBgClass = 'bg-amber-500/10 hover:bg-amber-500/15 dark:bg-amber-950/20 border-l-2 border-amber-500';
+  }
+
   return (
     <li>
       <div
-        className={`group relative flex items-center gap-2 rounded px-2 py-1.5 text-sm ${
-          isSelected
-            ? 'bg-sky-100 dark:bg-sky-900/40'
-            : 'hover:bg-slate-50 dark:hover:bg-slate-800'
-        }`}
+        className={`group relative flex items-center gap-2 rounded px-2.5 py-1.5 text-sm transition-all ${rowBgClass}`}
       >
         <button
           type="button"
@@ -117,14 +172,37 @@ function NodeRow({
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
           <KindBadge kind={node.kind} />
-          <span className="truncate">{node.title}</span>
+          <span className={`truncate ${isGroup ? 'font-semibold' : ''}`}>
+            {node.title}
+          </span>
+
           <span className="ml-1 shrink-0 text-[10px] text-slate-400">
             {formatRange(node)}
           </span>
+
+          {/* 지연 경고 뱃지 */}
+          {delayInfo.status !== 'UNKNOWN' && delayInfo.status !== 'ON_TRACK' && (
+            <DelayStatusBadge
+              status={delayInfo.status}
+              delayGap={delayInfo.delayGap}
+              size="sm"
+              className="ml-auto shrink-0"
+            />
+          )}
+
+          {/* 미니 프로그레스 바 */}
+          <div className="w-24 shrink-0 hidden md:block ml-2">
+            <ProgressBarWithExpected
+              actualProgress={delayInfo.actualProgress}
+              expectedProgress={delayInfo.expectedProgress}
+              status={delayInfo.status}
+              height="h-1.5"
+            />
+          </div>
         </button>
 
         {canEdit && (
-          <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded bg-slate-100 px-1 py-0.5 shadow-sm group-hover:flex dark:bg-slate-700">
+          <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded bg-slate-100 px-1 py-0.5 shadow-sm group-hover:flex dark:bg-slate-700 z-20">
             <IconBtn
               title="위로"
               disabled={indexAmongSiblings === 0}
@@ -180,6 +258,7 @@ function NodeRow({
               indexAmongSiblings={i}
               selectedId={selectedId}
               canEdit={canEdit}
+              onlyDelayed={onlyDelayed}
               onSelect={onSelect}
               onAddChild={onAddChild}
               onAddSibling={onAddSibling}
@@ -230,6 +309,7 @@ function IconBtn({
   disabled?: boolean;
   onClick: () => void;
   className?: string;
+
 }) {
   return (
     <button

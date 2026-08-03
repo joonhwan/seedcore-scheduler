@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, type ForwardedRef } from 'react';
-import { MAX_TREE_DEPTH, type NodeTreeItem, type NodeHistoryItem } from '@sam/shared';
+import { MAX_TREE_DEPTH, getNodeDelayInfo, type NodeTreeItem, type NodeHistoryItem } from '@sam/shared';
 import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
+
 import { FolderIcon, ItemIcon } from './Icons';
 import { useNodeHistory } from '../lib/history';
 import { apiErrorMessage } from '../lib/errors';
@@ -1146,6 +1147,12 @@ function Row({
           >
             {node.title}
           </span>
+          {(() => {
+            const delayInfo = getNodeDelayInfo({ startAt: start, endAt: end, progress });
+            if (delayInfo.status === 'CRITICAL') return <span className="text-xs shrink-0" title={`🚨 예상보다 ${delayInfo.delayGap}%p 심각하게 지연 중`}>🚨</span>;
+            if (delayInfo.status === 'WARNING') return <span className="text-xs shrink-0" title={`⚠️ 예상보다 ${delayInfo.delayGap}%p 지연 중`}>⚠️</span>;
+            return null;
+          })()}
           {progress !== null && (
             <span className="shrink-0 font-mono text-[10px] text-slate-500 mr-1">
               {progress}%
@@ -1206,83 +1213,103 @@ function Row({
         )}
       </div>
       <div className="relative" style={{ width: totalWidth }}>
-        {bar && (
-          <button
-            type="button"
-            onMouseDown={(e) => {
-              if (canEdit && !isGroup && !isEmptyRow && e.button === 0) {
-                onBarDragStart?.(node, 'move', e);
-              }
-            }}
-            onClick={() => onSelect(node.id)}
-            onDoubleClick={() => {
-              if (isEmptyRow) {
-                if (canCreate) onAddRoot?.();
-              } else {
-                onEdit?.(node.id);
-              }
-            }}
-            onMouseEnter={(e) => {
-              onHoverNode({
-                id: node.id,
-                title: node.title,
-                x: e.clientX,
-                y: e.clientY,
-              });
-            }}
-            onMouseMove={(e) => {
-              onHoverNode({
-                id: node.id,
-                title: node.title,
-                x: e.clientX,
-                y: e.clientY,
-              });
-            }}
-            onMouseLeave={() => {
-              onHoverNode(null);
-            }}
-            className={`absolute top-1 bottom-1 overflow-hidden rounded ${
-              selectionMode
-                ? 'opacity-40 pointer-events-none'
-                : canEdit && !isGroup && !isEmptyRow
-                ? 'cursor-move'
-                : ''
-            } ${
-              isGroup
-                ? 'border border-violet-300 bg-violet-100/70 dark:border-violet-700 dark:bg-violet-900/40'
-                : 'border border-sky-400 bg-sky-100 dark:border-sky-700 dark:bg-sky-900/40'
-            }`}
-            style={{ left: bar.leftPx, width: bar.widthPx }}
-            title={`${start} ~ ${end}${progress !== null ? ` · ${progress}%` : ''}`}
-          >
-            {progress !== null && progress > 0 && (
-              <div
-                className={`h-full ${isGroup ? 'bg-violet-400/70' : 'bg-sky-500/80'}`}
-                style={{ width: `${progress}%` }}
-              />
-            )}
-            {canEdit && !isGroup && !isEmptyRow && (
-              <>
-                <span
-                  role="presentation"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    onBarDragStart?.(node, 'resize-start', e);
-                  }}
-                  className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize"
+        {bar && (() => {
+          const delayInfo = getNodeDelayInfo({ startAt: start, endAt: end, progress });
+          const isCritical = delayInfo.status === 'CRITICAL';
+          const isWarning = delayInfo.status === 'WARNING';
+
+          let barBg = isGroup
+            ? 'border border-violet-300 bg-violet-100/70 dark:border-violet-700 dark:bg-violet-900/40'
+            : 'border border-sky-400 bg-sky-100 dark:border-sky-700 dark:bg-sky-900/40';
+
+          if (isCritical) {
+            barBg = 'border border-red-500 bg-red-100 dark:border-red-600 dark:bg-red-950/60 ring-1 ring-red-400 animate-pulse';
+          } else if (isWarning) {
+            barBg = 'border border-amber-500 bg-amber-100 dark:border-amber-600 dark:bg-amber-950/50';
+          }
+
+          let fillBg = isGroup ? 'bg-violet-400/70' : 'bg-sky-500/80';
+          if (isCritical) fillBg = 'bg-gradient-to-r from-red-600 to-rose-500';
+          else if (isWarning) fillBg = 'bg-gradient-to-r from-amber-600 to-yellow-500';
+
+          return (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                if (canEdit && !isGroup && !isEmptyRow && e.button === 0) {
+                  onBarDragStart?.(node, 'move', e);
+                }
+              }}
+              onClick={() => onSelect(node.id)}
+              onDoubleClick={() => {
+                if (isEmptyRow) {
+                  if (canCreate) onAddRoot?.();
+                } else {
+                  onEdit?.(node.id);
+                }
+              }}
+              onMouseEnter={(e) => {
+                onHoverNode({
+                  id: node.id,
+                  title: node.title,
+                  x: e.clientX,
+                  y: e.clientY,
+                });
+              }}
+              onMouseMove={(e) => {
+                onHoverNode({
+                  id: node.id,
+                  title: node.title,
+                  x: e.clientX,
+                  y: e.clientY,
+                });
+              }}
+              onMouseLeave={() => {
+                onHoverNode(null);
+              }}
+              className={`absolute top-1 bottom-1 overflow-hidden rounded ${
+                selectionMode
+                  ? 'opacity-40 pointer-events-none'
+                  : canEdit && !isGroup && !isEmptyRow
+                  ? 'cursor-move'
+                  : ''
+              } ${barBg}`}
+              style={{ left: bar.leftPx, width: bar.widthPx }}
+              title={`${start} ~ ${end}${progress !== null ? ` · 실제 ${progress}%` : ''}${
+                delayInfo.expectedProgress !== null ? ` (예상 ${delayInfo.expectedProgress}% - ${delayInfo.delayGap}%p 지연)` : ''
+              }`}
+            >
+              {progress !== null && progress > 0 && (
+                <div
+                  className={`h-full ${fillBg}`}
+                  style={{ width: `${progress}%` }}
                 />
-                <span
-                  role="presentation"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    onBarDragStart?.(node, 'resize-end', e);
-                  }}
-                  className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize"
-                />
-              </>
-            )}
-          </button>
-        )}
+              )}
+
+              {canEdit && !isGroup && !isEmptyRow && (
+                <>
+                  <span
+                    role="presentation"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      onBarDragStart?.(node, 'resize-start', e);
+                    }}
+                    className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize"
+                  />
+                  <span
+                    role="presentation"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      onBarDragStart?.(node, 'resize-end', e);
+                    }}
+                    className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize"
+                  />
+                </>
+              )}
+            </button>
+          );
+        })()}
+
         {previewBar && (
           <div
             className={`pointer-events-none absolute top-1 bottom-1 rounded border-2 border-dashed opacity-70 ${

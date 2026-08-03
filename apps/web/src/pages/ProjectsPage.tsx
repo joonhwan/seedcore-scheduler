@@ -10,6 +10,8 @@ import { DEFAULT_COLUMN_WIDTHS, computeRenderedWidths, type ProjectColumnKey } f
 import { compareProjectsByNewestFirst } from '../lib/projectListSort';
 import ProjectNameCell from '../components/ProjectNameCell';
 import ProjectArchiveButton from '../components/ProjectArchiveButton';
+import DelayStatusBadge from '../components/DelayStatusBadge';
+import ProgressBarWithExpected from '../components/ProgressBarWithExpected';
 
 export default function ProjectsPage() {
   const me = useMe();
@@ -17,12 +19,8 @@ export default function ProjectsPage() {
   const projects = useProjects();
   const deleteProject = useDeleteProject();
 
-  // Local Storage 키 명칭
-  //
-  // v2 로 올린 이유: 관리 컬럼에 보관/복원 버튼이 늘면서 기본 폭을 140 → 180 으로 키웠는데,
-  // 폭 상태를 { ...defaultWidths, ...parsed } 로 합치는 구조라 이미 저장된 140 이 새 기본값을
-  // 덮어쓴다. 키를 올려 한 번만 초기화되게 했다. 옛 키는 읽지도 지우지도 않고 그냥 둔다.
-  const STORAGE_KEY = 'sam_project_list_column_widths_v2';
+  const STORAGE_KEY = 'sam_project_list_column_widths_v3';
+
 
   // 기본 컬럼 폭은 lib/projectListColumns.ts 가 단일 원본이다.
   const defaultWidths = DEFAULT_COLUMN_WIDTHS;
@@ -123,9 +121,10 @@ export default function ProjectsPage() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'ARCHIVED'>('ALL');
+  const [delayFilter, setDelayFilter] = useState<'ALL' | 'CRITICAL' | 'DELAYED'>('ALL');
   
   // 정렬 상태
-  const [sortBy, setSortBy] = useState<keyof ProjectListItem | null>(null);
+  const [sortBy, setSortBy] = useState<keyof ProjectListItem | 'progress' | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(null);
 
   // 페이징 상태
@@ -139,7 +138,30 @@ export default function ProjectsPage() {
   const canCreate = me.data?.globalRole === 'ADMIN' && adminMode;
   const canRename = me.data?.globalRole === 'ADMIN' && adminMode;
 
-  const handleSort = (field: keyof ProjectListItem) => {
+  // 지연 카운터 집계
+  const delayCounts = useMemo(() => {
+    const list = projects.data ?? [];
+    let critical = 0;
+    let warning = 0;
+    let slight = 0;
+    let onTrack = 0;
+    for (const p of list) {
+      const st = p.delaySummary?.status;
+      if (st === 'CRITICAL') critical++;
+      else if (st === 'WARNING') warning++;
+      else if (st === 'SLIGHT') slight++;
+      else if (st === 'ON_TRACK') onTrack++;
+    }
+    return {
+      total: list.length,
+      critical,
+      warning,
+      delayed: critical + warning,
+      onTrack,
+    };
+  }, [projects.data]);
+
+  const handleSort = (field: keyof ProjectListItem | 'progress') => {
     if (sortBy === field) {
       if (sortOrder === 'asc') {
         setSortOrder('desc');
@@ -186,11 +208,26 @@ export default function ProjectsPage() {
       }
     }
 
+    // 예상보다 많이 지연 중인 프로젝트 필터링
+    if (delayFilter === 'CRITICAL') {
+      list = list.filter((p) => p.delaySummary?.status === 'CRITICAL');
+    } else if (delayFilter === 'DELAYED') {
+      list = list.filter(
+        (p) => p.delaySummary?.status === 'CRITICAL' || p.delaySummary?.status === 'WARNING',
+      );
+    }
+
     // 2. 정렬
     if (sortBy && sortOrder) {
       list.sort((a, b) => {
-        const valA = a[sortBy];
-        const valB = b[sortBy];
+        if (sortBy === 'progress') {
+          const gapA = a.delaySummary?.avgDelayGap ?? -999;
+          const gapB = b.delaySummary?.avgDelayGap ?? -999;
+          return sortOrder === 'asc' ? gapA - gapB : gapB - gapA;
+        }
+
+        const valA = a[sortBy as keyof ProjectListItem];
+        const valB = b[sortBy as keyof ProjectListItem];
 
         if (valA === null || valA === undefined) return sortOrder === 'asc' ? 1 : -1;
         if (valB === null || valB === undefined) return sortOrder === 'asc' ? -1 : 1;
@@ -204,13 +241,12 @@ export default function ProjectsPage() {
         }
       });
     } else {
-      // 헤더로 정렬을 고르기 전의 기본 순서. 서버가 준 순서를 그대로 쓰면
-      // 목록에서 뭔가를 고칠 때마다 그 행이 다른 페이지로 튄다 (lib/projectListSort.ts 주석 참고).
       list.sort(compareProjectsByNewestFirst);
     }
 
     return list;
-  }, [projects.data, searchTerm, statusFilter, adminMode, sortBy, sortOrder]);
+  }, [projects.data, searchTerm, statusFilter, delayFilter, adminMode, sortBy, sortOrder]);
+
 
   // 3. 페이징 처리
   const totalItems = filtered.length;
@@ -263,6 +299,63 @@ export default function ProjectsPage() {
         )}
       </div>
 
+      {/* 프로젝트 지연 상태 요약 대시보드 위젯 */}
+      {projects.data && projects.data.length > 0 && (
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <button
+            type="button"
+            onClick={() => { setDelayFilter('ALL'); setCurrentPage(1); }}
+            className={`p-3 rounded-lg border text-left transition-all ${
+              delayFilter === 'ALL'
+                ? 'border-sky-500 bg-sky-50/50 dark:bg-sky-950/30 ring-1 ring-sky-500'
+                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300'
+            }`}
+          >
+            <div className="text-xs font-medium text-slate-500 dark:text-slate-400">전체 프로젝트</div>
+            <div className="text-lg font-bold text-slate-900 dark:text-slate-100">{delayCounts.total}개</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setDelayFilter('CRITICAL'); setCurrentPage(1); }}
+            className={`p-3 rounded-lg border text-left transition-all ${
+              delayFilter === 'CRITICAL'
+                ? 'border-red-500 bg-red-50/50 dark:bg-red-950/30 ring-1 ring-red-500'
+                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-red-300'
+            }`}
+          >
+            <div className="flex items-center justify-between text-xs font-medium text-red-600 dark:text-red-400">
+              <span>🚨 심각 지연</span>
+              {delayCounts.critical > 0 && (
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                </span>
+              )}
+            </div>
+            <div className="text-lg font-bold text-red-600 dark:text-red-400">{delayCounts.critical}개</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setDelayFilter('DELAYED'); setCurrentPage(1); }}
+            className={`p-3 rounded-lg border text-left transition-all ${
+              delayFilter === 'DELAYED'
+                ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/30 ring-1 ring-amber-500'
+                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-300'
+            }`}
+          >
+            <div className="text-xs font-medium text-amber-600 dark:text-amber-400">⚠️ 전체 지연 프로젝트</div>
+            <div className="text-lg font-bold text-amber-600 dark:text-amber-400">{delayCounts.delayed}개</div>
+          </button>
+
+          <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-left">
+            <div className="text-xs font-medium text-emerald-600 dark:text-emerald-400">✅ 정상 진행 중</div>
+            <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{delayCounts.onTrack}개</div>
+          </div>
+        </div>
+      )}
+
       {/* 필터 및 검색 바 */}
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative max-w-sm w-full">
@@ -283,13 +376,14 @@ export default function ProjectsPage() {
           />
         </div>
 
-        {adminMode && (
-          <div className="flex rounded-md border border-slate-200 p-0.5 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 지연 상태 필터 버튼 */}
+          <div className="flex rounded-md border border-slate-200 p-0.5 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
             <button
               type="button"
-              onClick={() => { setStatusFilter('ALL'); setCurrentPage(1); }}
-              className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
-                statusFilter === 'ALL'
+              onClick={() => { setDelayFilter('ALL'); setCurrentPage(1); }}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                delayFilter === 'ALL'
                   ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
                   : 'text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-slate-200'
               }`}
@@ -298,28 +392,66 @@ export default function ProjectsPage() {
             </button>
             <button
               type="button"
-              onClick={() => { setStatusFilter('ACTIVE'); setCurrentPage(1); }}
-              className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
-                statusFilter === 'ACTIVE'
-                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
-                  : 'text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-slate-200'
+              onClick={() => { setDelayFilter('CRITICAL'); setCurrentPage(1); }}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                delayFilter === 'CRITICAL'
+                  ? 'bg-red-500 text-white shadow-sm font-semibold'
+                  : 'text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300'
               }`}
             >
-              활성
+              🚨 심각 지연만
             </button>
             <button
               type="button"
-              onClick={() => { setStatusFilter('ARCHIVED'); setCurrentPage(1); }}
-              className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
-                statusFilter === 'ARCHIVED'
-                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
-                  : 'text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-slate-200'
+              onClick={() => { setDelayFilter('DELAYED'); setCurrentPage(1); }}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                delayFilter === 'DELAYED'
+                  ? 'bg-amber-500 text-white shadow-sm font-semibold'
+                  : 'text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300'
               }`}
             >
-              보관
+              ⚠️ 지연 포함
             </button>
           </div>
-        )}
+
+          {adminMode && (
+            <div className="flex rounded-md border border-slate-200 p-0.5 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
+              <button
+                type="button"
+                onClick={() => { setStatusFilter('ALL'); setCurrentPage(1); }}
+                className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                  statusFilter === 'ALL'
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                    : 'text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                전체
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStatusFilter('ACTIVE'); setCurrentPage(1); }}
+                className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                  statusFilter === 'ACTIVE'
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                    : 'text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                활성
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStatusFilter('ARCHIVED'); setCurrentPage(1); }}
+                className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                  statusFilter === 'ARCHIVED'
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                    : 'text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                보관
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {projects.isLoading && (
@@ -381,6 +513,22 @@ export default function ProjectsPage() {
                     </div>
                     <div
                       onMouseDown={(e) => handleMouseDown(e, 'description')}
+                      className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-slate-300 dark:bg-slate-700 opacity-0 group-hover/th:opacity-100 hover:!bg-sky-500 hover:opacity-100 active:!bg-sky-600 active:opacity-100 transition-opacity"
+                    />
+                  </th>
+                  <th
+                    scope="col"
+                    className="relative select-none px-3 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    style={{ width: `${renderedWidths.progress}px` }}
+                  >
+                    <div
+                      onClick={() => handleSort('progress')}
+                      className="cursor-pointer flex items-center justify-center gap-1 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
+                    >
+                      진척 현황 {renderSortIcon('progress' as any)}
+                    </div>
+                    <div
+                      onMouseDown={(e) => handleMouseDown(e, 'progress')}
                       className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-slate-300 dark:bg-slate-700 opacity-0 group-hover/th:opacity-100 hover:!bg-sky-500 hover:opacity-100 active:!bg-sky-600 active:opacity-100 transition-opacity"
                     />
                   </th>
@@ -478,83 +626,121 @@ export default function ProjectsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                {paginated.map((p) => (
-                  <tr key={p.id} className="group/row hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                    <td
-                      className="px-4 py-4 font-semibold text-slate-950 dark:text-slate-50"
-                      style={{ width: `${renderedWidths.name}px`, maxWidth: `${renderedWidths.name}px` }}
+                {paginated.map((p) => {
+                  const summary = p.delaySummary;
+                  const isCritical = summary?.status === 'CRITICAL';
+                  const isWarning = summary?.status === 'WARNING';
+                  return (
+                    <tr
+                      key={p.id}
+                      className={`group/row transition-colors ${
+                        isCritical
+                          ? 'bg-red-500/5 hover:bg-red-500/10 dark:bg-red-950/20 dark:hover:bg-red-950/30'
+                          : isWarning
+                          ? 'bg-amber-500/5 hover:bg-amber-500/10 dark:bg-amber-950/15 dark:hover:bg-amber-950/25'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
+                      }`}
                     >
-                      <ProjectNameCell project={p} canRename={canRename} />
-                    </td>
-                    <td
-                      className="px-4 py-4 text-slate-600 dark:text-slate-400 truncate"
-                      style={{ width: `${renderedWidths.description}px`, maxWidth: `${renderedWidths.description}px` }}
-                      title={p.description ?? ''}
-                    >
-                      {p.description ?? '-'}
-                    </td>
-                    <td
-                      className="whitespace-nowrap px-3 py-4 text-center"
-                      style={{ width: `${renderedWidths.status}px`, maxWidth: `${renderedWidths.status}px` }}
-                    >
-                      <StatusBadge status={p.status} />
-                    </td>
-                    <td
-                      className="whitespace-nowrap px-3 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
-                      style={{ width: `${renderedWidths.memberCount}px`, maxWidth: `${renderedWidths.memberCount}px` }}
-                    >
-                      {p.memberCount}명
-                    </td>
-                    <td
-                      className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
-                      style={{ width: `${renderedWidths.myRole}px`, maxWidth: `${renderedWidths.myRole}px` }}
-                      title={p.myRole ?? '비멤버 (ADMIN)'}
-                    >
-                      {p.myRole ?? '비멤버 (ADMIN)'}
-                    </td>
-                    <td
-                      className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
-                      style={{ width: `${renderedWidths.createdAt}px`, maxWidth: `${renderedWidths.createdAt}px` }}
-                    >
-                      {p.createdAt.slice(0, 10)}
-                    </td>
-                    <td
-                      className="whitespace-nowrap px-4 py-4 text-center text-slate-600 dark:text-slate-400 truncate"
-                      style={{ width: `${renderedWidths.updatedAt}px`, maxWidth: `${renderedWidths.updatedAt}px` }}
-                    >
-                      {p.updatedAt.slice(0, 10)}
-                    </td>
-                    {adminMode && (
                       <td
-                        className="whitespace-nowrap px-4 py-4 text-center"
-                        style={{ width: `${renderedWidths.manage}px`, maxWidth: `${renderedWidths.manage}px` }}
+                        className="px-4 py-3 font-semibold text-slate-950 dark:text-slate-50"
+                        style={{ width: `${renderedWidths.name}px`, maxWidth: `${renderedWidths.name}px` }}
                       >
-                        <div className="flex items-center justify-center gap-1.5">
-                          <ProjectArchiveButton project={p} />
-                          <Link
-                            to={`/projects/${p.id}/clone`}
-                            className="rounded bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:bg-sky-950/30 dark:text-sky-400 dark:hover:bg-sky-950/60 transition-colors"
-                            title="이 프로젝트를 템플릿으로 새 프로젝트 만들기"
-                          >
-                            복제
-                          </Link>
-                          {p.status === 'ARCHIVED' && (
+                        <ProjectNameCell project={p} canRename={canRename} />
+                      </td>
+                      <td
+                        className="px-4 py-3 text-slate-600 dark:text-slate-400 truncate"
+                        style={{ width: `${renderedWidths.description}px`, maxWidth: `${renderedWidths.description}px` }}
+                        title={p.description ?? ''}
+                      >
+                        {p.description ?? '-'}
+                      </td>
+                      <td
+                        className="px-3 py-3"
+                        style={{ width: `${renderedWidths.progress}px`, maxWidth: `${renderedWidths.progress}px` }}
+                      >
+                        {summary ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center justify-between">
+                              <DelayStatusBadge
+                                status={summary.status}
+                                delayGap={summary.avgDelayGap}
+                                size="sm"
+                              />
+                            </div>
+                            <ProgressBarWithExpected
+                              actualProgress={summary.avgActualProgress}
+                              expectedProgress={summary.avgExpectedProgress}
+                              status={summary.status}
+                              height="h-2"
+                              showLabels
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 font-mono text-center block">-</span>
+                        )}
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-3 py-3 text-center"
+                        style={{ width: `${renderedWidths.status}px`, maxWidth: `${renderedWidths.status}px` }}
+                      >
+                        <StatusBadge status={p.status} />
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-3 py-3 text-center text-slate-600 dark:text-slate-400 truncate"
+                        style={{ width: `${renderedWidths.memberCount}px`, maxWidth: `${renderedWidths.memberCount}px` }}
+                      >
+                        {p.memberCount}명
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-4 py-3 text-center text-slate-600 dark:text-slate-400 truncate"
+                        style={{ width: `${renderedWidths.myRole}px`, maxWidth: `${renderedWidths.myRole}px` }}
+                        title={p.myRole ?? '비멤버 (ADMIN)'}
+                      >
+                        {p.myRole ?? '비멤버 (ADMIN)'}
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-4 py-3 text-center text-slate-600 dark:text-slate-400 truncate"
+                        style={{ width: `${renderedWidths.createdAt}px`, maxWidth: `${renderedWidths.createdAt}px` }}
+                      >
+                        {p.createdAt.slice(0, 10)}
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-4 py-3 text-center text-slate-600 dark:text-slate-400 truncate"
+                        style={{ width: `${renderedWidths.updatedAt}px`, maxWidth: `${renderedWidths.updatedAt}px` }}
+                      >
+                        {p.updatedAt.slice(0, 10)}
+                      </td>
+                      {adminMode && (
+                        <td
+                          className="whitespace-nowrap px-4 py-3 text-center"
+                          style={{ width: `${renderedWidths.manage}px`, maxWidth: `${renderedWidths.manage}px` }}
+                        >
+                          <div className="flex items-center justify-center gap-1.5">
+                            <ProjectArchiveButton project={p} />
+                            <Link
+                              to={`/projects/${p.id}/clone`}
+                              className="rounded bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:bg-sky-950/30 dark:text-sky-400 dark:hover:bg-sky-950/60 transition-colors"
+                              title="이 프로젝트를 템플릿으로 새 프로젝트 만들기"
+                            >
+                              복제
+                            </Link>
                             <button
                               type="button"
                               onClick={() => setDeleteTarget(p)}
-                              className="rounded bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/60 transition-colors"
+                              className="rounded px-2 py-1 text-xs font-medium bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/50 transition-colors"
                             >
                               삭제
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
 
           {/* 페이징 컨트롤 */}
           {totalPages > 1 && (

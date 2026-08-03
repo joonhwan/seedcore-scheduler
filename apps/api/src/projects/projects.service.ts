@@ -15,10 +15,11 @@ import type {
   ProjectRole,
   UpdateProjectDto,
 } from '@sam/shared';
-import { buildRemapPlan, findDateSpan } from '@sam/shared';
+import { buildRemapPlan, findDateSpan, calculateProjectDelaySummary } from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { buildClonedNodes } from './clone-tree';
+import { buildTreeItems } from '../nodes/tree-aggregation';
 
 interface ActorContext {
   actorId: string;
@@ -37,6 +38,7 @@ export class ProjectsService {
 
   /**
    * 가시성 필터:
+
    *  - ADMIN + adminMode=true → 모든 프로젝트
    *  - 그 외 → 본인이 멤버인 프로젝트만
    */
@@ -53,22 +55,28 @@ export class ProjectsService {
           select: { role: true },
         },
         _count: { select: { members: true } },
+        nodes: true,
       },
       take: 500,
     });
 
-    return projects.map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      status: (p.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE') as
-        | 'ACTIVE'
-        | 'ARCHIVED',
-      myRole: roleOf(p.members[0]?.role ?? null),
-      memberCount: p._count.members,
-      createdAt: p.createdAt.toISOString(),
-      updatedAt: p.updatedAt.toISOString(),
-    }));
+    return projects.map((p) => {
+      const treeItems = buildTreeItems(p.nodes);
+      const delaySummary = calculateProjectDelaySummary(treeItems);
+      return {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        status: (p.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE') as
+          | 'ACTIVE'
+          | 'ARCHIVED',
+        myRole: roleOf(p.members[0]?.role ?? null),
+        memberCount: p._count.members,
+        createdAt: p.createdAt.toISOString(),
+        updatedAt: p.updatedAt.toISOString(),
+        delaySummary,
+      };
+    });
   }
 
   async getById(id: string, ctx: ActorContext): Promise<ProjectDetail> {
@@ -80,6 +88,7 @@ export class ProjectsService {
           select: { role: true },
         },
         _count: { select: { members: true } },
+        nodes: true,
       },
     });
     if (!project) throw new NotFoundException({ error: 'PROJECT_NOT_FOUND' });
@@ -89,6 +98,9 @@ export class ProjectsService {
     if (!isMember && !isAdminBrowsing) {
       throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
     }
+
+    const treeItems = buildTreeItems(project.nodes);
+    const delaySummary = calculateProjectDelaySummary(treeItems);
 
     return {
       id: project.id,
@@ -102,8 +114,10 @@ export class ProjectsService {
       createdAt: project.createdAt.toISOString(),
       updatedAt: project.updatedAt.toISOString(),
       createdById: project.createdById,
+      delaySummary,
     };
   }
+
 
   async create(input: CreateProjectDto, ctx: ActorContext): Promise<ProjectDetail> {
     const uniqueIds = Array.from(new Set(input.managerUserIds));

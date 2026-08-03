@@ -1,6 +1,10 @@
 import { z } from 'zod';
+import { ProjectDelaySummaryDto } from './expected-progress';
+export * from './expected-progress';
 
 export const GlobalRole = z.enum(['ADMIN', 'USER']);
+
+
 export type GlobalRole = z.infer<typeof GlobalRole>;
 
 export const ProjectRole = z.enum(['MANAGER', 'MEMBER']);
@@ -177,8 +181,10 @@ export const ProjectListItem = z.object({
   memberCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  delaySummary: ProjectDelaySummaryDto.optional(),
 });
 export type ProjectListItem = z.infer<typeof ProjectListItem>;
+
 
 export const ProjectDetail = ProjectListItem.extend({
   createdById: z.string(),
@@ -445,4 +451,8 @@ export const ProjectHistoryResponse = z.object({
   truncated: z.boolean(),
 });
 export type ProjectHistoryResponse = z.infer<typeof ProjectHistoryResponse>;
+
+// 예상 진척률 (Expected Progress) 계산 유틸리티 재노출
+export * from './expected-progress';
+
 

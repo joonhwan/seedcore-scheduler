@@ -9,16 +9,18 @@
 
 /** 하드코딩 기본 폭. localStorage 에 저장된 값이 없을 때 쓴다. */
 export const DEFAULT_COLUMN_WIDTHS = {
-  name: 240,
-  description: 380,
-  status: 90,
-  memberCount: 90,
-  myRole: 130,
-  createdAt: 130,
-  updatedAt: 130,
+  name: 220,
+  description: 320,
+  progress: 190,
+  status: 85,
+  memberCount: 85,
+  myRole: 110,
+  createdAt: 120,
+  updatedAt: 120,
   // 보관/복제/삭제 세 버튼이 들어가므로 다른 컬럼보다 넓다.
   manage: 180,
 } as const satisfies Record<string, number>;
+
 
 export type ProjectColumnKey = keyof typeof DEFAULT_COLUMN_WIDTHS;
 

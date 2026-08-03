@@ -81,6 +81,17 @@ export default function UserGuidePage() {
               </button>
               <button
                 type="button"
+                onClick={() => scrollToSection('sec-delay')}
+                className={`block w-full text-left px-2.5 py-1.5 rounded transition-colors ${
+                  activeSection === 'sec-delay'
+                    ? 'bg-red-50 font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-300'
+                    : 'text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
+                }`}
+              >
+                4. 🚨 예상 진척률 & 지연 검출 원리
+              </button>
+              <button
+                type="button"
                 onClick={() => scrollToSection('sec-4')}
                 className={`block w-full text-left px-2.5 py-1.5 rounded transition-colors ${
                   activeSection === 'sec-4'
@@ -88,7 +99,7 @@ export default function UserGuidePage() {
                     : 'text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
                 }`}
               >
-                4. 일정 트리 다루기
+                5. 일정 트리 다루기
               </button>
               <button
                 type="button"
@@ -99,7 +110,7 @@ export default function UserGuidePage() {
                     : 'text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
                 }`}
               >
-                5. 간트/타임라인 뷰
+                6. 간트/타임라인 뷰
               </button>
               <button
                 type="button"
@@ -110,8 +121,9 @@ export default function UserGuidePage() {
                     : 'text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
                 }`}
               >
-                6. 일정 상세 편집
+                7. 일정 상세 편집
               </button>
+
               <button
                 type="button"
                 onClick={() => scrollToSection('sec-7')}
@@ -354,12 +366,99 @@ export default function UserGuidePage() {
             </div>
           </section>
 
-          {/* 4. 일정 트리 다루기 */}
+          {/* 4. 예상 진척률과 지연 검출 원리 */}
+          <section id="sec-delay" className="scroll-mt-6 border-b border-slate-200 pb-8 dark:border-slate-800">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300 text-sm">4</span>
+              🚨 예상 진척률과 지연 검출 원리
+            </h2>
+            <div className="space-y-4 text-sm leading-relaxed">
+              <p className="text-slate-600 dark:text-slate-300">
+                각 일정 항목은 시작일부터 종료일까지 매일 일정한 속도로 진행된다고 가정하여 **오늘 날짜 기준 달성해야 할 예상 진척률(Expected Progress)**을 산출합니다.
+              </p>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/50 space-y-3">
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
+                  1. 예상 진척률 계산 공식
+                </h3>
+                <ul className="list-disc pl-5 space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+                  <li>**오늘 &lt; 시작일**: `0%` (아직 시작하지 않은 일정)</li>
+                  <li>**오늘 &ge; 종료일**: `100%` (이미 기간이 지난 일정이므로 100% 완료가 목표)</li>
+                  <li>**시작일 &le; 오늘 &lt; 종료일**:
+                    <br />
+                    <code className="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[11px] font-mono mt-1 inline-block">
+                      예상 진척률(%) = (오늘 - 시작일) / (종료일 - 시작일) × 100
+                    </code>
+                  </li>
+                </ul>
+
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/50 space-y-3">
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
+                  2. 지연 차이(delayGap) 및 상태 기준
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  <code className="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono">
+                    지연 차이 = 예상 진척률 - 실제 진척률 (%p)
+                  </code>
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse border border-slate-200 dark:border-slate-800">
+                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                      <tr>
+                        <th className="p-2 border w-24">상태</th>
+                        <th className="p-2 border w-36">판단 기준</th>
+                        <th className="p-2 border">시각적 효과 및 특징</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                      <tr>
+                        <td className="p-2 border font-bold text-red-600 dark:text-red-400">🚨 심각 지연</td>
+                        <td className="p-2 border font-mono">20%p 이상 미달</td>
+                        <td className="p-2 border text-slate-600 dark:text-slate-400">
+                          눈길을 끄는 🚨 **펄스(Ping Pulse) 경고 뱃지**와 붉은색 그라데이션이 적용되어 즉시 구별할 수 있습니다.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-semibold text-amber-600 dark:text-amber-400">⚠️ 주의 지연</td>
+                        <td className="p-2 border font-mono">10%p ~ 19%p 미달</td>
+                        <td className="p-2 border text-slate-600 dark:text-slate-400">
+                          ⚠️ **주황색 주의 뱃지**와 하이라이트 배경으로 지연 위험을 알려줍니다.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-medium text-emerald-600 dark:text-emerald-400">✅ 정상</td>
+                        <td className="p-2 border font-mono">지연 없음 (0%p 이하)</td>
+                        <td className="p-2 border text-slate-600 dark:text-slate-400">
+                          정상 일정 범위 내 진행 중이거나 미리 완료된 항목입니다.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
+                  3. 주요 활용 및 시각 효과
+                </h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>**프로젝트 목록 요약 카운터**: 상단 대시보드 위젯에서 전체/심각지연/주의/정상 개수를 한눈에 확인하고, 클릭 한 번으로 지연된 프로젝트만 모아볼 수 있습니다.</li>
+                  <li>**진척 바 상의 예상 마커(Needle Marker)**: 일정 상세 창이나 목록의 진행 바 상에 **오늘 기준 예상 목표 위치(세로 핀)**가 표시되어 눈으로 즉시 차이를 파악할 수 있습니다.</li>
+                  <li>**⚠️ 지연 항목만 보기 필터**: 일정 트리 상단의 지연 항목 버튼을 누르면 프로젝트 내 지연 중인 일정들만 빠르게 선별해 검토할 수 있습니다.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          {/* 5. 일정 트리 다루기 */}
           <section id="sec-4" className="scroll-mt-6 border-b border-slate-200 pb-8 dark:border-slate-800">
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/60 dark:text-sky-300 text-sm">4</span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/60 dark:text-sky-300 text-sm">5</span>
               일정 트리 다루기 — 그룹과 일정
             </h2>
+
             <div className="space-y-4 text-sm leading-relaxed">
               <p className="text-slate-600 dark:text-slate-300">
                 프로젝트 상세 화면 왼쪽 영역에는 일정 트리가 위치합니다. 일정은 **GROUP(그룹)**과 **ITEM(일정)**으로 구별됩니다.
