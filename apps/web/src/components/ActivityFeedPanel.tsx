@@ -81,7 +81,7 @@ export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
           }`}
         >
           <span>💬</span>
-          <span className="text-[11px]">댓글만</span>
+          <span className="text-[11px]">댓글만 보기</span>
         </button>
       </div>
 
