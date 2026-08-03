@@ -918,6 +918,7 @@ function TimelineComponent({
                   onBarDragStart={startBarDrag}
                   previewStart={previewStart}
                   previewEnd={previewEnd}
+                  allItems={items}
                   selectionMode={selectionMode}
                   checkState={checkStateMap.get(n.id) ?? 'unchecked'}
                   showCheckbox={showCheckbox}
@@ -935,6 +936,7 @@ function TimelineComponent({
                 />
               );
             })}
+
             {/* 오늘선: 라벨 칸(sticky) 뒤로 스크롤돼 들어가면 그리지 않는다.
                 화면상 위치(labelWidth + todayOffset*ppd - scrollLeftPx)가 labelWidth 미만이면
                 라벨 칸이 대부분 덮되 행 사이 1px 틈으로 빨간 점이 새어 보이기 때문. */}
@@ -989,6 +991,7 @@ function Row({
   onBarDragStart,
   previewStart,
   previewEnd,
+  allItems,
   selectionMode,
   checkState,
   showCheckbox,
@@ -1019,11 +1022,13 @@ function Row({
   onBarDragStart?: ((node: NodeTreeItem, mode: DragMode, e: React.MouseEvent) => void) | undefined;
   previewStart?: string | null | undefined;
   previewEnd?: string | null | undefined;
+  allItems?: NodeTreeItem[] | undefined;
   selectionMode: boolean;
   checkState: CheckState;
   showCheckbox: boolean;
   onToggleSelect?: ((id: string) => void) | undefined;
 }) {
+
   const isGroup = node.kind === 'GROUP';
   const start = isGroup ? node.startAtEffective : node.startAt;
   const end = isGroup ? node.endAtEffective : node.endAt;
@@ -1148,7 +1153,7 @@ function Row({
             {node.title}
           </span>
           {(() => {
-            const delayInfo = getNodeDelayInfo(node);
+            const delayInfo = getNodeDelayInfo(node, undefined, allItems);
             if (delayInfo.status === 'CRITICAL') return <span className="text-xs shrink-0" title={`🚨 예상보다 ${delayInfo.delayGap}%p 심각하게 지연 중`}>🚨</span>;
             if (delayInfo.status === 'WARNING') return <span className="text-xs shrink-0" title={`⚠️ 예상보다 ${delayInfo.delayGap}%p 지연 중`}>⚠️</span>;
             return null;
@@ -1214,7 +1219,8 @@ function Row({
       </div>
       <div className="relative" style={{ width: totalWidth }}>
         {bar && (() => {
-          const delayInfo = getNodeDelayInfo(node);
+          const delayInfo = getNodeDelayInfo(node, undefined, allItems);
+
 
 
           const isCritical = delayInfo.status === 'CRITICAL';
