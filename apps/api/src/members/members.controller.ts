@@ -5,11 +5,12 @@ import {
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AddMemberDto, type ProjectMemberItem } from '@sam/shared';
+import { AddMemberDto, UpdateMemberRoleDto, type ProjectMemberItem } from '@sam/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { OriginGuard } from '../common/origin.guard';
 import {
@@ -45,6 +46,22 @@ export class MembersController {
     @Req() req: AuthenticatedRequest,
   ): Promise<ProjectMemberItem> {
     return this.members.add(projectId, body, {
+      actorId: req.user!.id,
+      globalRole: req.user!.globalRole,
+      adminMode: req.adminMode === true,
+      ip: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
+  }
+
+  @Patch(':userId')
+  updateRole(
+    @Param('projectId') projectId: string,
+    @Param('userId') userId: string,
+    @Body(new ZodValidationPipe(UpdateMemberRoleDto)) body: UpdateMemberRoleDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ProjectMemberItem> {
+    return this.members.updateRole(projectId, userId, body, {
       actorId: req.user!.id,
       globalRole: req.user!.globalRole,
       adminMode: req.adminMode === true,

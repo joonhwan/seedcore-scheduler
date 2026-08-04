@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { AddMemberDto, ProjectMemberItem } from '@sam/shared';
+import type { AddMemberDto, ProjectMemberItem, UpdateMemberRoleDto } from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { assertProjectReadAccess } from '../common/project-access';
@@ -170,6 +170,94 @@ export class MembersService {
         payload: { sub: 'MEMBER_REMOVE' },
       });
     }
+  }
+
+  /**
+   * 역할 변경: MANAGER+ 또는 ADMIN 모드.
+   * - MANAGER 는 자기 자신(userId === ctx.actorId)의 역할을 변경할 수 없음.
+   * - ADMIN 모드인 ADMIN 은 자기 자신 포함 모든 사람 역할 변경 가능.
+   * - MANAGER -> MEMBER 격상 시 마지막 MANAGER 면 거부 (LAST_MANAGER).
+   */
+  async updateRole(
+    projectId: string,
+    userId: string,
+    body: UpdateMemberRoleDto,
+    ctx: ActorContext,
+  ): Promise<ProjectMemberItem> {
+    await this.assertProjectExists(projectId);
+    await this.assertWriteAccess(projectId, ctx);
+
+    // ADMIN + adminMode 가 아닌 경우 자기 자신의 역할 변경 금지
+    const isAdminOverride = ctx.globalRole === 'ADMIN' && ctx.adminMode === true;
+    if (!isAdminOverride && userId === ctx.actorId) {
+      throw new ForbiddenException({ error: 'CANNOT_CHANGE_SELF_ROLE' });
+    }
+
+    const target = await this.prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId } },
+      include: {
+        user: {
+          select: { id: true, username: true, displayName: true, isActive: true },
+        },
+      },
+    });
+    if (!target) {
+      throw new NotFoundException({ error: 'NOT_A_MEMBER' });
+    }
+
+    if (target.role === body.role) {
+      return {
+        userId: target.user.id,
+        username: target.user.username,
+        displayName: target.user.displayName,
+        role: target.role === 'MANAGER' ? 'MANAGER' : 'MEMBER',
+        addedAt: target.addedAt.toISOString(),
+      };
+    }
+
+    // MANAGER -> MEMBER 로 변경하는 경우 마지막 MANAGER 여부 검사
+    if (target.role === 'MANAGER' && body.role === 'MEMBER') {
+      const remaining = await this.prisma.projectMember.count({
+        where: { projectId, role: 'MANAGER', userId: { not: userId } },
+      });
+      if (remaining === 0) {
+        throw new BadRequestException({ error: 'LAST_MANAGER' });
+      }
+    }
+
+    const updated = await this.prisma.projectMember.update({
+      where: { projectId_userId: { projectId, userId } },
+      data: { role: body.role },
+    });
+
+    await this.audit.log({
+      actorId: ctx.actorId,
+      action: 'MEMBER_ROLE_UPDATE',
+      targetType: 'project_member',
+      targetId: `${projectId}:${userId}`,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      payload: { previousRole: target.role, newRole: body.role },
+    });
+    if (ctx.adminMode) {
+      await this.audit.log({
+        actorId: ctx.actorId,
+        action: 'ADMIN_OVERRIDE_EDIT',
+        targetType: 'project_member',
+        targetId: `${projectId}:${userId}`,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        payload: { sub: 'MEMBER_ROLE_UPDATE' },
+      });
+    }
+
+    return {
+      userId: target.user.id,
+      username: target.user.username,
+      displayName: target.user.displayName,
+      role: updated.role === 'MANAGER' ? 'MANAGER' : 'MEMBER',
+      addedAt: updated.addedAt.toISOString(),
+    };
   }
 
   // ─── 내부 가드 ────────────────────────────────────────────────────────────

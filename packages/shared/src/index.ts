@@ -133,6 +133,7 @@ export const AuditAction = z.enum([
   'PROJECT_CLONE',
   'MEMBER_ADD',
   'MEMBER_REMOVE',
+  'MEMBER_ROLE_UPDATE',
   'NODE_CREATE',
   'NODE_UPDATE',
   'NODE_MOVE',
@@ -246,6 +247,11 @@ export const AddMemberDto = z.object({
   role: ProjectRole,
 });
 export type AddMemberDto = z.infer<typeof AddMemberDto>;
+
+export const UpdateMemberRoleDto = z.object({
+  role: ProjectRole,
+});
+export type UpdateMemberRoleDto = z.infer<typeof UpdateMemberRoleDto>;
 
 export const ProjectMemberItem = z.object({
   userId: z.string(),

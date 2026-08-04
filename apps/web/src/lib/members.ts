@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AddMemberDto, ProjectMemberItem } from '@sam/shared';
+import type { AddMemberDto, ProjectMemberItem, ProjectRole } from '@sam/shared';
 import { api } from './api';
 import { projectKey } from './projects';
 
@@ -19,6 +19,19 @@ export function useAddMember(projectId: string) {
   return useMutation({
     mutationFn: (input: AddMemberDto) =>
       api.post<ProjectMemberItem>(`/projects/${projectId}/members`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: membersKey(projectId) });
+      qc.invalidateQueries({ queryKey: projectKey(projectId) });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+}
+
+export function useUpdateMemberRole(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: ProjectRole }) =>
+      api.patch<ProjectMemberItem>(`/projects/${projectId}/members/${userId}`, { role }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: membersKey(projectId) });
       qc.invalidateQueries({ queryKey: projectKey(projectId) });

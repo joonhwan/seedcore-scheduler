@@ -8,7 +8,7 @@ import {
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
 import { useProject } from '../lib/projects';
-import { useAddMember, useMembers, useRemoveMember } from '../lib/members';
+import { useAddMember, useMembers, useRemoveMember, useUpdateMemberRole } from '../lib/members';
 import { useUsers } from '../lib/users';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
@@ -53,7 +53,15 @@ export default function ProjectMembersPage() {
         <h2 className="text-sm font-semibold">현재 멤버 ({members.data?.length ?? 0})</h2>
         <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
           {members.data?.map((m) => (
-            <MemberRow key={m.userId} projectId={id} member={m} canManage={canManage} />
+            <MemberRow
+              key={m.userId}
+              projectId={id}
+              member={m}
+              canManage={canManage}
+              isAdmin={isAdmin}
+              adminMode={adminMode}
+              currentUserId={me.data?.id}
+            />
           ))}
           {members.data && members.data.length === 0 && (
             <li className="py-2 text-sm text-slate-500">등록된 멤버가 없습니다.</li>
@@ -75,12 +83,36 @@ function MemberRow({
   projectId,
   member,
   canManage,
+  isAdmin,
+  adminMode,
+  currentUserId,
 }: {
   projectId: string;
   member: ProjectMemberItem;
   canManage: boolean;
+  isAdmin: boolean;
+  adminMode: boolean;
+  currentUserId: string | undefined;
 }) {
   const remove = useRemoveMember(projectId);
+  const updateRole = useUpdateMemberRole(projectId);
+
+  const isSelf = currentUserId === member.userId;
+  // ADMIN 모드의 ADMIN 은 자기 자신 포함 모두 변경 가능. 일반 MANAGER 는 자기 자신 변경 불가.
+  const canChangeRole = canManage && (!isSelf || (isAdmin && adminMode));
+
+  async function onRoleChange(newRole: ProjectRole) {
+    if (newRole === member.role) return;
+    const actionText = newRole === 'MANAGER' ? 'MANAGER(매니저)로 승격' : 'MEMBER(일반 멤버)로 변경';
+    const ok = window.confirm(`"${member.displayName}" 님의 역할을 ${actionText}하시겠습니까?`);
+    if (!ok) return;
+    try {
+      await updateRole.mutateAsync({ userId: member.userId, role: newRole });
+      toast.success(`"${member.displayName}" 님의 역할이 ${newRole}로 변경되었습니다.`);
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    }
+  }
 
   async function onRemove() {
     const ok = window.confirm(`"${member.displayName}" 을(를) 멤버에서 제거하시겠습니까?`);
@@ -95,29 +127,61 @@ function MemberRow({
 
   return (
     <li className="flex items-center justify-between gap-3 py-2 text-sm">
-      <div>
+      <div className="flex items-center gap-2">
         <span className="font-medium">{member.displayName}</span>{' '}
         <span className="text-xs text-slate-500">@{member.username}</span>
-        <span
-          className={`ml-2 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
-            member.role === 'MANAGER'
-              ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200'
-              : 'border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
-          }`}
-        >
-          {member.role}
-        </span>
+        {isSelf && (
+          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800 dark:bg-sky-950 dark:text-sky-300">
+            나
+          </span>
+        )}
       </div>
-      {canManage && (
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={remove.isPending}
-          className="text-xs text-rose-600 hover:underline disabled:opacity-50 dark:text-rose-400"
-        >
-          제거
-        </button>
-      )}
+
+      <div className="flex items-center gap-3">
+        {canManage ? (
+          <div className="flex items-center gap-1">
+            <select
+              value={member.role}
+              onChange={(e) => void onRoleChange(e.target.value as ProjectRole)}
+              disabled={!canChangeRole || updateRole.isPending}
+              title={
+                !canChangeRole && isSelf
+                  ? '자기 자신의 역할은 변경할 수 없습니다.'
+                  : undefined
+              }
+              className={`rounded border px-2 py-1 text-xs font-semibold focus:outline-none transition-colors ${
+                member.role === 'MANAGER'
+                  ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200'
+                  : 'border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+              } ${!canChangeRole ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-slate-400'}`}
+            >
+              <option value="MANAGER">MANAGER</option>
+              <option value="MEMBER">MEMBER</option>
+            </select>
+          </div>
+        ) : (
+          <span
+            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+              member.role === 'MANAGER'
+                ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200'
+                : 'border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+            }`}
+          >
+            {member.role}
+          </span>
+        )}
+
+        {canManage && (
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={remove.isPending}
+            className="text-xs text-rose-600 hover:underline disabled:opacity-50 dark:text-rose-400"
+          >
+            제거
+          </button>
+        )}
+      </div>
     </li>
   );
 }
