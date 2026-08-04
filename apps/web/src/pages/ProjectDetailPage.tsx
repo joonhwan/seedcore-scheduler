@@ -794,8 +794,6 @@ function ProjectHeader({
       }
     }
     return count > 0 ? Math.round(sum / count) : null;
-    if (count === 0) return null;
-    return Math.round(sum / count);
   }, [nodes]);
 
   const projectDelaySummary = useMemo(() => {

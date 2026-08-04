@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { MAX_TREE_DEPTH, getNodeDelayInfo, type NodeKind, type NodeTreeItem } from '@sam/shared';
+import { MAX_TREE_DEPTH, calculateTreeNodesDelayInfo, getNodeDelayInfo, type NodeKind, type NodeTreeItem, type ExpectedProgressResult } from '@sam/shared';
 import DelayStatusBadge from './DelayStatusBadge';
 import ProgressBarWithExpected from './ProgressBarWithExpected';
 import ProgressPercentBadge from './ProgressPercentBadge';
@@ -49,13 +49,19 @@ export default function NodeTree(props: NodeTreeProps) {
   const [onlyDelayed, setOnlyDelayed] = useState(false);
   const tree = useMemo(() => buildTree(props.items), [props.items]);
 
+  // 전체 트리의 지연 정보를 단 1회 계산 (O(N))
+  const delayInfoMap = useMemo(() => calculateTreeNodesDelayInfo(props.items), [props.items]);
+
   // 지연 노드 수 체크
   const delayedCount = useMemo(() => {
-    return props.items.filter((item) => {
-      const info = getNodeDelayInfo(item, undefined, props.items);
-      return info.status === 'CRITICAL' || info.status === 'WARNING';
-    }).length;
-  }, [props.items]);
+    let count = 0;
+    for (const info of delayInfoMap.values()) {
+      if (info.status === 'CRITICAL' || info.status === 'WARNING') {
+        count++;
+      }
+    }
+    return count;
+  }, [delayInfoMap]);
 
   return (
     <div>
@@ -95,7 +101,7 @@ export default function NodeTree(props: NodeTreeProps) {
             <NodeRow
               key={n.id}
               node={n}
-              allItems={props.items}
+              delayInfoMap={delayInfoMap}
               siblingCount={tree.length}
               indexAmongSiblings={i}
               onlyDelayed={onlyDelayed}
@@ -110,7 +116,7 @@ export default function NodeTree(props: NodeTreeProps) {
 
 interface NodeRowProps extends Omit<NodeTreeProps, 'items'> {
   node: TreeNode;
-  allItems: NodeTreeItem[];
+  delayInfoMap: Map<string, ExpectedProgressResult>;
   siblingCount: number;
   indexAmongSiblings: number;
   onlyDelayed: boolean;
@@ -118,7 +124,7 @@ interface NodeRowProps extends Omit<NodeTreeProps, 'items'> {
 
 function NodeRow({
   node,
-  allItems,
+  delayInfoMap,
   siblingCount,
   indexAmongSiblings,
   selectedId,
@@ -137,20 +143,20 @@ function NodeRow({
   const childWouldExceedDepth = node.depth + 1 >= MAX_TREE_DEPTH;
   const subtreeMaxDepth = maxDescendantDepth(node);
 
-  const delayInfo = getNodeDelayInfo(node, undefined, allItems);
+  const delayInfo = delayInfoMap.get(node.id) || getNodeDelayInfo(node);
 
   const isDelayed = delayInfo.status === 'CRITICAL' || delayInfo.status === 'WARNING';
   const isCritical = delayInfo.status === 'CRITICAL';
 
-  // 자손 중에 지연된 노드가 있는지 확인
+  // 자손 중에 지연된 노드가 있는지 O(1) 룩업 기반 탐색
   const hasDelayedDescendant = useMemo(() => {
     const check = (n: TreeNode): boolean => {
-      const info = getNodeDelayInfo(n, undefined, allItems);
-      if (info.status === 'CRITICAL' || info.status === 'WARNING') return true;
+      const info = delayInfoMap.get(n.id);
+      if (info && (info.status === 'CRITICAL' || info.status === 'WARNING')) return true;
       return n.children.some(check);
     };
     return node.children.some(check);
-  }, [node, allItems]);
+  }, [node, delayInfoMap]);
 
 
   // "지연 항목만" 필터링 시, 본인이 지연되었거나 자손이 지연된 경우만 표시
@@ -267,7 +273,7 @@ function NodeRow({
             <NodeRow
               key={c.id}
               node={c}
-              allItems={allItems}
+              delayInfoMap={delayInfoMap}
               siblingCount={node.children.length}
               indexAmongSiblings={i}
               onlyDelayed={onlyDelayed}

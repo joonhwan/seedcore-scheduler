@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, type ForwardedRef } from 'react';
-import { MAX_TREE_DEPTH, getNodeDelayInfo, type NodeTreeItem, type NodeHistoryItem } from '@sam/shared';
+import { MAX_TREE_DEPTH, calculateTreeNodesDelayInfo, getNodeDelayInfo, type NodeTreeItem, type NodeHistoryItem, type ExpectedProgressResult } from '@sam/shared';
 import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
 
 import { FolderIcon, ItemIcon } from './Icons';
@@ -161,6 +161,8 @@ function TimelineComponent({
     }
     return items;
   }, [items, barDrag, previewProposal]);
+
+  const delayInfoMap = useMemo(() => calculateTreeNodesDelayInfo(items), [items]);
 
   const flat = useMemo(() => {
     const list = flattenTree(items, collapsedIds);
@@ -920,6 +922,7 @@ function TimelineComponent({
                   previewStart={previewStart}
                   previewEnd={previewEnd}
                   allItems={items}
+                  delayInfoMap={delayInfoMap}
                   selectionMode={selectionMode}
                   checkState={checkStateMap.get(n.id) ?? 'unchecked'}
                   showCheckbox={showCheckbox}
@@ -993,6 +996,7 @@ function Row({
   previewStart,
   previewEnd,
   allItems,
+  delayInfoMap,
   selectionMode,
   checkState,
   showCheckbox,
@@ -1024,6 +1028,7 @@ function Row({
   previewStart?: string | null | undefined;
   previewEnd?: string | null | undefined;
   allItems?: NodeTreeItem[] | undefined;
+  delayInfoMap?: Map<string, ExpectedProgressResult> | undefined;
   selectionMode: boolean;
   checkState: CheckState;
   showCheckbox: boolean;
@@ -1154,7 +1159,7 @@ function Row({
             {node.title}
           </span>
           {(() => {
-            const delayInfo = getNodeDelayInfo(node, undefined, allItems);
+            const delayInfo = getNodeDelayInfo(node, undefined, delayInfoMap);
             return (
               <div className="flex items-center gap-1 shrink-0 mr-1">
                 {delayInfo.status === 'CRITICAL' && (
@@ -1227,7 +1232,7 @@ function Row({
       </div>
       <div className="relative" style={{ width: totalWidth }}>
         {bar && (() => {
-          const delayInfo = getNodeDelayInfo(node, undefined, allItems);
+          const delayInfo = getNodeDelayInfo(node, undefined, delayInfoMap);
 
 
 

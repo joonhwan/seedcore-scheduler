@@ -41,12 +41,24 @@ export interface NodeDelayInput {
 }
 
 /**
+ * 오늘 날짜의 YYYY-MM-DD ISO 문자열을 구합니다. (기본값: 로컬 타임존 기준)
+ */
+export function getTodayIso(todayIso?: string): string {
+  if (todayIso) return todayIso;
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * 시작일(startAt)과 종료일(endAt), 기준일(todayIso)을 바탕으로 예상 진척률(0~100)을 계산합니다.
  */
 export function calculateExpectedProgress(
   startAt: string | null | undefined,
   endAt: string | null | undefined,
-  todayIso: string = new Date().toISOString().slice(0, 10),
+  todayIso: string = getTodayIso(),
 ): number | null {
   if (!startAt || !endAt) {
     return null;
@@ -82,7 +94,7 @@ export function calculateExpectedProgress(
  */
 export function getItemNodeDelayInfo(
   node: NodeDelayInput,
-  todayIso: string = new Date().toISOString().slice(0, 10),
+  todayIso: string = getTodayIso(),
 ): ExpectedProgressResult {
   // GROUP 노드인 경우 단일 노드 정보만으로는 통째 선형 계산을 수행하지 않음 (자손 전파 전까지 ON_TRACK 기본)
   if (node.kind === 'GROUP') {
@@ -132,17 +144,22 @@ export function getItemNodeDelayInfo(
 
 /**
  * 전체 노드 배열에서 특정 GROUP 노드의 모든 자손 ITEM 노드들을 수집합니다.
+ * childrenByParentMap을 전달하면 O(N)으로 탐색을 최적화합니다.
  */
 function collectSubtreeItemNodes<T extends NodeDelayInput>(
   groupId: string,
   allNodes: T[],
+  childrenByParentMap?: Map<string, T[]>,
 ): T[] {
   const items: T[] = [];
   const queue = [groupId];
 
   while (queue.length > 0) {
     const currentId = queue.shift()!;
-    const children = allNodes.filter((n) => n.parentId === currentId);
+    const children = childrenByParentMap
+      ? childrenByParentMap.get(currentId) || []
+      : allNodes.filter((n) => n.parentId === currentId);
+
     for (const child of children) {
       if (child.kind === 'ITEM' || (!child.kind && child.startAt && child.endAt)) {
         items.push(child);
@@ -162,9 +179,22 @@ function collectSubtreeItemNodes<T extends NodeDelayInput>(
  */
 export function calculateTreeNodesDelayInfo<T extends NodeDelayInput>(
   allNodes: T[],
-  todayIso: string = new Date().toISOString().slice(0, 10),
+  todayIso: string = getTodayIso(),
 ): Map<string, ExpectedProgressResult> {
   const resultMap = new Map<string, ExpectedProgressResult>();
+
+  // 0) 부모-자식 관계 맵 인덱싱 (O(N) 탐색용)
+  const childrenByParentMap = new Map<string, T[]>();
+  for (const node of allNodes) {
+    if (node.parentId) {
+      let list = childrenByParentMap.get(node.parentId);
+      if (!list) {
+        list = [];
+        childrenByParentMap.set(node.parentId, list);
+      }
+      list.push(node);
+    }
+  }
 
   // 1) ITEM 노드들 지연 상태 먼저 계산
   const itemMap = new Map<string, ExpectedProgressResult>();
@@ -181,7 +211,7 @@ export function calculateTreeNodesDelayInfo<T extends NodeDelayInput>(
   // 2) GROUP 노드들 버블업(전파) 지연 상태 계산
   for (const node of allNodes) {
     if (node.kind === 'GROUP' && node.id) {
-      const childItems = collectSubtreeItemNodes(node.id, allNodes);
+      const childItems = collectSubtreeItemNodes(node.id, allNodes, childrenByParentMap);
       if (childItems.length === 0) {
         resultMap.set(node.id, {
           expectedProgress: null,
@@ -240,17 +270,22 @@ export function calculateTreeNodesDelayInfo<T extends NodeDelayInput>(
 
 /**
  * 단일 노드 또는 노드 트리의 지연 정보를 반환합니다.
- * allNodes가 주어지면 GROUP 노드의 서브트리 전파 상태를 정확하게 반환합니다.
+ * allNodes 또는 precomputedMap이 주어지면 GROUP 노드의 서브트리 전파 상태를 정확하고 빠르게 반환합니다.
  */
 export function getNodeDelayInfo<T extends NodeDelayInput>(
   node: T,
-  todayIso: string = new Date().toISOString().slice(0, 10),
-  allNodes?: T[],
+  todayIso: string = getTodayIso(),
+  allNodesOrMap?: T[] | Map<string, ExpectedProgressResult>,
 ): ExpectedProgressResult {
-  if (allNodes && allNodes.length > 0 && node.id) {
-    const map = calculateTreeNodesDelayInfo(allNodes, todayIso);
-    const info = map.get(node.id);
-    if (info) return info;
+  if (allNodesOrMap && node.id) {
+    if (allNodesOrMap instanceof Map) {
+      const info = allNodesOrMap.get(node.id);
+      if (info) return info;
+    } else if (Array.isArray(allNodesOrMap) && allNodesOrMap.length > 0) {
+      const map = calculateTreeNodesDelayInfo(allNodesOrMap, todayIso);
+      const info = map.get(node.id);
+      if (info) return info;
+    }
   }
 
   return getItemNodeDelayInfo(node, todayIso);
