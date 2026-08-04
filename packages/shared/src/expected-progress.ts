@@ -53,7 +53,29 @@ export function getTodayIso(todayIso?: string): string {
 }
 
 /**
- * 시작일(startAt)과 종료일(endAt), 기준일(todayIso)을 바탕으로 예상 진척률(0~100)을 계산합니다.
+ * fromIso(포함)부터 toIso(미포함) 사이의 날짜 중 주말(토요일, 일요일)을 제외한 영업일(Working Days) 수 반환.
+ */
+export function countWorkingDays(fromIso: string, toIso: string): number {
+  if (fromIso >= toIso) return 0;
+
+  let current = new Date(`${fromIso}T00:00:00Z`);
+  const end = new Date(`${toIso}T00:00:00Z`);
+  let count = 0;
+
+  while (current < end) {
+    const dayOfWeek = current.getUTCDay(); // 0: 일요일, 6: 토요일
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      count++;
+    }
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  return count;
+}
+
+/**
+ * 시작일(startAt)과 종료일(endAt), 기준일(todayIso)을 바탕으로 주말(토/일)을 제외한
+ * 영업일 기준 예상 진척률(0~100)을 계산합니다.
  */
 export function calculateExpectedProgress(
   startAt: string | null | undefined,
@@ -73,19 +95,22 @@ export function calculateExpectedProgress(
   }
 
   // startAt <= todayIso < endAt
-  const startDate = new Date(`${startAt}T00:00:00Z`);
-  const endDate = new Date(`${endAt}T00:00:00Z`);
-  const todayDate = new Date(`${todayIso}T00:00:00Z`);
+  const totalWorkingDays = countWorkingDays(startAt, endAt);
+  const elapsedWorkingDays = countWorkingDays(startAt, todayIso);
 
-  const totalTime = endDate.getTime() - startDate.getTime();
-  if (totalTime <= 0) {
-    return todayIso < startAt ? 0 : 100;
+  // 만약 주말 단기 작업 등으로 전체 기간 내 영업일이 0일인 경우, 달력일수(Calendar Days) 방식으로 fallback
+  if (totalWorkingDays <= 0) {
+    const startDate = new Date(`${startAt}T00:00:00Z`);
+    const endDate = new Date(`${endAt}T00:00:00Z`);
+    const todayDate = new Date(`${todayIso}T00:00:00Z`);
+    const totalTime = endDate.getTime() - startDate.getTime();
+    if (totalTime <= 0) return todayIso < startAt ? 0 : 100;
+
+    const elapsedTime = todayDate.getTime() - startDate.getTime();
+    return Math.max(0, Math.min(100, Math.round((elapsedTime / totalTime) * 100)));
   }
 
-  const elapsedTime = todayDate.getTime() - startDate.getTime();
-  const progressRatio = elapsedTime / totalTime;
-  const progressPercent = Math.round(progressRatio * 100);
-
+  const progressPercent = Math.round((elapsedWorkingDays / totalWorkingDays) * 100);
   return Math.max(0, Math.min(100, progressPercent));
 }
 

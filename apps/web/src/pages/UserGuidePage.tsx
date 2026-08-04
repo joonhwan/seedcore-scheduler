@@ -374,12 +374,12 @@ export default function UserGuidePage() {
             </h2>
             <div className="space-y-4 text-sm leading-relaxed">
               <p className="text-slate-600 dark:text-slate-300">
-                각 일정 항목은 시작일부터 종료일까지 매일 일정한 속도로 진행된다고 가정하여 **오늘 날짜 기준 달성해야 할 예상 진척률(Expected Progress)**을 산출합니다.
+                각 일정 항목은 시작일부터 종료일까지 **주말(토요일, 일요일)을 제외한 평일(영업일)** 동안 매일 일정한 속도로 진행된다고 가정하여 **오늘 날짜 기준 달성해야 할 예상 진척률(Expected Progress)**을 산출합니다.
               </p>
 
               <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/50 space-y-3">
                 <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
-                  1. 예상 진척률 계산 공식
+                  1. 영업일(주말 제외) 기준 예상 진척률 공식
                 </h3>
                 <ul className="list-disc pl-5 space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                   <li>**오늘 &lt; 시작일**: `0%` (아직 시작하지 않은 일정)</li>
@@ -387,8 +387,11 @@ export default function UserGuidePage() {
                   <li>**시작일 &le; 오늘 &lt; 종료일**:
                     <br />
                     <code className="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[11px] font-mono mt-1 inline-block">
-                      예상 진척률(%) = (오늘 - 시작일) / (종료일 - 시작일) × 100
+                      예상 진척률(%) = (시작일~오늘 경과 영업일 수) / (전체 기간 영업일 수) × 100
                     </code>
+                  </li>
+                  <li className="text-sky-700 dark:text-sky-300 font-medium">
+                    ⓘ **주말 특성**: 토요일과 일요일에는 영업일수가 증가하지 않으므로 예상 진척률이 오르지 않고 금요일 종료 시점의 진척률이 동결 유지됩니다.
                   </li>
                 </ul>
 

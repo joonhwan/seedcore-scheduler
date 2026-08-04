@@ -45,8 +45,11 @@ pnpm dev
   - 일반 `MANAGER`는 타인 멤버의 역할만 변경 가능하며 자기 자신의 역할은 변경 불가 (`CANNOT_CHANGE_SELF_ROLE`).
   - `ADMIN` 모드의 `ADMIN` 계정은 자기 자신 포함 모든 사람의 역할 변경 가능.
   - 마지막 `MANAGER`를 `MEMBER`로 격상하려 할 경우 `LAST_MANAGER` 예외로 보호.
+- **영업일(주말 제외) 기준 예상 진척율 계산**:
+  - `calculateExpectedProgress` 함수를 주말(토/일요일) 제외 영업일(Working Days) 기반으로 전환.
+  - 주말 동안 예상 진척율이 상승하지 않고 금요일 종료 시점 상태를 유지하여 허위 지연 발생 방지.
 - **사용설명서 갱신 & 권한별 기능 차이 비교표 추가**:
-  - `UserGuidePage.tsx`: v1.2 버전 갱신, 다중 선택 일정 조정 사용법 추가, **각 권한별(ADMIN 모드 On/Off, MANAGER, MEMBER, 비소속) 기능 차이 비교표(8.1)** 및 멤버 역할 관리 가이드(8.2) 추가.
+  - `UserGuidePage.tsx`: v1.2 버전 갱신, 다중 선택 일정 조정 사용법 추가, **영업일 기준 예상 진척률 공식 안내(4.1)**, **각 권한별(ADMIN 모드 On/Off, MANAGER, MEMBER, 비소속) 기능 차이 비교표(8.1)** 및 멤버 역할 관리 가이드(8.2) 추가.
 
 ### M0 — 모노레포 스캐폴딩 ✓
 - pnpm workspaces 빌드/실행

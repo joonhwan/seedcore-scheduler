@@ -1,10 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import {
+  countWorkingDays,
   calculateExpectedProgress,
   getNodeDelayInfo,
   calculateTreeNodesDelayInfo,
   calculateProjectDelaySummary,
 } from './expected-progress';
+
+describe('countWorkingDays', () => {
+  it('평일 일수를 정확히 계산함 (주말 제외)', () => {
+    // 2026-08-07(금) ~ 2026-08-11(화): 금(8/7), 월(8/10) -> [8/7, 8/11) 기간 중 영업일 2일 (금, 월)
+    expect(countWorkingDays('2026-08-07', '2026-08-11')).toBe(2);
+    // 2026-08-08(토) ~ 2026-08-10(월): [8/8, 8/10) 기간 중 영업일 0일 (토, 일)
+    expect(countWorkingDays('2026-08-08', '2026-08-10')).toBe(0);
+  });
+});
 
 describe('calculateExpectedProgress', () => {
   it('날짜가 없으면 null 반환', () => {
@@ -21,9 +31,16 @@ describe('calculateExpectedProgress', () => {
     expect(calculateExpectedProgress('2026-08-05', '2026-08-15', '2026-08-20')).toBe(100);
   });
 
-  it('기간 중간일 때 비율 계산', () => {
-    expect(calculateExpectedProgress('2026-08-01', '2026-08-11', '2026-08-06')).toBe(50);
-    expect(calculateExpectedProgress('2026-08-01', '2026-08-05', '2026-08-02')).toBe(25);
+  it('주말(토/일) 제외 영업일 기준 비율 계산 및 주말 동결 특성', () => {
+    // 금요일(8/7) ~ 화요일(8/11) -> 총 2영업일 [8/7(금), 8/10(월)]
+    // 8/7(금): 0영업일 경과 -> 0%
+    expect(calculateExpectedProgress('2026-08-07', '2026-08-11', '2026-08-07')).toBe(0);
+    // 8/8(토): 금 1영업일 경과 -> 1/2 = 50%
+    expect(calculateExpectedProgress('2026-08-07', '2026-08-11', '2026-08-08')).toBe(50);
+    // 8/9(일): 주말이므로 금요일 상태 동결 50%
+    expect(calculateExpectedProgress('2026-08-07', '2026-08-11', '2026-08-09')).toBe(50);
+    // 8/10(월): 금 1영업일 경과 -> 50%
+    expect(calculateExpectedProgress('2026-08-07', '2026-08-11', '2026-08-10')).toBe(50);
   });
 
   it('시작일과 종료일이 같을 때', () => {
