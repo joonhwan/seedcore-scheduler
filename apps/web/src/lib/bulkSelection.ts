@@ -130,3 +130,51 @@ export function hasGroupSelected(
   }
   return false;
 }
+
+// 일정 조정 대상 ITEM 노드 목록 수집.
+// - 선택된 ITEM 은 그대로 포함
+// - 선택된 GROUP 은 하위 자손 ITEM 들을 재귀적으로 수집해 포함 (중복 제거)
+export function collectShiftTargets(
+  selectedIds: Set<string>,
+  items: NodeTreeItem[],
+): NodeTreeItem[] {
+  const byId = new Map(items.map((n) => [n.id, n]));
+  const childrenMap = new Map<string | null, NodeTreeItem[]>();
+  for (const n of items) {
+    const arr = childrenMap.get(n.parentId) ?? [];
+    arr.push(n);
+    childrenMap.set(n.parentId, arr);
+  }
+
+  const resultIds = new Set<string>();
+  const resultNodes: NodeTreeItem[] = [];
+
+  const addDescendantItems = (nodeId: string) => {
+    for (const child of childrenMap.get(nodeId) ?? []) {
+      if (child.kind === 'ITEM') {
+        if (!resultIds.has(child.id)) {
+          resultIds.add(child.id);
+          resultNodes.push(child);
+        }
+      } else {
+        addDescendantItems(child.id);
+      }
+    }
+  };
+
+  for (const id of selectedIds) {
+    const n = byId.get(id);
+    if (!n) continue;
+    if (n.kind === 'ITEM') {
+      if (!resultIds.has(n.id)) {
+        resultIds.add(n.id);
+        resultNodes.push(n);
+      }
+    } else if (n.kind === 'GROUP') {
+      addDescendantItems(n.id);
+    }
+  }
+
+  return resultNodes;
+}
+

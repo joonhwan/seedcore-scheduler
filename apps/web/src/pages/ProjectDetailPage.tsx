@@ -21,11 +21,12 @@ import ActivityFeedPanel from '../components/ActivityFeedPanel';
 import Timeline, { type TimelineUnit, type TimelineHandle } from '../components/Timeline';
 import BarChangeConfirmDialog from '../components/BarChangeConfirmDialog';
 import BulkActionConfirmDialog, { type BulkCompleteMode } from '../components/BulkActionConfirmDialog';
+import BulkShiftDatesDialog from '../components/BulkShiftDatesDialog';
 import DelayStatusBadge from '../components/DelayStatusBadge';
 
 import type { BarChangeProposal } from '../lib/ganttTypes';
 import { addDays } from '../lib/ganttMath';
-import { collectDeleteTargets, collectCompleteTargets, hasGroupSelected, collectSubtreeIds } from '../lib/bulkSelection';
+import { collectDeleteTargets, collectCompleteTargets, hasGroupSelected, collectSubtreeIds, collectShiftTargets } from '../lib/bulkSelection';
 import ExportMenu from '../components/ExportMenu';
 import ProjectNameEditor from '../components/ProjectNameEditor';
 import GanttExportDialog from '../components/GanttExportDialog';
@@ -65,7 +66,7 @@ export default function ProjectDetailPage() {
   const [createInsertAfter, setCreateInsertAfter] = useState<NodeTreeItem | null>(null);
   // 다중 선택(선택 모드)
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'delete' | 'complete' | null>(null);
+  const [bulkAction, setBulkAction] = useState<'delete' | 'complete' | 'shift' | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [excelExportOpen, setExcelExportOpen] = useState(false);
   const selectionMode = selectedNodeIds.size > 0;
@@ -426,6 +427,39 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function runBulkShiftDate(deltaDays: number) {
+    if (deltaDays === 0) {
+      setBulkAction(null);
+      return;
+    }
+    const items = nodes.data ?? [];
+    const targets = collectShiftTargets(selectedNodeIds, items);
+    try {
+      let count = 0;
+      for (const node of targets) {
+        if (!node.startAt || !node.endAt) continue;
+        const newStart = addDays(node.startAt, deltaDays);
+        const newEnd = addDays(node.endAt, deltaDays);
+        await updateNode.mutateAsync({
+          id: node.id,
+          body: {
+            startAt: newStart,
+            endAt: newEnd,
+            expectedUpdatedAt: node.updatedAt,
+          },
+        });
+        count += 1;
+      }
+      const dirText = deltaDays > 0 ? `${deltaDays}일 연기` : `${Math.abs(deltaDays)}일 당김`;
+      toast.success(`${count}개 일정을 ${dirText}했습니다.`);
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setSelectedNodeIds(new Set());
+      setBulkAction(null);
+    }
+  }
+
   function handleBulkConfirm(mode: BulkCompleteMode) {
     if (bulkAction === 'delete') void runBulkDelete();
     else if (bulkAction === 'complete') void runBulkComplete(mode);
@@ -503,6 +537,7 @@ export default function ProjectDetailPage() {
               selectedNodeIds={selectedNodeIds}
               onToggleNodeSelect={canEditNodes ? toggleNodeSelect : undefined}
               onBulkComplete={() => setBulkAction('complete')}
+              onBulkShiftDate={() => setBulkAction('shift')}
               onBulkDelete={() => setBulkAction('delete')}
               onClearSelection={() => setSelectedNodeIds(new Set())}
             />
@@ -642,13 +677,23 @@ export default function ProjectDetailPage() {
         />
       )}
 
-      {bulkAction && (
+      {(bulkAction === 'delete' || bulkAction === 'complete') && (
         <BulkActionConfirmDialog
           action={bulkAction}
           count={selectedNodeIds.size}
           hasGroup={hasGroupSelected(selectedNodeIds, nodes.data ?? [])}
           onCancel={handleBulkCancel}
           onConfirm={handleBulkConfirm}
+        />
+      )}
+
+      {bulkAction === 'shift' && (
+        <BulkShiftDatesDialog
+          selectedCount={selectedNodeIds.size}
+          targetItemCount={collectShiftTargets(selectedNodeIds, nodes.data ?? []).length}
+          hasGroup={hasGroupSelected(selectedNodeIds, nodes.data ?? [])}
+          onCancel={handleBulkCancel}
+          onConfirm={(deltaDays) => void runBulkShiftDate(deltaDays)}
         />
       )}
 

@@ -6,6 +6,7 @@ import {
   hasGroupSelected,
   collectSubtreeIds,
   computeCheckStates,
+  collectShiftTargets,
 } from './bulkSelection';
 
 function node(
@@ -130,3 +131,18 @@ describe('computeCheckStates', () => {
     expect(s.get('i1')).toBe('unchecked');
   });
 });
+
+describe('collectShiftTargets', () => {
+  it('returns selected ITEMs and expands selected GROUPs to descendant ITEMs', () => {
+    const sel = new Set(['g2', 'i3']);
+    const targets = collectShiftTargets(sel, TREE).map((n) => n.id).sort();
+    expect(targets).toEqual(['i1', 'i2', 'i3']);
+  });
+
+  it('deduplicates ITEMs selected both directly and via parent GROUP', () => {
+    const sel = new Set(['g2', 'i1']);
+    const targets = collectShiftTargets(sel, TREE).map((n) => n.id).sort();
+    expect(targets).toEqual(['i1', 'i2']);
+  });
+});
+

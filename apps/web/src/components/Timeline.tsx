@@ -47,6 +47,7 @@ interface Props {
   selectedNodeIds?: Set<string> | undefined;
   onToggleNodeSelect?: ((id: string) => void) | undefined;
   onBulkComplete?: (() => void) | undefined;
+  onBulkShiftDate?: (() => void) | undefined;
   onBulkDelete?: (() => void) | undefined;
   onClearSelection?: (() => void) | undefined;
 }
@@ -83,6 +84,7 @@ function TimelineComponent({
   selectedNodeIds,
   onToggleNodeSelect,
   onBulkComplete,
+  onBulkShiftDate,
   onBulkDelete,
   onClearSelection,
 }: Props, ref: ForwardedRef<TimelineHandle>) {
@@ -733,6 +735,13 @@ function TimelineComponent({
             className="rounded bg-sky-600 px-2 py-1 text-xs font-semibold text-white hover:bg-sky-700 transition-colors"
           >
             100% 완료
+          </button>
+          <button
+            type="button"
+            onClick={onBulkShiftDate}
+            className="rounded bg-indigo-600 px-2 py-1 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors"
+          >
+            일정 조정
           </button>
           {canDelete && (
             <button
