@@ -299,6 +299,7 @@ GROUP 자체에는 `description` 만 직접 입력 가능 (설명·메모 용도
 ### 5.4 프로젝트 멤버
 - `GET    /projects/{id}/members`
 - `POST   /projects/{id}/members` (MANAGER+) `{user_id, role}`
+- `PATCH  /projects/{id}/members/{user_id}` (MANAGER+) `{role}` (MEMBER ↔ MANAGER 승격/격상. 단, MANAGER 자기 자신 변경 불가, ADMIN 모드 예외)
 - `DELETE /projects/{id}/members/{user_id}` (MANAGER+)
 
 ### 5.5 일정 노드

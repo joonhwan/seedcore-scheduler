@@ -510,6 +510,17 @@ export default function UserGuidePage() {
                   </tbody>
                 </table>
               </div>
+
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-6">4.2 체크박스 다중 선택 및 일정 조정 (Offset)</h3>
+              <p className="text-slate-600 dark:text-slate-300">
+                트리 노드 좌측의 **체크박스**를 선택하면 다중 선택 모드가 활성화되어 간트 차트 상단에 **임시 팝업 툴바**가 표시됩니다.
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300 my-2">
+                <li><b>100% 완료</b>: 선택한 모든 일정(또는 그룹 하위 일정)의 진척율을 100% 완료 상태로 일괄 변경합니다.</li>
+                <li><b>일정 조정</b>: 선택한 일정들의 기간을 <b>N일만큼 앞으로(당김:-N일) 또는 뒤로(연기:+N일)</b> 일괄 이동시킵니다. 선택 대상에 그룹(GROUP)이 포함되어 있으면 그 하위에 속한 자손 일정(ITEM)들의 시작일과 종료일이 함께 이동됩니다.</li>
+                <li><b>삭제 (🔒 매니저/관리자)</b>: 선택한 노드 및 자손 항목 전체를 일괄 영구 삭제합니다.</li>
+                <li><b>선택 해제</b>: 체크박스 선택 상태를 전체 초기화합니다.</li>
+              </ul>
             </div>
           </section>
 
@@ -645,6 +656,95 @@ export default function UserGuidePage() {
                   프로젝트 생성 · 명칭 변경(3.2) · 보관/복원(3.3) · 복제(3.4) · 영구 삭제 · 상태 필터
                 </span>
               </div>
+
+              {/* 8.1 각 권한별 기능 차이 비교표 */}
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-6 mb-2">8.1 각 권한별 기능 차이 비교표</h3>
+              <p className="text-slate-600 dark:text-slate-300">
+                시스템 전역 역할(ADMIN / USER)과 프로젝트 내 역할(MANAGER / MEMBER / 비소속)에 따른 기능 제약 매트릭스입니다.
+              </p>
+
+              <div className="overflow-x-auto my-3">
+                <table className="w-full text-xs text-left border-collapse border border-slate-200 dark:border-slate-800">
+                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    <tr>
+                      <th className="p-2 border">기능 구분</th>
+                      <th className="p-2 border bg-sky-50 dark:bg-sky-950/60">ADMIN (관리자 모드 On)</th>
+                      <th className="p-2 border">ADMIN (관리자 모드 Off) / 프로젝트 MANAGER</th>
+                      <th className="p-2 border">프로젝트 MEMBER</th>
+                      <th className="p-2 border">비소속 USER</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                    <tr>
+                      <td className="p-2 border font-semibold">프로젝트 가시성</td>
+                      <td className="p-2 border font-medium text-sky-700 dark:text-sky-300">전체 프로젝트 (보관 포함)</td>
+                      <td className="p-2 border">소속 프로젝트만</td>
+                      <td className="p-2 border">소속 프로젝트만</td>
+                      <td className="p-2 border text-slate-400">비공개 (접근 불가)</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">프로젝트 생성 / 복제 / 보관 / 복원</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">가능</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">가능</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">프로젝트 영구 삭제</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">가능 (ARCHIVED 상태만)</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">일정 (노드) 생성 및 영구 삭제</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">전체 프로젝트 가능</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">소속 프로젝트 가능</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가 (추가/삭제 버튼 비활성)</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">일정 기간/진척율 수정 & 다중 일정 조정</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">전체 프로젝트 가능</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">소속 프로젝트 가능</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">소속 프로젝트 가능 (공동 편집)</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">프로젝트 멤버 추가 / 제거</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">전체 프로젝트 가능</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">소속 프로젝트 가능</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">멤버 역할 승격/격상 (MEMBER ↔ MANAGER)</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">자기 자신 포함 전체 가능</td>
+                      <td className="p-2 border text-amber-700 dark:text-amber-300 font-medium">타인 멤버 변경 가능 (본인 변경 불가)</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-semibold">사용자 계정 관리 / 비번 리셋 / 잠금 해제</td>
+                      <td className="p-2 border text-emerald-600 font-medium dark:text-emerald-400">가능 (/admin/users)</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                      <td className="p-2 border text-rose-600 dark:text-rose-400">불가</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 8.2 프로젝트 멤버 역할 관리 (승격 및 격상) */}
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-6 mb-2">8.2 프로젝트 멤버 역할 관리 (승격 및 격상)</h3>
+              <p className="text-slate-600 dark:text-slate-300">
+                프로젝트 멤버 관리 페이지(`프로젝트 상세 → 멤버 관리`)에서 등록된 멤버의 역할(MEMBER ↔ MANAGER)을 드롭다운 선택으로 실시간 전환할 수 있습니다.
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300 my-2">
+                <li><b>MEMBER → MANAGER (승격)</b>: 일반 멤버에게 프로젝트 관리 권한(일정 생성/삭제, 멤버 추가/제거)을 부여합니다.</li>
+                <li><b>MANAGER → MEMBER (격상)</b>: 프로젝트 관리 권한을 해제하고 일반 수정 권한으로 전환합니다. (단, 프로젝트에 마지막 남은 MANAGER인 경우 해제할 수 없으며 경고 알림이 발생합니다.)</li>
+                <li><b>자기 자신 역할 변경 제약</b>: 일반 MANAGER 사용자는 자신의 실수나 권한 남용을 방지하기 위해 <b>자기 자신의 역할은 변경할 수 없습니다</b> (비활성 처리). 단, ADMIN 모드의 관리자(ADMIN)는 본인의 프로젝트 역할도 변경할 수 있습니다.</li>
+              </ul>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-3">
                 <div className="rounded-lg border border-slate-200 p-2 shadow-sm dark:border-slate-800">

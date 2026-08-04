@@ -32,7 +32,21 @@ pnpm dev
 
 ---
 
-## 1. 현재 상태 (M0 + M1 + M2a + M2b + M2c + M3a + M3b + M3c + M3d 완료)
+## 1. 현재 상태 (M0 + M1 + M2a + M2b + M2c + M3a + M3b + M3c + M3d + v1.2 완료)
+
+### v1.2 — 다중 선택 일정 조정 & 프로젝트 멤버 역할 승격/격상 ✓ (2026-08-04)
+- **간트 차트 다중 선택 일정 조정 (Offset)**:
+  - 트리 노드 체크박스로 다중 항목 선택 시 상단 임시 팝업 툴바 표출 (`100% 완료`, `일정 조정`, `삭제`, `선택 해제`).
+  - `BulkShiftDatesDialog`를 통해 선택된 일자의 기간을 N일만큼 앞으로(-N일, 당김) 또는 뒤로(+N일, 연기) 일괄 이동.
+  - 선택 항목에 그룹(GROUP)이 포함된 경우 그 하위 자손 일정(ITEM)들의 기간을 자동으로 재귀 수집하여 일괄 조정.
+- **프로젝트 멤버 역할 승격/격상 (MEMBER ↔ MANAGER)**:
+  - `PATCH /api/v1/projects/:projectId/members/:userId` API 구현 (`UpdateMemberRoleDto`).
+  - 멤버 관리 페이지에서 드롭다운 선택으로 `MEMBER` ↔ `MANAGER` 역할 즉시 변경.
+  - 일반 `MANAGER`는 타인 멤버의 역할만 변경 가능하며 자기 자신의 역할은 변경 불가 (`CANNOT_CHANGE_SELF_ROLE`).
+  - `ADMIN` 모드의 `ADMIN` 계정은 자기 자신 포함 모든 사람의 역할 변경 가능.
+  - 마지막 `MANAGER`를 `MEMBER`로 격상하려 할 경우 `LAST_MANAGER` 예외로 보호.
+- **사용설명서 갱신 & 권한별 기능 차이 비교표 추가**:
+  - `UserGuidePage.tsx`: v1.2 버전 갱신, 다중 선택 일정 조정 사용법 추가, **각 권한별(ADMIN 모드 On/Off, MANAGER, MEMBER, 비소속) 기능 차이 비교표(8.1)** 및 멤버 역할 관리 가이드(8.2) 추가.
 
 ### M0 — 모노레포 스캐폴딩 ✓
 - pnpm workspaces 빌드/실행
