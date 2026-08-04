@@ -1,6 +1,6 @@
 // 이미지 내보내기 전용 정적 간트. 스크롤/드래그/hover/오늘선 없음.
 // Tailwind dark: 대신 theme prop 기반 인라인 색을 써서 전역 테마와 독립적으로 그린다.
-import type { NodeTreeItem } from '@sam/shared';
+import { calculateExpectedProgress, getTodayIso, type NodeTreeItem } from '@sam/shared';
 import {
   PPD,
   ROW_HEIGHT,
@@ -252,6 +252,28 @@ export default function GanttExportView({
                         }}
                       />
                     )}
+                    {(() => {
+                      const todayIso = getTodayIso();
+                      if (!start || !end || todayIso < start || todayIso > end) return null;
+                      const expected = calculateExpectedProgress(start, end, todayIso);
+                      if (expected === null) return null;
+                      const lineColor = isGroup ? p.groupBarBorder : p.itemBarBorder;
+                      return (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            bottom: 0,
+                            left: `${expected}%`,
+                            width: 1,
+                            background: lineColor,
+                            boxShadow: '0 0 1px rgba(0,0,0,0.4)',
+                            pointerEvents: 'none',
+                            zIndex: 10,
+                          }}
+                        />
+                      );
+                    })()}
                   </div>
                 )}
               </div>

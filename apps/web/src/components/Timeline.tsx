@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, type ForwardedRef } from 'react';
-import { MAX_TREE_DEPTH, calculateTreeNodesDelayInfo, getNodeDelayInfo, type NodeTreeItem, type NodeHistoryItem, type ExpectedProgressResult } from '@sam/shared';
+import { MAX_TREE_DEPTH, calculateTreeNodesDelayInfo, getNodeDelayInfo, getTodayIso, type NodeTreeItem, type NodeHistoryItem, type ExpectedProgressResult } from '@sam/shared';
 import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
 
 import { FolderIcon, ItemIcon } from './Icons';
@@ -1306,6 +1306,28 @@ function Row({
                   style={{ width: `${progress}%` }}
                 />
               )}
+
+              {/* 예상 진척율 세로선 (일정 기간 내 startAt <= today <= endAt 일 때만 렌더링) */}
+              {delayInfo.expectedProgress !== null &&
+                start &&
+                end &&
+                getTodayIso() >= start &&
+                getTodayIso() <= end && (() => {
+                  const lineColor = isCritical
+                    ? 'bg-red-600 dark:bg-red-400'
+                    : isWarning
+                    ? 'bg-amber-600 dark:bg-amber-400'
+                    : isGroup
+                    ? 'bg-violet-600 dark:bg-violet-400'
+                    : 'bg-sky-600 dark:bg-sky-400';
+                  return (
+                    <div
+                      className={`absolute top-0 bottom-0 w-px z-10 pointer-events-none ${lineColor} shadow-[0_0_1px_rgba(0,0,0,0.4)] dark:shadow-[0_0_1px_rgba(255,255,255,0.6)]`}
+                      style={{ left: `${delayInfo.expectedProgress}%` }}
+                      title={`예상 진척율: ${delayInfo.expectedProgress}%`}
+                    />
+                  );
+                })()}
 
               {canEdit && !isGroup && !isEmptyRow && (
                 <>

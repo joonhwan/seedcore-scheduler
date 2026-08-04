@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent, forwardRef, useImperativeHandle } from 'react';
-import type { NodeTreeItem, UpdateNodeDto } from '@sam/shared';
-import { getNodeDelayInfo } from '@sam/shared';
+import { calculateExpectedProgress, getNodeDelayInfo, getTodayIso, type NodeTreeItem, type UpdateNodeDto } from '@sam/shared';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { useUpdateNode } from '../lib/nodes';
@@ -277,51 +276,68 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
               />
             </Field>
           </div>
-          <Field label={`진척율 — ${progress}%`}>
+          {(() => {
+            const todayIso = getTodayIso();
+            const expected = calculateExpectedProgress(startAt, endAt, todayIso);
+            const isTodayInRange = !!(startAt && endAt && todayIso >= startAt && todayIso <= endAt && expected !== null && expected > 0 && expected < 100);
 
-            <div className="flex flex-col gap-2">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={progress}
-                onChange={(e) => setProgress(parseInt(e.target.value, 10))}
-                disabled={!canEdit}
-                className="w-full accent-sky-600 disabled:opacity-50"
-              />
-              {canEdit && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setProgress((prev) => Math.max(0, prev - 10))}
-                    className="flex-1 rounded border border-slate-300 bg-white py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                  >
-                    -10%
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setProgress((prev) => Math.min(100, prev + 10))}
-                    className="flex-1 rounded border border-slate-300 bg-white py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                  >
-                    +10%
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setProgress(100)}
-                    className="rounded border border-sky-300 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300 dark:hover:bg-sky-900"
-                  >
-                    100% 완료
-                  </button>
+            return (
+              <Field label={`진척율 — ${progress}%${isTodayInRange ? ` (오늘 예상: ${expected}%)` : ''}`}>
+                <div className="flex flex-col gap-2">
+                  <div className="relative w-full flex items-center">
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={progress}
+                      onChange={(e) => setProgress(parseInt(e.target.value, 10))}
+                      disabled={!canEdit}
+                      className="w-full accent-sky-600 disabled:opacity-50"
+                    />
+                    {/* 오늘 기준 예상 진척율 1px 슬림 세로선 (일정 기간 내 0 < expected < 100 일 때만) */}
+                    {isTodayInRange && (
+                      <div
+                        className="absolute top-1 bottom-1 w-px bg-slate-800 dark:bg-slate-200 pointer-events-none shadow-[0_0_1px_rgba(0,0,0,0.5)] dark:shadow-[0_0_1px_rgba(255,255,255,0.6)] z-10"
+                        style={{ left: `calc(${expected}% + ${(0.5 - expected / 100) * 16}px)` }}
+                        title={`오늘 기준 예상 진척율: ${expected}%`}
+                      />
+                    )}
+                  </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setProgress((prev) => Math.max(0, prev - 10))}
+                        className="flex-1 rounded border border-slate-300 bg-white py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                      >
+                        -10%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProgress((prev) => Math.min(100, prev + 10))}
+                        className="flex-1 rounded border border-slate-300 bg-white py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                      >
+                        +10%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProgress(100)}
+                        className="rounded border border-sky-300 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300 dark:hover:bg-sky-900"
+                      >
+                        100% 완료
+                      </button>
+                    </div>
+                  )}
+                  {canEdit && (
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-1.5 select-none">
+                      <span>단축키: Ctrl + 쉼표(,) -10%  |  Ctrl + 마침표(.) +10%  |  Ctrl + 슬래시(/) 100% 완료</span>
+                    </div>
+                  )}
                 </div>
-              )}
-              {canEdit && (
-                <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-1.5 select-none">
-                  <span>단축키: Ctrl + 쉼표(,) -10%  |  Ctrl + 마침표(.) +10%  |  Ctrl + 슬래시(/) 100% 완료</span>
-                </div>
-              )}
-            </div>
-          </Field>
+              </Field>
+            );
+          })()}
         </>
       )}
 

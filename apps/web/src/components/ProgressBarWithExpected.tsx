@@ -19,7 +19,8 @@ export default function ProgressBarWithExpected({
   className = '',
 }: ProgressBarWithExpectedProps) {
   const actual = actualProgress ?? 0;
-  const hasExpected = expectedProgress !== null && expectedProgress !== undefined;
+  // 시작 전(0%) 또는 종료 후(100%)에는 세로선을 그리지 않고, 일정 기간 내(0 < expected < 100) 일 때만 렌더링
+  const hasExpected = expectedProgress !== null && expectedProgress !== undefined && expectedProgress > 0 && expectedProgress < 100;
 
   let barColorClass = 'bg-blue-600 dark:bg-blue-500';
   let actualLabelClass = 'font-mono text-slate-700 dark:text-slate-300 font-medium';
