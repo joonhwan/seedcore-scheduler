@@ -698,8 +698,8 @@ export class NodesService {
       }
     }
 
-    // 트리 깊이 컬럼 수 (최소 1개, 최대 5개 제한)
-    const maxDepth = Math.max(1, Math.min(5, startDateColIdx));
+    // 트리 깊이 컬럼 수 (최소 1개, 최대 10개 제한)
+    const maxDepth = Math.max(1, Math.min(10, startDateColIdx));
 
     // 3. 임시 노드 생성 및 보정 규칙 적용
     interface TmpNode {
@@ -934,12 +934,14 @@ export class NodesService {
     // 프로젝트 업데이트 이력 추가
     await this.audit.log({
       actorId: ctx.actorId,
-      action: 'PROJECT_IMPORT_CSV',
+      action: ctx.adminMode ? 'ADMIN_OVERRIDE_EDIT' : 'PROJECT_IMPORT_CSV',
       targetType: 'project',
       targetId: projectId,
       ip: ctx.ip,
       userAgent: ctx.userAgent,
-      payload: { count: createdRows.length },
+      payload: ctx.adminMode
+        ? { originalAction: 'PROJECT_IMPORT_CSV', count: createdRows.length }
+        : { count: createdRows.length },
     });
 
     // 전체 리스트 반환

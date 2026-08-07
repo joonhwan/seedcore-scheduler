@@ -883,16 +883,20 @@ function ProjectHeader({
 
   // CSV 내보내기 (Export)
   const handleExportCsv = () => {
-    const header = ['일정1', '일정2', '일정3', '일정4', '일정5', '시작일', '종료일', '진척율'];
+    const header = [
+      '일정1', '일정2', '일정3', '일정4', '일정5',
+      '일정6', '일정7', '일정8', '일정9', '일정10',
+      '시작일', '종료일', '진척율',
+    ];
     const rows = nodes.map((n) => {
       const isItem = n.kind === 'ITEM';
       const start = isItem ? (n.startAt ?? '') : (n.startAtEffective ?? '');
       const end = isItem ? (n.endAt ?? '') : (n.endAtEffective ?? '');
       const progress = isItem ? (n.progress ?? 0) : (n.progressEffective ?? 0);
 
-      const line = ['', '', '', '', '', start, end, `${progress}%`];
+      const line = ['', '', '', '', '', '', '', '', '', '', start, end, `${progress}%`];
 
-      if (n.depth >= 0 && n.depth <= 4) {
+      if (n.depth >= 0 && n.depth <= 9) {
         line[n.depth] = n.title;
       }
 
@@ -1045,32 +1049,19 @@ function ProjectHeader({
             onSelectCsv={handleExportCsv}
             onSelectExcel={onExportExcel}
           />
-          {/* CSV 가져오기/내보내기 기능 임시 숨김 처리 (요구사항 반영)
           {canEdit && (
             <button
               type="button"
               onClick={() => setIsImportModalOpen(true)}
-              className="p-1.5 rounded-md border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center gap-1 text-xs font-semibold"
+              className="p-1.5 rounded-md border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
               title="CSV 파일에서 일정 일괄 가져오기 (덮어쓰기)"
+              aria-label="CSV 가져오기"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
               </svg>
-              <span className="hidden md:inline">가져오기</span>
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            className="p-1.5 rounded-md border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center gap-1 text-xs font-semibold"
-            title="현재 프로젝트 일정을 CSV 파일로 내보내기"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            <span className="hidden md:inline">내보내기</span>
-          </button>
-          */}
           {canEdit && onAddNode && (
             <button
               type="button"
@@ -1228,11 +1219,11 @@ function ProjectHeader({
             
             <div className="mt-3 rounded-lg border border-rose-300 bg-rose-50/50 p-3.5 text-xs dark:border-rose-900/40 dark:bg-rose-950/20">
               <p className="font-semibold text-rose-800 dark:text-rose-400">
-                ⚠️ 경고: 기존 프로젝트의 모든 일정이 초기화(삭제)되고, CSV 데이터로 완전히 덮어씁니다.
+                ⚠️ 경고: CSV를 가져오면 기존 프로젝트의 모든 일정이 삭제되고, CSV 데이터로 완전히 대체됩니다.
               </p>
               <p className="mt-1 text-slate-600 dark:text-slate-400">
-                가져오기 형식: 총 8개 컬럼 구조이며, `일정1 ~ 일정5` 중 한 곳에 이름을 넣으십시오.
-                (예: `일정1,일정2,일정3,일정4,일정5,시작일,종료일,진척율`)
+                가져오기 형식: `일정1 ~ 일정10` 컬럼 중 하나에 일정 이름을 넣으십시오.
+                (예: `일정1,일정2,...,일정10,시작일,종료일,진척율`)
               </p>
             </div>
 
@@ -1255,7 +1246,7 @@ function ProjectHeader({
               <textarea
                 value={csvInputText}
                 onChange={(e) => setCsvInputText(e.target.value)}
-                placeholder="일정1,일정2,일정3,일정4,일정5,시작일,종료일,진척율 형태로 입력 또는 붙여넣기"
+                placeholder="일정1,일정2,일정3,...,일정10,시작일,종료일,진척율 형태로 입력 또는 붙여넣기"
                 rows={10}
                 className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-mono focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 resize-y"
               />
