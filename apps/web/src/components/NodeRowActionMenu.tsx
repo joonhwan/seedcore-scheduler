@@ -5,14 +5,14 @@ export interface NodeRowActionMenuProps {
   node: NodeTreeItem;
   indexAmongSiblings: number;
   siblingCount: number;
-  subtreeMaxDepth?: number;
-  canCreate?: boolean;
-  canDelete?: boolean;
-  onMoveSibling?: (node: NodeTreeItem, direction: -1 | 1) => void;
-  onAddChild?: (node: NodeTreeItem) => void;
-  onAddSibling?: (node: NodeTreeItem) => void;
-  onChangeParent?: (node: NodeTreeItem) => void;
-  onDelete?: (node: NodeTreeItem) => void;
+  subtreeMaxDepth?: number | undefined;
+  canCreate?: boolean | undefined;
+  canDelete?: boolean | undefined;
+  onMoveSibling?: ((node: NodeTreeItem, direction: -1 | 1) => void) | undefined;
+  onAddChild?: ((node: NodeTreeItem) => void) | undefined;
+  onAddSibling?: ((node: NodeTreeItem) => void) | undefined;
+  onChangeParent?: ((node: NodeTreeItem) => void) | undefined;
+  onDelete?: ((node: NodeTreeItem) => void) | undefined;
 }
 
 export default function NodeRowActionMenu({

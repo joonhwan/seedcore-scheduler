@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
-import { MAX_TREE_DEPTH, calculateTreeNodesDelayInfo, getNodeDelayInfo, type NodeKind, type NodeTreeItem, type ExpectedProgressResult } from '@sam/shared';
+import { calculateTreeNodesDelayInfo, getNodeDelayInfo, type NodeKind, type NodeTreeItem, type ExpectedProgressResult } from '@sam/shared';
 import DelayStatusBadge from './DelayStatusBadge';
 import ProgressBarWithExpected from './ProgressBarWithExpected';
 import ProgressPercentBadge from './ProgressPercentBadge';
+import NodeRowActionMenu from './NodeRowActionMenu';
 
 export interface TreeNode extends NodeTreeItem {
   children: TreeNode[];
@@ -140,7 +141,6 @@ function NodeRow({
 }: NodeRowProps) {
   const isSelected = selectedId === node.id;
   const isGroup = node.kind === 'GROUP';
-  const childWouldExceedDepth = node.depth + 1 >= MAX_TREE_DEPTH;
   const subtreeMaxDepth = maxDescendantDepth(node);
 
   const delayInfo = delayInfoMap.get(node.id) || getNodeDelayInfo(node);
@@ -221,49 +221,19 @@ function NodeRow({
         </button>
 
         {canEdit && (
-          <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded bg-slate-100 px-1 py-0.5 shadow-sm group-hover:flex dark:bg-slate-700 z-20">
-            <IconBtn
-              title="위로"
-              disabled={indexAmongSiblings === 0}
-              onClick={() => onMoveSibling(node, -1)}
-            >
-              ↑
-            </IconBtn>
-            <IconBtn
-              title="아래로"
-              disabled={indexAmongSiblings === siblingCount - 1}
-              onClick={() => onMoveSibling(node, 1)}
-            >
-              ↓
-            </IconBtn>
-            <IconBtn
-              title={
-                childWouldExceedDepth
-                  ? `최대 깊이(${MAX_TREE_DEPTH})에 도달`
-                  : '자식 추가'
-              }
-              disabled={childWouldExceedDepth}
-              onClick={() => onAddChild(node)}
-            >
-              ↳
-            </IconBtn>
-            <IconBtn title="형제 추가" onClick={() => onAddSibling(node)}>
-              +
-            </IconBtn>
-            <IconBtn
-              title={`부모 변경 (서브트리 깊이 ${subtreeMaxDepth - node.depth + 1})`}
-              onClick={() => onChangeParent(node)}
-            >
-              ⇄
-            </IconBtn>
-            <IconBtn
-              title="삭제"
-              onClick={() => onDelete(node)}
-              className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950"
-            >
-              ✕
-            </IconBtn>
-          </div>
+          <NodeRowActionMenu
+            node={node}
+            indexAmongSiblings={indexAmongSiblings}
+            siblingCount={siblingCount}
+            subtreeMaxDepth={subtreeMaxDepth}
+            canCreate={true}
+            canDelete={true}
+            onMoveSibling={onMoveSibling}
+            onAddChild={onAddChild}
+            onAddSibling={onAddSibling}
+            onChangeParent={onChangeParent}
+            onDelete={onDelete}
+          />
         )}
       </div>
 
@@ -317,29 +287,3 @@ function formatRange(n: NodeTreeItem): string {
   return start ?? end ?? '';
 }
 
-function IconBtn({
-  children,
-  title,
-  disabled,
-  onClick,
-  className = '',
-}: {
-  children: React.ReactNode;
-  title: string;
-  disabled?: boolean;
-  onClick: () => void;
-  className?: string;
-
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={`rounded border border-transparent px-1.5 py-0.5 text-xs hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:border-slate-700 dark:hover:bg-slate-700 ${className}`}
-    >
-      {children}
-    </button>
-  );
-}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, type ForwardedRef } from 'react';
-import { MAX_TREE_DEPTH, calculateTreeNodesDelayInfo, getNodeDelayInfo, getTodayIso, type NodeTreeItem, type NodeHistoryItem, type ExpectedProgressResult } from '@sam/shared';
+import { calculateTreeNodesDelayInfo, getNodeDelayInfo, getTodayIso, type NodeTreeItem, type NodeHistoryItem, type ExpectedProgressResult } from '@sam/shared';
 import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
+import NodeRowActionMenu from './NodeRowActionMenu';
 
 import { FolderIcon, ItemIcon } from './Icons';
 import ProgressPercentBadge from './ProgressPercentBadge';
@@ -1050,7 +1051,6 @@ function Row({
   const progress = isGroup ? node.progressEffective : node.progress;
   const isEmptyRow = node.id === 'empty-row-placeholder';
 
-  const childWouldExceedDepth = node.depth + 1 >= MAX_TREE_DEPTH;
   const subtreeMaxDepth = maxDescendantDepth(node);
 
   let bar: { leftPx: number; widthPx: number } | null = null;
@@ -1188,55 +1188,19 @@ function Row({
         </button>
 
         {canEdit && !isEmptyRow && !selectionMode && (
-          <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded bg-slate-100 px-1 py-0.5 shadow-sm group-hover/row:flex dark:bg-slate-700 z-20">
-            <IconBtn
-              title="위로"
-              disabled={indexAmongSiblings === 0}
-              onClick={() => onMoveSibling?.(node, -1)}
-            >
-              ↑
-            </IconBtn>
-            <IconBtn
-              title="아래로"
-              disabled={indexAmongSiblings === siblingCount - 1}
-              onClick={() => onMoveSibling?.(node, 1)}
-            >
-              ↓
-            </IconBtn>
-            {canCreate && (
-              <IconBtn
-                title={
-                  childWouldExceedDepth
-                    ? `최대 깊이(${MAX_TREE_DEPTH})에 도달`
-                    : '자식 추가'
-                }
-                disabled={childWouldExceedDepth}
-                onClick={() => onAddChild?.(node)}
-              >
-                ↳
-              </IconBtn>
-            )}
-            {canCreate && (
-              <IconBtn title="형제 추가" onClick={() => onAddSibling?.(node)}>
-                +
-              </IconBtn>
-            )}
-            <IconBtn
-              title={`부모 변경 (서브트리 깊이 ${subtreeMaxDepth - node.depth + 1})`}
-              onClick={() => onChangeParent?.(node)}
-            >
-              ⇄
-            </IconBtn>
-            {canDelete && (
-              <IconBtn
-                title="삭제"
-                onClick={() => onDelete?.(node)}
-                className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950"
-              >
-                ✕
-              </IconBtn>
-            )}
-          </div>
+          <NodeRowActionMenu
+            node={node}
+            indexAmongSiblings={indexAmongSiblings}
+            siblingCount={siblingCount}
+            subtreeMaxDepth={subtreeMaxDepth}
+            canCreate={canCreate}
+            canDelete={canDelete}
+            onMoveSibling={onMoveSibling}
+            onAddChild={onAddChild}
+            onAddSibling={onAddSibling}
+            onChangeParent={onChangeParent}
+            onDelete={onDelete}
+          />
         )}
       </div>
       <div className="relative" style={{ width: totalWidth }}>
@@ -1499,28 +1463,3 @@ function formatTooltipVal(v: unknown): string {
   return String(v);
 }
 
-function IconBtn({
-  children,
-  title,
-  disabled,
-  onClick,
-  className = '',
-}: {
-  children: React.ReactNode;
-  title: string;
-  disabled?: boolean;
-  onClick: () => void;
-  className?: string;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={`rounded border border-transparent px-1 py-0.5 text-[10px] hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:border-slate-700 dark:hover:bg-slate-700 ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
