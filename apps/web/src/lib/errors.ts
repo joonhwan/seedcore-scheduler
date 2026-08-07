@@ -1,9 +1,10 @@
+import { MAX_TREE_DEPTH } from '@sam/shared';
 import { ApiError } from './api';
 
 const KNOWN: Record<string, string> = {
   CONFLICT: '다른 사용자가 먼저 변경했습니다. 다시 불러오기 후 시도해 주세요.',
   CYCLE_DETECTED: '하위 노드를 자기 자신의 자손으로 이동할 수 없습니다.',
-  MAX_DEPTH_EXCEEDED: '최대 깊이(5단계)를 초과했습니다.',
+  MAX_DEPTH_EXCEEDED: `최대 깊이(${MAX_TREE_DEPTH}단계)를 초과했습니다.`,
   GROUP_DATES_NOT_EDITABLE: 'GROUP 노드는 시작/종료일을 직접 편집할 수 없습니다.',
   GROUP_PROGRESS_NOT_EDITABLE: 'GROUP 노드의 진척율은 자손 ITEM 들의 평균으로 자동 계산됩니다.',
 

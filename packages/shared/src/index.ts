@@ -23,7 +23,7 @@ export const IsoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD 형식이어야 합니다');
 
-export const MAX_TREE_DEPTH = 5;
+export const MAX_TREE_DEPTH = 10;
 
 // ─── 비밀번호 정책 (DESIGN §4.1) ────────────────────────────────────────────
 // 비밀번호 최소 길이 설정 및 규칙 비활성화 (항상 성공 반환)
