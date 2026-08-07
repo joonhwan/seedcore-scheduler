@@ -65,7 +65,7 @@ describe('getNodeDelayInfo', () => {
     expect(res.status).toBe('CRITICAL');
   });
 
-  it('예상 진척률 50%, 실제 진척률 40% -> delayGap 10%p, status WARNING', () => {
+  it('예상 진척률 50%, 실제 진척률 40% -> delayGap 10%p (0~14% 범위), status SLIGHT', () => {
     const res = getNodeDelayInfo(
       {
         startAt: '2026-08-01',
@@ -75,6 +75,19 @@ describe('getNodeDelayInfo', () => {
       '2026-08-06',
     );
     expect(res.delayGap).toBe(10);
+    expect(res.status).toBe('SLIGHT');
+  });
+
+  it('예상 진척률 50%, 실제 진척률 25% -> delayGap 25%p (15~29% 범위), status WARNING', () => {
+    const res = getNodeDelayInfo(
+      {
+        startAt: '2026-08-01',
+        endAt: '2026-08-11',
+        progress: 25,
+      },
+      '2026-08-06',
+    );
+    expect(res.delayGap).toBe(25);
     expect(res.status).toBe('WARNING');
   });
 
@@ -140,9 +153,9 @@ describe('calculateTreeNodesDelayInfo (버블업 지연 전파)', () => {
     const nodes = [
       { id: 'group1', kind: 'GROUP', parentId: null },
       { id: 'item1', kind: 'ITEM', parentId: 'group1', startAt: '2026-07-17', endAt: '2026-07-31', progress: 100 },
-      { id: 'item2', kind: 'ITEM', parentId: 'group1', startAt: '2026-08-01', endAt: '2026-08-10', progress: 0 }, // expected 30% -> gap 30%p -> CRITICAL
+      { id: 'item2', kind: 'ITEM', parentId: 'group1', startAt: '2026-08-03', endAt: '2026-08-07', progress: 0 }, // expected 50% -> gap 50%p -> CRITICAL
     ];
-    const map = calculateTreeNodesDelayInfo(nodes, '2026-08-04');
+    const map = calculateTreeNodesDelayInfo(nodes, '2026-08-05');
     const groupInfo = map.get('group1')!;
     expect(groupInfo.status).toBe('CRITICAL');
   });
@@ -153,7 +166,7 @@ describe('calculateProjectDelaySummary', () => {
     const nodes = [
       { kind: 'ITEM', startAt: '2026-08-01', endAt: '2026-08-11', progress: 10 }, // expected 50, gap 40 -> CRITICAL
       { kind: 'ITEM', startAt: '2026-08-01', endAt: '2026-08-11', progress: 50 }, // expected 50, gap 0 -> ON_TRACK
-      { kind: 'ITEM', startAt: '2026-08-01', endAt: '2026-08-11', progress: 38 }, // expected 50, gap 12 -> WARNING
+      { kind: 'ITEM', startAt: '2026-08-01', endAt: '2026-08-11', progress: 30 }, // expected 50, gap 20 -> WARNING
     ];
     const summary = calculateProjectDelaySummary(nodes, '2026-08-06');
     expect(summary.totalNodes).toBe(3);
@@ -162,8 +175,8 @@ describe('calculateProjectDelaySummary', () => {
     expect(summary.warningCount).toBe(1);
     expect(summary.onTrackCount).toBe(1);
     expect(summary.avgExpectedProgress).toBe(50);
-    expect(summary.avgActualProgress).toBe(33);
-    expect(summary.avgDelayGap).toBe(17);
+    expect(summary.avgActualProgress).toBe(30);
+    expect(summary.avgDelayGap).toBe(20);
     expect(summary.status).toBe('CRITICAL');
   });
 });

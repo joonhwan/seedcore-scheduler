@@ -37,9 +37,9 @@
   $$\text{delayGap} = \text{expectedProgress} - \text{actualProgress} \quad (\%p)$$
 
 - **지연 상태 (Delay Status)**:
-  - 🚨 **`CRITICAL` (심각 지연)**: $\text{delayGap} \ge 20\%p$ (예상보다 20%p 이상 미달)
-  - ⚠️ **`WARNING` (주의 지연)**: $10\%p \le \text{delayGap} < 20\%p$ (예상보다 10%p 이상 미달)
-  - 📉 **`SLIGHT` (소폭 지연)**: $0\%p < \text{delayGap} < 10\%p$
+  - 🚨 **`CRITICAL` (심각 지연)**: $\text{delayGap} \ge 30\%p$ (예상보다 30%p 이상 미달 또는 마감일 초과 미완료)
+  - ⚠️ **`WARNING` (주의 지연)**: $15\%p \le \text{delayGap} < 30\%p$ (예상보다 15%p 이상 30%p 미만 미달)
+  - 📉 **`SLIGHT` (소폭 지연)**: $0\%p < \text{delayGap} < 15\%p$ (예상보다 15%p 미만 소폭 미달)
   - ✅ **`ON_TRACK` (정상/달성)**: $\text{delayGap} \le 0\%p$ (예상 진척률 이상 달성)
   - ⚪ **`UNKNOWN`**: 시작일/종료일 또는 실제 진척률 데이터가 없어 계산할 수 없는 경우
 

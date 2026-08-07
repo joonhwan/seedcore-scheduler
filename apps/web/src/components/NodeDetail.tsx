@@ -70,9 +70,9 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
       if (e.ctrlKey && (e.key === ',' || e.key === '.' || e.key === '/')) {
         e.preventDefault();
         if (e.key === ',') {
-          setProgress((prev) => Math.max(0, prev - 10));
+          setProgress((prev) => Math.max(0, (Math.ceil((prev ?? 0) / 10) - 1) * 10));
         } else if (e.key === '.') {
-          setProgress((prev) => Math.min(100, prev + 10));
+          setProgress((prev) => Math.min(100, (Math.floor((prev ?? 0) / 10) + 1) * 10));
         } else if (e.key === '/') {
           setProgress(100);
         }
@@ -289,7 +289,7 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
                       type="range"
                       min={0}
                       max={100}
-                      step={5}
+                      step={1}
                       value={progress}
                       onChange={(e) => setProgress(parseInt(e.target.value, 10))}
                       disabled={!canEdit}
@@ -308,14 +308,14 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setProgress((prev) => Math.max(0, prev - 10))}
+                        onClick={() => setProgress((prev) => Math.max(0, (Math.ceil((prev ?? 0) / 10) - 1) * 10))}
                         className="flex-1 rounded border border-slate-300 bg-white py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                       >
                         -10%
                       </button>
                       <button
                         type="button"
-                        onClick={() => setProgress((prev) => Math.min(100, prev + 10))}
+                        onClick={() => setProgress((prev) => Math.min(100, (Math.floor((prev ?? 0) / 10) + 1) * 10))}
                         className="flex-1 rounded border border-slate-300 bg-white py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                       >
                         +10%

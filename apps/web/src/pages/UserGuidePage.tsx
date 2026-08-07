@@ -418,16 +418,23 @@ export default function UserGuidePage() {
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                       <tr>
                         <td className="p-2 border font-bold text-red-600 dark:text-red-400">🚨 심각 지연</td>
-                        <td className="p-2 border font-mono">20%p 이상 미달</td>
+                        <td className="p-2 border font-mono">30%p 이상 미달 (또는 마감일 초과)</td>
                         <td className="p-2 border text-slate-600 dark:text-slate-400">
                           눈길을 끄는 🚨 **펄스(Ping Pulse) 경고 뱃지**와 붉은색 그라데이션이 적용되어 즉시 구별할 수 있습니다.
                         </td>
                       </tr>
                       <tr>
                         <td className="p-2 border font-semibold text-amber-600 dark:text-amber-400">⚠️ 주의 지연</td>
-                        <td className="p-2 border font-mono">10%p ~ 19%p 미달</td>
+                        <td className="p-2 border font-mono">15%p ~ 29%p 미달</td>
                         <td className="p-2 border text-slate-600 dark:text-slate-400">
                           ⚠️ **주황색 주의 뱃지**와 하이라이트 배경으로 지연 위험을 알려줍니다.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-medium text-blue-600 dark:text-blue-400">📉 소폭 지연</td>
+                        <td className="p-2 border font-mono">1%p ~ 14%p 미달</td>
+                        <td className="p-2 border text-slate-600 dark:text-slate-400">
+                          예상보다 소폭 늦어지고 있는 상태를 나타냅니다.
                         </td>
                       </tr>
                       <tr>

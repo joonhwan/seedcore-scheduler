@@ -25,7 +25,7 @@ export interface ExpectedProgressResult {
   expectedProgress: number | null; // 0 ~ 100 또는 null (날짜 미지정 시)
   actualProgress: number | null;   // 0 ~ 100 또는 null
   delayGap: number;               // expectedProgress - actualProgress (양수이면 예상보다 지연)
-  status: DelayStatus;            // CRITICAL(>=20%p), WARNING(>=10%p), SLIGHT(>0%p), ON_TRACK(<=0%p), UNKNOWN
+  status: DelayStatus;            // CRITICAL(>=30%p), WARNING(>=15%p), SLIGHT(>0%p), ON_TRACK(<=0%p), UNKNOWN
 }
 
 export interface NodeDelayInput {
@@ -151,9 +151,9 @@ export function getItemNodeDelayInfo(
 
   let status: DelayStatus = 'ON_TRACK';
   const isOverdue = !!endAt && todayIso > endAt && actualProgress < 100;
-  if (isOverdue || delayGap >= 20) {
+  if (isOverdue || delayGap >= 30) {
     status = 'CRITICAL';
-  } else if (delayGap >= 10) {
+  } else if (delayGap >= 15) {
     status = 'WARNING';
   } else if (delayGap > 0) {
     status = 'SLIGHT';

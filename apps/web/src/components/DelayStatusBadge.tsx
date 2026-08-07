@@ -37,7 +37,7 @@ export default function DelayStatusBadge({
       return (
         <span
           className={`inline-flex items-center gap-1.5 font-semibold rounded-full bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30 ${sizeClasses} ${className}`}
-          title="예상보다 20%p 이상 심각하게 지연 중입니다"
+          title="예상보다 30%p 이상 심각하게 지연 중입니다"
         >
           {/* 눈길을 끄는 펄스 핑 애니메이션 */}
           <span className="relative flex h-2 w-2">
@@ -52,7 +52,7 @@ export default function DelayStatusBadge({
       return (
         <span
           className={`inline-flex items-center gap-1 font-medium rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 ${sizeClasses} ${className}`}
-          title="예상보다 10%p 이상 지연 중입니다"
+          title="예상보다 15%p 이상 지연 중입니다"
         >
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
           <span>⚠️ {showDetails && gapText ? `주의 (${gapText})` : '주의'}</span>
