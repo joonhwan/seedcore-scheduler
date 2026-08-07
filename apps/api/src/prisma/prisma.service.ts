@@ -15,6 +15,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     // PRAGMA journal_mode 는 결과 행을 반환하므로 $queryRawUnsafe 사용.
     await this.$queryRawUnsafe('PRAGMA journal_mode=WAL;');
     await this.$queryRawUnsafe('PRAGMA synchronous=NORMAL;');
+    await this.$queryRawUnsafe('PRAGMA busy_timeout=10000;');
 
     // 마이그레이션은 foreign_keys=ON 앞에서 처리한다.
     // 마이그레이션 SQL 이 RedefineTables 패턴에서 FK 를 꺼야 동작하기 때문이다.

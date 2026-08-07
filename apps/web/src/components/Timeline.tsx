@@ -167,6 +167,20 @@ function TimelineComponent({
 
   const delayInfoMap = useMemo(() => calculateTreeNodesDelayInfo(items), [items]);
 
+  const fullTree = useMemo(() => buildTree(items), [items]);
+
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, TreeNode>();
+    function walk(arr: TreeNode[]) {
+      for (const n of arr) {
+        map.set(n.id, n);
+        if (n.children.length > 0) walk(n.children);
+      }
+    }
+    walk(fullTree);
+    return map;
+  }, [fullTree]);
+
   const flat = useMemo(() => {
     const list = flattenTree(items, collapsedIds);
     const emptyNode: TreeNode = {
@@ -901,12 +915,11 @@ function TimelineComponent({
               />
             ))}
             {flat.map((n) => {
-              const tree = buildTree(items);
               const siblings = n.parentId
-                ? (flat.find((p) => p.id === n.parentId) as any)?.children ?? []
-                : tree;
+                ? nodeMap.get(n.parentId)?.children ?? []
+                : fullTree;
               const siblingCount = siblings.length;
-              const indexAmongSiblings = siblings.findIndex((s: any) => s.id === n.id);
+              const indexAmongSiblings = siblings.findIndex((s) => s.id === n.id);
 
               // 드래그 미리보기: 이 노드의 변경 예상 시작/종료(원본과 다르면 반투명 막대로 표시)
               const pv = previewMap.get(n.id);
