@@ -43,6 +43,15 @@
   - ✅ **`ON_TRACK` (정상/달성)**: $\text{delayGap} \le 0\%p$ (예상 진척률 이상 달성)
   - ⚪ **`UNKNOWN`**: 시작일/종료일 또는 실제 진척률 데이터가 없어 계산할 수 없는 경우
 
+### 2.3 단기 일정(영업일 1~3일) 지연 예외 정책
+1~3일짜리 단기 일정은 작업 마감 시점이나 퇴근 시 100%로 한 번에 처리하는 현장 습성을 반영하여, 진행 중인 상태에서 1~2일 만에 `CRITICAL` 경고가 남발되는 노이즈를 완화합니다:
+- **대상 판별**: 영업일 수 $\text{countWorkingDays}(\text{startAt}, \text{endAt}) \le 3$ (주말 전용 0영업일일 경우 달력일 $\le 3$일)
+- **지연 상태 규칙**:
+  - `actualProgress >= 100`: **`ON_TRACK`**
+  - `todayIso < endAt` (진행 중): **`ON_TRACK`** (Gantt/Progress Bar 예상선은 계산하되 경고 미발생)
+  - `todayIso === endAt` (오늘 마감 & 미완료): **`WARNING`** (마감일 리마인드)
+  - `todayIso > endAt` (마감일 도과 & 미완료): **`CRITICAL`** (심각한 일정 지연)
+
 ---
 
 ## 3. 백엔드 & 프론트엔드 연동 아키텍처

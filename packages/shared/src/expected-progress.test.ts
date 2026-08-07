@@ -133,6 +133,45 @@ describe('getNodeDelayInfo', () => {
     expect(res.delayGap).toBe(0);
     expect(res.status).toBe('ON_TRACK');
   });
+
+  describe('단기 일정(영업일 1~3일) 지연 상태 특수 정책', () => {
+    // 2026-08-03(월) ~ 2026-08-05(수): 총 2영업일 일정 [8/3, 8/4]
+    const shortNode = {
+      startAt: '2026-08-03',
+      endAt: '2026-08-05',
+      progress: 0,
+    };
+
+    it('진행 중(오늘 < endAt)일 때는 진척률이 0%여도 ON_TRACK 유지', () => {
+      // 8/4(화): expected 50%, actual 0% -> delayGap 50%p지만 단기 일정 진행 중이므로 ON_TRACK
+      const res = getNodeDelayInfo(shortNode, '2026-08-04');
+      expect(res.expectedProgress).toBe(50);
+      expect(res.actualProgress).toBe(0);
+      expect(res.delayGap).toBe(50);
+      expect(res.status).toBe('ON_TRACK');
+    });
+
+    it('종료일 당일(오늘 === endAt)에 미완료 시 WARNING 경고', () => {
+      // 8/5(수): 오늘이 종료일 당일, actual 0% 미완료 -> WARNING
+      const res = getNodeDelayInfo(shortNode, '2026-08-05');
+      expect(res.expectedProgress).toBe(100);
+      expect(res.actualProgress).toBe(0);
+      expect(res.status).toBe('WARNING');
+    });
+
+    it('종료일 도과(오늘 > endAt) 시 미완료된 경우 CRITICAL 경고', () => {
+      // 8/6(목): 종료일 지난 시점, actual 50% 미완료 -> CRITICAL
+      const res = getNodeDelayInfo({ ...shortNode, progress: 50 }, '2026-08-06');
+      expect(res.expectedProgress).toBe(100);
+      expect(res.actualProgress).toBe(50);
+      expect(res.status).toBe('CRITICAL');
+    });
+
+    it('종료일 도과 시에도 진척률 100% 완료 상태라면 ON_TRACK', () => {
+      const res = getNodeDelayInfo({ ...shortNode, progress: 100 }, '2026-08-06');
+      expect(res.status).toBe('ON_TRACK');
+    });
+  });
 });
 
 describe('calculateTreeNodesDelayInfo (버블업 지연 전파)', () => {

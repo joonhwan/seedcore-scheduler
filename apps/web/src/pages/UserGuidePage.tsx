@@ -20,7 +20,7 @@ export default function UserGuidePage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">사용설명서</h1>
             <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
-              SAM Scheduler v1.4
+              SAM Scheduler v1.5
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
@@ -447,6 +447,20 @@ export default function UserGuidePage() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20 space-y-3">
+                <h3 className="font-semibold text-amber-900 dark:text-amber-300 text-sm flex items-center gap-1.5">
+                  <span>⚡</span> 단기 일정(영업일 1~3일) 조기 지연 완화 정책
+                </h3>
+                <p className="text-xs text-amber-800/90 dark:text-amber-400/90 leading-relaxed">
+                  1~3일짜리 단기 일정은 작업 마감일이나 퇴근 무렵 100%로 한 번에 처리하는 현장 특성을 고려하여, **진행 중일 때 불필요한 지연 경고가 뜨지 않도록 완화**됩니다.
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-xs text-amber-800/90 dark:text-amber-400/90">
+                  <li>**진행 중 (오늘 &lt; 종료일)**: 진척률을 당장 입력하지 않았더라도 진행 중인 동안은 **✅ 정상(ON_TRACK)** 상태를 유지합니다.</li>
+                  <li>**종료일 당일 (오늘 ＝ 종료일)**: 오늘이 마감일인데 미완료된 경우 **⚠️ 주의(WARNING)** 경고로 리마인드합니다.</li>
+                  <li>**종료일 경과 (오늘 &gt; 종료일)**: 마감일이 지났는데 완료(100%)되지 않은 경우 **🚨 심각 지연(CRITICAL)**으로 판정됩니다.</li>
+                </ul>
               </div>
 
               <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/50 space-y-3">

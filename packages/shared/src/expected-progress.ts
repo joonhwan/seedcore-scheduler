@@ -149,14 +149,48 @@ export function getItemNodeDelayInfo(
 
   const delayGap = expectedProgress - actualProgress;
 
+  // 단기 일정(Short-Term Task: 영업일 기준 1~3일) 판별
+  // 주말 전용 작업 등으로 영업일 수가 0일인 경우, 달력일수(Calendar Days) 기준 3일 이하 판별
+  let isShortTerm = false;
+  if (startAt && endAt) {
+    const workingDays = countWorkingDays(startAt, endAt);
+    if (workingDays > 0) {
+      isShortTerm = workingDays <= 3;
+    } else {
+      const sDate = new Date(`${startAt}T00:00:00Z`);
+      const eDate = new Date(`${endAt}T00:00:00Z`);
+      const calDays = Math.ceil((eDate.getTime() - sDate.getTime()) / (1000 * 60 * 60 * 24));
+      isShortTerm = calDays <= 3;
+    }
+  }
+
   let status: DelayStatus = 'ON_TRACK';
-  const isOverdue = !!endAt && todayIso > endAt && actualProgress < 100;
-  if (isOverdue || delayGap >= 30) {
-    status = 'CRITICAL';
-  } else if (delayGap >= 15) {
-    status = 'WARNING';
-  } else if (delayGap > 0) {
-    status = 'SLIGHT';
+
+  if (isShortTerm) {
+    // 단기 일정(영업일 1~3일) 지연 상태 특수 정책:
+    // 1) actualProgress === 100 -> ON_TRACK
+    // 2) 오늘 < endAt -> ON_TRACK (진행 중일 때는 억울한 조기 지연 경고 방지)
+    // 3) 오늘 === endAt -> WARNING (오늘이 마감일인데 미완료)
+    // 4) 오늘 > endAt -> CRITICAL (마감일 지남 & 미완료)
+    if (actualProgress >= 100) {
+      status = 'ON_TRACK';
+    } else if (endAt && todayIso === endAt) {
+      status = 'WARNING';
+    } else if (endAt && todayIso > endAt) {
+      status = 'CRITICAL';
+    } else {
+      status = 'ON_TRACK';
+    }
+  } else {
+    // 일반 일정 (영업일 4일 이상) 기존 정책:
+    const isOverdue = !!endAt && todayIso > endAt && actualProgress < 100;
+    if (isOverdue || delayGap >= 30) {
+      status = 'CRITICAL';
+    } else if (delayGap >= 15) {
+      status = 'WARNING';
+    } else if (delayGap > 0) {
+      status = 'SLIGHT';
+    }
   }
 
   return {
