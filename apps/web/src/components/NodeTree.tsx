@@ -38,6 +38,7 @@ export interface NodeTreeProps {
   selectedId: string | null;
   canEdit: boolean;
   onSelect: (id: string) => void;
+  onEdit?: ((id: string) => void) | undefined;
   onAddChild: (parent: NodeTreeItem) => void;
   onAddSibling: (sibling: NodeTreeItem) => void;
   onAddRoot: () => void;
@@ -132,6 +133,7 @@ function NodeRow({
   canEdit,
   onlyDelayed,
   onSelect,
+  onEdit,
   onAddChild,
   onAddSibling,
   onAddRoot,
@@ -206,6 +208,7 @@ function NodeRow({
                 subtreeMaxDepth={subtreeMaxDepth}
                 canCreate={true}
                 canDelete={true}
+                onEdit={onEdit ? (n) => onEdit(n.id) : undefined}
                 onMoveSibling={onMoveSibling}
                 onAddChild={onAddChild}
                 onAddSibling={onAddSibling}
@@ -254,6 +257,7 @@ function NodeRow({
               selectedId={selectedId}
               canEdit={canEdit}
               onSelect={onSelect}
+              onEdit={onEdit}
               onAddChild={onAddChild}
               onAddSibling={onAddSibling}
               onAddRoot={onAddRoot}

@@ -1191,6 +1191,7 @@ function Row({
                       subtreeMaxDepth={subtreeMaxDepth}
                       canCreate={canCreate}
                       canDelete={canDelete}
+                      onEdit={(n) => onEdit?.(n.id)}
                       onMoveSibling={onMoveSibling}
                       onAddChild={onAddChild}
                       onAddSibling={onAddSibling}

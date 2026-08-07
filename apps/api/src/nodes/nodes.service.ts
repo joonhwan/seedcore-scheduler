@@ -69,6 +69,12 @@ export class NodesService {
       if (!parent || parent.projectId !== projectId) {
         throw new BadRequestException({ error: 'INVALID_PARENT' });
       }
+      if (parent.kind === 'ITEM') {
+        throw new BadRequestException({
+          error: 'CANNOT_ADD_CHILD_TO_ITEM',
+          message: '일반 항목(ITEM)에는 자식 일정을 추가할 수 없습니다. 그룹(GROUP)으로 변경 후 시도하세요.',
+        });
+      }
       parentDepth = parent.depth;
     }
     const depth = parentDepth + 1;
@@ -298,6 +304,12 @@ export class NodesService {
       });
       if (!newParent || newParent.projectId !== target.projectId) {
         throw new BadRequestException({ error: 'INVALID_PARENT' });
+      }
+      if (newParent.kind === 'ITEM') {
+        throw new BadRequestException({
+          error: 'CANNOT_ADD_CHILD_TO_ITEM',
+          message: '일반 항목(ITEM)에는 자식 일정을 추가할 수 없습니다.',
+        });
       }
       newParentDepth = newParent.depth;
     }

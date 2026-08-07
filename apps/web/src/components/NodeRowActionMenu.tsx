@@ -9,6 +9,7 @@ export interface NodeRowActionMenuProps {
   subtreeMaxDepth?: number | undefined;
   canCreate?: boolean | undefined;
   canDelete?: boolean | undefined;
+  onEdit?: ((node: NodeTreeItem) => void) | undefined;
   onMoveSibling?: ((node: NodeTreeItem, direction: -1 | 1) => void) | undefined;
   onAddChild?: ((node: NodeTreeItem) => void) | undefined;
   onAddSibling?: ((node: NodeTreeItem) => void) | undefined;
@@ -23,6 +24,7 @@ export default function NodeRowActionMenu({
   subtreeMaxDepth,
   canCreate = true,
   canDelete = true,
+  onEdit,
   onMoveSibling,
   onAddChild,
   onAddSibling,
@@ -34,7 +36,9 @@ export default function NodeRowActionMenu({
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const isItem = node.kind === 'ITEM';
   const childWouldExceedDepth = node.depth + 1 >= MAX_TREE_DEPTH;
+  const childDisabled = childWouldExceedDepth || isItem;
   const currentSubtreeDepth = subtreeMaxDepth !== undefined ? subtreeMaxDepth - node.depth + 1 : 1;
 
   const updatePosition = () => {
@@ -44,8 +48,8 @@ export default function NodeRowActionMenu({
       let left = rect.right - menuWidth;
       if (left < 8) left = 8;
       let top = rect.bottom + 4;
-      if (top + 220 > window.innerHeight && rect.top - 220 > 0) {
-        top = rect.top - 220;
+      if (top + 260 > window.innerHeight && rect.top - 260 > 0) {
+        top = rect.top - 260;
       }
       setCoords({ top, left });
     }
@@ -118,6 +122,17 @@ export default function NodeRowActionMenu({
           className="w-44 rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800 z-[9999] text-xs animate-in fade-in duration-100"
           onClick={(e) => e.stopPropagation()}
         >
+          {onEdit && (
+            <button
+              type="button"
+              onClick={() => handleAction(() => onEdit(node))}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700/60"
+            >
+              <span className="font-mono text-xs w-4">✏️</span>
+              <span>일정 수정</span>
+            </button>
+          )}
+
           {onMoveSibling && (
             <>
               <button
@@ -144,8 +159,14 @@ export default function NodeRowActionMenu({
           {canCreate && onAddChild && (
             <button
               type="button"
-              disabled={childWouldExceedDepth}
-              title={childWouldExceedDepth ? `최대 깊이(${MAX_TREE_DEPTH})에 도달` : undefined}
+              disabled={childDisabled}
+              title={
+                isItem
+                  ? '일반 항목(ITEM)에는 자식 일정을 추가할 수 없습니다. 그룹(GROUP)으로 변경 후 시도하세요.'
+                  : childWouldExceedDepth
+                  ? `최대 깊이(${MAX_TREE_DEPTH})에 도달`
+                  : undefined
+              }
               onClick={() => handleAction(() => onAddChild(node))}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent dark:text-slate-200 dark:hover:bg-slate-700/60"
             >
