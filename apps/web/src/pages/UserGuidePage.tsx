@@ -403,7 +403,7 @@ export default function UserGuidePage() {
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-400">
                   <code className="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono">
-                    지연 차이 = 예상 진척률 - 실제 진척률 (%p)
+                    지연 차이 = 예상 진척률 - 실제 진척률 (%)
                   </code>
                 </p>
                 <div className="overflow-x-auto">
@@ -418,28 +418,28 @@ export default function UserGuidePage() {
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                       <tr>
                         <td className="p-2 border font-bold text-red-600 dark:text-red-400">🚨 심각 지연</td>
-                        <td className="p-2 border font-mono">30%p 이상 미달 (또는 마감일 초과)</td>
+                        <td className="p-2 border font-mono">30% 이상 미달 (또는 마감일 초과)</td>
                         <td className="p-2 border text-slate-600 dark:text-slate-400">
                           눈길을 끄는 🚨 **펄스(Ping Pulse) 경고 뱃지**와 붉은색 그라데이션이 적용되어 즉시 구별할 수 있습니다.
                         </td>
                       </tr>
                       <tr>
                         <td className="p-2 border font-semibold text-amber-600 dark:text-amber-400">⚠️ 주의 지연</td>
-                        <td className="p-2 border font-mono">15%p ~ 29%p 미달</td>
+                        <td className="p-2 border font-mono">15% ~ 29% 미달</td>
                         <td className="p-2 border text-slate-600 dark:text-slate-400">
                           ⚠️ **주황색 주의 뱃지**와 하이라이트 배경으로 지연 위험을 알려줍니다.
                         </td>
                       </tr>
                       <tr>
                         <td className="p-2 border font-medium text-blue-600 dark:text-blue-400">📉 소폭 지연</td>
-                        <td className="p-2 border font-mono">1%p ~ 14%p 미달</td>
+                        <td className="p-2 border font-mono">1% ~ 14% 미달</td>
                         <td className="p-2 border text-slate-600 dark:text-slate-400">
                           예상보다 소폭 늦어지고 있는 상태를 나타냅니다.
                         </td>
                       </tr>
                       <tr>
                         <td className="p-2 border font-medium text-emerald-600 dark:text-emerald-400">✅ 정상</td>
-                        <td className="p-2 border font-mono">지연 없음 (0%p 이하)</td>
+                        <td className="p-2 border font-mono">지연 없음 (0% 이하)</td>
                         <td className="p-2 border text-slate-600 dark:text-slate-400">
                           정상 일정 범위 내 진행 중이거나 미리 완료된 항목입니다.
                         </td>
@@ -447,6 +447,26 @@ export default function UserGuidePage() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-red-200 bg-red-50/60 p-4 dark:border-red-900/50 dark:bg-red-950/20 space-y-3">
+                <h3 className="font-semibold text-red-900 dark:text-red-300 text-sm flex items-center gap-1.5">
+                  <span>🚨</span> "심각 지연" 상태가 판정되는 3가지 세부 조건
+                </h3>
+                <p className="text-xs text-red-800/90 dark:text-red-300/90 leading-relaxed">
+                  지연 수치(%)가 작더라도 아래 조건 중 <strong>하나라도 해당하는 경우</strong> 즉시 🚨 <strong>심각 지연(CRITICAL)</strong> 상태로 판정되어 경고가 표시됩니다.
+                </p>
+                <ul className="list-disc pl-5 space-y-2 text-xs text-red-800/90 dark:text-red-300/90">
+                  <li>
+                    <strong>1) 진척률 30% 이상 미달 (delayGap &ge; 30%)</strong>: 예상 진행률 대비 실제 완료율 차이가 30% 이상 벌어진 경우
+                  </li>
+                  <li>
+                    <strong>2) 마감일(종료일) 초과 미완료 (isOverdue)</strong>: 지연 수치(%)가 30% 미만(예: 5%, 29% 등)이더라도, <strong>종료일이 이미 지났는데 100% 완료되지 않은 일정</strong>은 무조건 심각 지연으로 처리됩니다. (툴팁 안내: <em>"마감일 경과 항목이 존재합니다."</em>)
+                  </li>
+                  <li>
+                    <strong>3) 하위 세부 일정 전파 (Bubble-up)</strong>: 프로젝트 전체나 상위 그룹 노드의 지연%는 하위 항목들의 평균 수치로 계산되지만, 하위 세부 일정 중 <strong>마감 초과 또는 심각 지연 항목이 1개라도 있으면</strong> 상위 전체 상태가 심각 지연으로 전파됩니다.
+                  </li>
+                </ul>
               </div>
 
               <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20 space-y-3">

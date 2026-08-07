@@ -21,11 +21,46 @@ export const ProjectDelaySummaryDto = z.object({
 });
 export type ProjectDelaySummaryDto = z.infer<typeof ProjectDelaySummaryDto>;
 
+export const DELAY_THRESHOLDS = {
+  CRITICAL: 30, // 30% 이상 지연 시 심각 지연
+  WARNING: 15,  // 15% 이상 지연 시 주의 지연
+  SLIGHT: 0,    // 0% 초과 지연 시 소폭 지연
+} as const;
+
+export const DELAY_THRESHOLD_CRITICAL = DELAY_THRESHOLDS.CRITICAL;
+export const DELAY_THRESHOLD_WARNING = DELAY_THRESHOLDS.WARNING;
+export const DELAY_THRESHOLD_SLIGHT = DELAY_THRESHOLDS.SLIGHT;
+
+export function getDelayStatusTooltip(status: DelayStatus, delayGap?: number): string {
+  const gapText = delayGap !== undefined && delayGap > 0 ? ` (${delayGap}% 지연)` : '';
+
+  switch (status) {
+    case 'CRITICAL':
+      if (delayGap !== undefined && delayGap < DELAY_THRESHOLDS.CRITICAL) {
+        return `마감일 경과 항목이 존재합니다.${gapText}`;
+      }
+      return `예상보다 ${DELAY_THRESHOLDS.CRITICAL}% 이상 심각하게 지연 중입니다.${gapText}`;
+
+    case 'WARNING':
+      if (delayGap !== undefined && delayGap < DELAY_THRESHOLDS.WARNING) {
+        return `예상보다 지연 중입니다.${gapText}`;
+      }
+      return `예상보다 ${DELAY_THRESHOLDS.WARNING}% 이상 지연 중입니다.${gapText}`;
+
+    case 'SLIGHT':
+      return `예상보다 소폭 지연 중입니다.${gapText}`;
+
+    case 'ON_TRACK':
+    default:
+      return '예상 일정대로 정상 진행 중입니다.';
+  }
+}
+
 export interface ExpectedProgressResult {
   expectedProgress: number | null; // 0 ~ 100 또는 null (날짜 미지정 시)
   actualProgress: number | null;   // 0 ~ 100 또는 null
   delayGap: number;               // expectedProgress - actualProgress (양수이면 예상보다 지연)
-  status: DelayStatus;            // CRITICAL(>=30%p), WARNING(>=15%p), SLIGHT(>0%p), ON_TRACK(<=0%p), UNKNOWN
+  status: DelayStatus;            // CRITICAL(>=30%), WARNING(>=15%), SLIGHT(>0%), ON_TRACK(<=0%), UNKNOWN
 }
 
 export interface NodeDelayInput {

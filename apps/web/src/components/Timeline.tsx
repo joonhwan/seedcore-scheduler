@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, type ForwardedRef } from 'react';
-import { calculateTreeNodesDelayInfo, getNodeDelayInfo, getTodayIso, type NodeTreeItem, type NodeHistoryItem, type ExpectedProgressResult } from '@sam/shared';
+import { calculateTreeNodesDelayInfo, getNodeDelayInfo, getDelayStatusTooltip, getTodayIso, type NodeTreeItem, type NodeHistoryItem, type ExpectedProgressResult } from '@sam/shared';
 import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
 import NodeRowActionMenu from './NodeRowActionMenu';
 
@@ -1215,10 +1215,10 @@ function Row({
                 )}
 
                 {delayInfo.status === 'CRITICAL' && (
-                  <span className="text-xs shrink-0" title={`🚨 예상보다 ${delayInfo.delayGap}%p 심각하게 지연 중`}>🚨</span>
+                  <span className="text-xs shrink-0" title={getDelayStatusTooltip('CRITICAL', delayInfo.delayGap)}>🚨</span>
                 )}
                 {delayInfo.status === 'WARNING' && (
-                  <span className="text-xs shrink-0" title={`⚠️ 예상보다 ${delayInfo.delayGap}%p 지연 중`}>⚠️</span>
+                  <span className="text-xs shrink-0" title={getDelayStatusTooltip('WARNING', delayInfo.delayGap)}>⚠️</span>
                 )}
                 <ProgressPercentBadge
                   progress={progress}
@@ -1297,7 +1297,7 @@ function Row({
               } ${barBg}`}
               style={{ left: bar.leftPx, width: bar.widthPx }}
               title={`${start} ~ ${end}${progress !== null ? ` · 실제 ${progress}%` : ''}${
-                delayInfo.expectedProgress !== null ? ` (예상 ${delayInfo.expectedProgress}% - ${delayInfo.delayGap}%p 지연)` : ''
+                delayInfo.expectedProgress !== null ? ` (예상 ${delayInfo.expectedProgress}% - ${delayInfo.delayGap}% 지연)` : ''
               }`}
             >
               {progress !== null && progress > 0 && (

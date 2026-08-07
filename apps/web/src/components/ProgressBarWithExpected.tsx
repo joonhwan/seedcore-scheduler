@@ -40,7 +40,7 @@ export default function ProgressBarWithExpected({
   const tooltipText = hasExpected
     ? `실제: ${actual}% | 예상: ${expectedProgress}% ${
         status === 'CRITICAL' || status === 'WARNING' || status === 'SLIGHT'
-          ? `(${expectedProgress! - actual}%p 지연)`
+          ? `(${expectedProgress! - actual}% 지연)`
           : ''
       }`
     : `실제: ${actual}%`;

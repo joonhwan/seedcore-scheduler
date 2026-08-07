@@ -5,7 +5,42 @@ import {
   getNodeDelayInfo,
   calculateTreeNodesDelayInfo,
   calculateProjectDelaySummary,
+  DELAY_THRESHOLDS,
+  getDelayStatusTooltip,
 } from './expected-progress';
+
+describe('DELAY_THRESHOLDS & getDelayStatusTooltip', () => {
+  it('should export correct threshold constants', () => {
+    expect(DELAY_THRESHOLDS.CRITICAL).toBe(30);
+    expect(DELAY_THRESHOLDS.WARNING).toBe(15);
+    expect(DELAY_THRESHOLDS.SLIGHT).toBe(0);
+  });
+
+  it('should return overdue message for CRITICAL when delayGap < 30', () => {
+    const tooltip = getDelayStatusTooltip('CRITICAL', 29);
+    expect(tooltip).toBe('마감일 경과 항목이 존재합니다. (29% 지연)');
+  });
+
+  it('should return standard 30% message for CRITICAL when delayGap >= 30', () => {
+    const tooltip = getDelayStatusTooltip('CRITICAL', 35);
+    expect(tooltip).toBe('예상보다 30% 이상 심각하게 지연 중입니다. (35% 지연)');
+  });
+
+  it('should return warning message for WARNING status', () => {
+    const tooltip = getDelayStatusTooltip('WARNING', 20);
+    expect(tooltip).toBe('예상보다 15% 이상 지연 중입니다. (20% 지연)');
+  });
+
+  it('should return slight message for SLIGHT status', () => {
+    const tooltip = getDelayStatusTooltip('SLIGHT', 5);
+    expect(tooltip).toBe('예상보다 소폭 지연 중입니다. (5% 지연)');
+  });
+
+  it('should return on-track message for ON_TRACK status', () => {
+    const tooltip = getDelayStatusTooltip('ON_TRACK');
+    expect(tooltip).toBe('예상 일정대로 정상 진행 중입니다.');
+  });
+});
 
 describe('countWorkingDays', () => {
   it('평일 일수를 정확히 계산함 (주말 제외)', () => {
