@@ -1169,22 +1169,6 @@ function Row({
             </span>
           </div>
 
-          {canEdit && !isEmptyRow && !selectionMode && (
-            <NodeRowActionMenu
-              node={node}
-              indexAmongSiblings={indexAmongSiblings}
-              siblingCount={siblingCount}
-              subtreeMaxDepth={subtreeMaxDepth}
-              canCreate={canCreate}
-              canDelete={canDelete}
-              onMoveSibling={onMoveSibling}
-              onAddChild={onAddChild}
-              onAddSibling={onAddSibling}
-              onChangeParent={onChangeParent}
-              onDelete={onDelete}
-            />
-          )}
-
           {(() => {
             const delayInfo = getNodeDelayInfo(node, undefined, delayInfoMap);
             return (
@@ -1196,8 +1180,26 @@ function Row({
                   if (selectionMode) return;
                   if (!isEmptyRow) onEdit?.(node.id);
                 }}
-                className="flex items-center gap-1 shrink-0 mr-1 cursor-pointer"
+                className="relative flex items-center gap-1 shrink-0 mr-1 cursor-pointer"
               >
+                {canEdit && !isEmptyRow && !selectionMode && (
+                  <div className="absolute right-full mr-1.5 top-1/2 -translate-y-1/2 z-10" onClick={(e) => e.stopPropagation()}>
+                    <NodeRowActionMenu
+                      node={node}
+                      indexAmongSiblings={indexAmongSiblings}
+                      siblingCount={siblingCount}
+                      subtreeMaxDepth={subtreeMaxDepth}
+                      canCreate={canCreate}
+                      canDelete={canDelete}
+                      onMoveSibling={onMoveSibling}
+                      onAddChild={onAddChild}
+                      onAddSibling={onAddSibling}
+                      onChangeParent={onChangeParent}
+                      onDelete={onDelete}
+                    />
+                  </div>
+                )}
+
                 {delayInfo.status === 'CRITICAL' && (
                   <span className="text-xs shrink-0" title={`🚨 예상보다 ${delayInfo.delayGap}%p 심각하게 지연 중`}>🚨</span>
                 )}

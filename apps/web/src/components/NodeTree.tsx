@@ -192,27 +192,29 @@ function NodeRow({
           </span>
         </div>
 
-        {canEdit && (
-          <NodeRowActionMenu
-            node={node}
-            indexAmongSiblings={indexAmongSiblings}
-            siblingCount={siblingCount}
-            subtreeMaxDepth={subtreeMaxDepth}
-            canCreate={true}
-            canDelete={true}
-            onMoveSibling={onMoveSibling}
-            onAddChild={onAddChild}
-            onAddSibling={onAddSibling}
-            onChangeParent={onChangeParent}
-            onDelete={onDelete}
-          />
-        )}
-
         {/* 진척률 % 강조 배지 & 지연 경고 뱃지 & 미니 프로그레스 바 (가장 우측 고정) */}
         <div
           onClick={() => onSelect(node.id)}
-          className="flex items-center gap-1.5 shrink-0 cursor-pointer"
+          className="relative flex items-center gap-1.5 shrink-0 ml-auto cursor-pointer"
         >
+          {canEdit && (
+            <div className="absolute right-full mr-1.5 top-1/2 -translate-y-1/2 z-10" onClick={(e) => e.stopPropagation()}>
+              <NodeRowActionMenu
+                node={node}
+                indexAmongSiblings={indexAmongSiblings}
+                siblingCount={siblingCount}
+                subtreeMaxDepth={subtreeMaxDepth}
+                canCreate={true}
+                canDelete={true}
+                onMoveSibling={onMoveSibling}
+                onAddChild={onAddChild}
+                onAddSibling={onAddSibling}
+                onChangeParent={onChangeParent}
+                onDelete={onDelete}
+              />
+            </div>
+          )}
+
           <ProgressPercentBadge
             progress={delayInfo.actualProgress}
             status={delayInfo.status}

@@ -103,7 +103,9 @@ export default function NodeRowActionMenu({
         title="추가 옵션"
         onClick={toggleMenu}
         className={`flex h-6 w-6 items-center justify-center rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 text-xs transition-colors ${
-          isOpen ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100 opacity-100' : 'opacity-0 group-hover:opacity-100 group-hover/row:opacity-100'
+          isOpen
+            ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100 opacity-100 pointer-events-auto'
+            : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-hover/row:opacity-100 group-hover/row:pointer-events-auto'
         }`}
       >
         ⋯
