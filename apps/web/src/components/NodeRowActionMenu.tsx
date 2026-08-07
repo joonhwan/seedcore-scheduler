@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { MAX_TREE_DEPTH, type NodeTreeItem } from '@sam/shared';
 
 export interface NodeRowActionMenuProps {
@@ -29,22 +30,63 @@ export default function NodeRowActionMenu({
   onDelete,
 }: NodeRowActionMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const childWouldExceedDepth = node.depth + 1 >= MAX_TREE_DEPTH;
   const currentSubtreeDepth = subtreeMaxDepth !== undefined ? subtreeMaxDepth - node.depth + 1 : 1;
 
+  const updatePosition = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      const menuWidth = 176; // w-44 = 176px
+      let left = rect.right - menuWidth;
+      if (left < 8) left = 8;
+      let top = rect.bottom + 4;
+      if (top + 220 > window.innerHeight && rect.top - 220 > 0) {
+        top = rect.top - 220;
+      }
+      setCoords({ top, left });
+    }
+  };
+
+  const toggleMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isOpen) {
+      updatePosition();
+      setIsOpen(true);
+    } else {
+      setIsOpen(false);
+    }
+  };
+
   useEffect(() => {
+    if (!isOpen) return;
+
     function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        btnRef.current &&
+        !btnRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     }
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+
+    function handleScrollOrResize() {
+      setIsOpen(false);
     }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
     };
   }, [isOpen]);
 
@@ -54,14 +96,12 @@ export default function NodeRowActionMenu({
   };
 
   return (
-    <div ref={menuRef} className="relative shrink-0 z-30">
+    <div className="relative shrink-0 z-30">
       <button
+        ref={btnRef}
         type="button"
         title="추가 옵션"
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsOpen((prev) => !prev);
-        }}
+        onClick={toggleMenu}
         className={`flex h-6 w-6 items-center justify-center rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 text-xs transition-colors ${
           isOpen ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100 opacity-100' : 'opacity-0 group-hover:opacity-100 group-hover/row:opacity-100'
         }`}
@@ -69,9 +109,11 @@ export default function NodeRowActionMenu({
         ⋯
       </button>
 
-      {isOpen && (
+      {isOpen && coords && createPortal(
         <div
-          className="absolute right-0 top-7 w-44 rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800 z-50 text-xs animate-in fade-in duration-100"
+          ref={menuRef}
+          style={{ position: 'fixed', top: `${coords.top}px`, left: `${coords.left}px` }}
+          className="w-44 rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800 z-[9999] text-xs animate-in fade-in duration-100"
           onClick={(e) => e.stopPropagation()}
         >
           {onMoveSibling && (
@@ -146,8 +188,10 @@ export default function NodeRowActionMenu({
               </button>
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
 }
+

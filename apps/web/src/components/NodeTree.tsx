@@ -178,47 +178,19 @@ function NodeRow({
       <div
         className={`group relative flex items-center gap-2 rounded px-2.5 py-1.5 text-sm transition-all ${rowBgClass}`}
       >
-        <button
-          type="button"
+        <div
           onClick={() => onSelect(node.id)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer"
         >
           <KindBadge kind={node.kind} />
           <span className={`truncate ${isGroup ? 'font-semibold' : ''}`}>
             {node.title}
           </span>
 
-          <span className="ml-1 shrink-0 text-[10px] text-slate-400">
+          <span className="ml-1 shrink-0 text-[10px] text-slate-400 hidden sm:inline">
             {formatRange(node)}
           </span>
-
-          {/* 진척률 % 강조 배지 & 지연 경고 뱃지 & 미니 프로그레스 바 */}
-          <div className="ml-auto flex items-center gap-1.5 shrink-0">
-            <ProgressPercentBadge
-              progress={delayInfo.actualProgress}
-              status={delayInfo.status}
-              size="sm"
-            />
-
-            {delayInfo.status !== 'UNKNOWN' && delayInfo.status !== 'ON_TRACK' && (
-              <DelayStatusBadge
-                status={delayInfo.status}
-                delayGap={delayInfo.delayGap}
-                size="sm"
-                className="shrink-0"
-              />
-            )}
-
-            <div className="w-20 shrink-0 hidden md:block ml-1">
-              <ProgressBarWithExpected
-                actualProgress={delayInfo.actualProgress}
-                expectedProgress={delayInfo.expectedProgress}
-                status={delayInfo.status}
-                height="h-1.5"
-              />
-            </div>
-          </div>
-        </button>
+        </div>
 
         {canEdit && (
           <NodeRowActionMenu
@@ -235,6 +207,36 @@ function NodeRow({
             onDelete={onDelete}
           />
         )}
+
+        {/* 진척률 % 강조 배지 & 지연 경고 뱃지 & 미니 프로그레스 바 (가장 우측 고정) */}
+        <div
+          onClick={() => onSelect(node.id)}
+          className="flex items-center gap-1.5 shrink-0 cursor-pointer"
+        >
+          <ProgressPercentBadge
+            progress={delayInfo.actualProgress}
+            status={delayInfo.status}
+            size="sm"
+          />
+
+          {delayInfo.status !== 'UNKNOWN' && delayInfo.status !== 'ON_TRACK' && (
+            <DelayStatusBadge
+              status={delayInfo.status}
+              delayGap={delayInfo.delayGap}
+              size="sm"
+              className="shrink-0"
+            />
+          )}
+
+          <div className="w-20 shrink-0 hidden md:block ml-1">
+            <ProgressBarWithExpected
+              actualProgress={delayInfo.actualProgress}
+              expectedProgress={delayInfo.expectedProgress}
+              status={delayInfo.status}
+              height="h-1.5"
+            />
+          </div>
+        </div>
       </div>
 
       {node.children.length > 0 && (

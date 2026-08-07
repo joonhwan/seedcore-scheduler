@@ -1133,44 +1133,71 @@ function Row({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            if (!selectionMode) onSelect(node.id);
-          }}
-          onDoubleClick={() => {
-            if (selectionMode) return;
-            if (isEmptyRow) {
-              if (canCreate) onAddRoot?.();
-            } else {
-              onEdit?.(node.id);
-            }
-          }}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left select-none"
-        >
-          <span className="shrink-0 flex items-center justify-center">
-            {isEmptyRow ? (
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-400 dark:text-slate-500">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-            ) : isGroup ? (
-              <FolderIcon className="w-4 h-4" />
-            ) : (
-              <ItemIcon className="w-4 h-4" />
-            )}
-          </span>
-          <span
-            className={`min-w-0 flex-1 truncate ${
-              isEmptyRow ? 'text-slate-400 dark:text-slate-500 italic' : ''
-            }`}
-            title={isEmptyRow ? '이 항목을 선택한 후 Ctrl+I 를 누르거나 더블클릭하면 최상단 일정이 추가됩니다.' : node.title}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left select-none">
+          <div
+            onClick={() => {
+              if (!selectionMode) onSelect(node.id);
+            }}
+            onDoubleClick={() => {
+              if (selectionMode) return;
+              if (isEmptyRow) {
+                if (canCreate) onAddRoot?.();
+              } else {
+                onEdit?.(node.id);
+              }
+            }}
+            className="flex min-w-0 flex-1 items-center gap-2 cursor-pointer"
           >
-            {node.title}
-          </span>
+            <span className="shrink-0 flex items-center justify-center">
+              {isEmptyRow ? (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-400 dark:text-slate-500">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              ) : isGroup ? (
+                <FolderIcon className="w-4 h-4" />
+              ) : (
+                <ItemIcon className="w-4 h-4" />
+              )}
+            </span>
+            <span
+              className={`min-w-0 flex-1 truncate ${
+                isEmptyRow ? 'text-slate-400 dark:text-slate-500 italic' : ''
+              }`}
+              title={isEmptyRow ? '이 항목을 선택한 후 Ctrl+I 를 누르거나 더블클릭하면 최상단 일정이 추가됩니다.' : node.title}
+            >
+              {node.title}
+            </span>
+          </div>
+
+          {canEdit && !isEmptyRow && !selectionMode && (
+            <NodeRowActionMenu
+              node={node}
+              indexAmongSiblings={indexAmongSiblings}
+              siblingCount={siblingCount}
+              subtreeMaxDepth={subtreeMaxDepth}
+              canCreate={canCreate}
+              canDelete={canDelete}
+              onMoveSibling={onMoveSibling}
+              onAddChild={onAddChild}
+              onAddSibling={onAddSibling}
+              onChangeParent={onChangeParent}
+              onDelete={onDelete}
+            />
+          )}
+
           {(() => {
             const delayInfo = getNodeDelayInfo(node, undefined, delayInfoMap);
             return (
-              <div className="flex items-center gap-1 shrink-0 mr-1">
+              <div
+                onClick={() => {
+                  if (!selectionMode) onSelect(node.id);
+                }}
+                onDoubleClick={() => {
+                  if (selectionMode) return;
+                  if (!isEmptyRow) onEdit?.(node.id);
+                }}
+                className="flex items-center gap-1 shrink-0 mr-1 cursor-pointer"
+              >
                 {delayInfo.status === 'CRITICAL' && (
                   <span className="text-xs shrink-0" title={`🚨 예상보다 ${delayInfo.delayGap}%p 심각하게 지연 중`}>🚨</span>
                 )}
@@ -1185,23 +1212,7 @@ function Row({
               </div>
             );
           })()}
-        </button>
-
-        {canEdit && !isEmptyRow && !selectionMode && (
-          <NodeRowActionMenu
-            node={node}
-            indexAmongSiblings={indexAmongSiblings}
-            siblingCount={siblingCount}
-            subtreeMaxDepth={subtreeMaxDepth}
-            canCreate={canCreate}
-            canDelete={canDelete}
-            onMoveSibling={onMoveSibling}
-            onAddChild={onAddChild}
-            onAddSibling={onAddSibling}
-            onChangeParent={onChangeParent}
-            onDelete={onDelete}
-          />
-        )}
+        </div>
       </div>
       <div className="relative" style={{ width: totalWidth }}>
         {bar && (() => {
