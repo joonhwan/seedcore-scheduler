@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useIsMutating } from '@tanstack/react-query';
-import { MAX_TREE_DEPTH, ImportCsvDto, calculateProjectDelaySummary, type NodeTreeItem, type ProjectDetail, type ProjectStatus } from '@sam/shared';
+import { MAX_TREE_DEPTH, calculateProjectDelaySummary, type NodeTreeItem, type ProjectDetail, type ProjectStatus } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
 import {
@@ -13,10 +13,10 @@ import {
 import { useNodes, useDeleteNode, useMoveNode, useUpdateNode } from '../lib/nodes';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
-import NodeDetail from '../components/NodeDetail';
+import NodeDetail, { type NodeDetailRef } from '../components/NodeDetail';
 import NodeFormDialog from '../components/NodeFormDialog';
 import ParentPickerDialog from '../components/ParentPickerDialog';
-import CommentInputForm from '../components/CommentInputForm';
+import CommentInputForm, { type CommentInputFormRef } from '../components/CommentInputForm';
 import ActivityFeedPanel from '../components/ActivityFeedPanel';
 import Timeline, { type TimelineUnit, type TimelineHandle } from '../components/Timeline';
 import BarChangeConfirmDialog from '../components/BarChangeConfirmDialog';
@@ -27,6 +27,7 @@ import DelayStatusBadge from '../components/DelayStatusBadge';
 import type { BarChangeProposal } from '../lib/ganttTypes';
 import { addDays } from '../lib/ganttMath';
 import { collectDeleteTargets, collectCompleteTargets, hasGroupSelected, collectSubtreeIds, collectShiftTargets } from '../lib/bulkSelection';
+import { describeBulkOutcome, emptyOutcome, type BulkOutcome } from '../lib/bulkResult';
 import ExportMenu from '../components/ExportMenu';
 import ProjectNameEditor from '../components/ProjectNameEditor';
 import GanttExportDialog from '../components/GanttExportDialog';
@@ -71,8 +72,11 @@ export default function ProjectDetailPage() {
   const [excelExportOpen, setExcelExportOpen] = useState(false);
   const selectionMode = selectedNodeIds.size > 0;
 
-  const detailRef = useRef<any>(null);
-  const commentsRef = useRef<any>(null);
+  // 두 컴포넌트가 핸들 타입을 export 하고 있으므로 any 를 쓸 이유가 없다.
+  // any 였을 때는 handleSaveAndClose() 가 부르는 isDirty()/save()/hasContent()/submitComment()
+  // 의 오타나 시그니처 변경을 타입 검사가 잡지 못했다.
+  const detailRef = useRef<NodeDetailRef>(null);
+  const commentsRef = useRef<CommentInputFormRef>(null);
   const isSaveAndCloseActionRef = useRef(false);
   const timelineRef = useRef<TimelineHandle>(null);
 
@@ -152,8 +156,6 @@ export default function ProjectDetailPage() {
       setShowConfirmClose(false);
     }
   };
-
-  const handleSaveSuccess = () => {};
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -359,6 +361,12 @@ export default function ProjectDetailPage() {
     setPendingBarChange(null);
   }
 
+  /** 대량 작업 결과를 토스트 한 줄로 알린다. 부분 성공이면 warning 으로 건수를 함께 보여준다. */
+  function reportBulk(outcome: BulkOutcome, doneVerb: string) {
+    const { variant, message } = describeBulkOutcome(outcome, doneVerb);
+    toast[variant](message);
+  }
+
   // ── 다중 선택(선택 모드) ──
   const toggleNodeSelect = (id: string) => {
     const items = nodes.data ?? [];
@@ -390,41 +398,47 @@ export default function ProjectDetailPage() {
     }
     const items = nodes.data ?? [];
     const targets = collectDeleteTargets(selectedNodeIds, items);
-    try {
-      for (const id of targets) {
+    // 한 건이 실패해도 나머지는 계속 시도한다 — 이유는 lib/bulkResult.ts 참고.
+    const outcome = emptyOutcome();
+    for (const id of targets) {
+      try {
         await deleteNode.mutateAsync(id);
+        outcome.succeeded += 1;
+      } catch (err) {
+        outcome.failed += 1;
+        outcome.firstError ??= apiErrorMessage(err);
       }
-      toast.success(`${targets.length}개 일정을 삭제했습니다.`);
-    } catch (err) {
-      toast.error(apiErrorMessage(err));
-    } finally {
-      setSelectedNodeIds(new Set());
-      setBulkAction(null);
     }
+    reportBulk(outcome, '삭제했습니다.');
+    setSelectedNodeIds(new Set());
+    setBulkAction(null);
   }
 
   async function runBulkComplete(mode: BulkCompleteMode) {
     const items = nodes.data ?? [];
     const byId = new Map(items.map((n) => [n.id, n]));
     const targets = collectCompleteTargets(selectedNodeIds, items, mode);
-    try {
-      let count = 0;
-      for (const id of targets) {
-        const node = byId.get(id);
-        if (!node || node.progress === 100) continue; // 이미 100%면 건너뜀
+    const outcome = emptyOutcome();
+    for (const id of targets) {
+      const node = byId.get(id);
+      if (!node || node.progress === 100) {
+        outcome.skipped += 1; // 이미 100% 면 보낼 필요가 없다
+        continue;
+      }
+      try {
         await updateNode.mutateAsync({
           id,
           body: { progress: 100, expectedUpdatedAt: node.updatedAt },
         });
-        count += 1;
+        outcome.succeeded += 1;
+      } catch (err) {
+        outcome.failed += 1;
+        outcome.firstError ??= apiErrorMessage(err);
       }
-      toast.success(`${count}개 일정을 100% 완료로 설정했습니다.`);
-    } catch (err) {
-      toast.error(apiErrorMessage(err));
-    } finally {
-      setSelectedNodeIds(new Set());
-      setBulkAction(null);
     }
+    reportBulk(outcome, '100% 완료로 설정했습니다.');
+    setSelectedNodeIds(new Set());
+    setBulkAction(null);
   }
 
   async function runBulkShiftDate(deltaDays: number) {
@@ -434,30 +448,31 @@ export default function ProjectDetailPage() {
     }
     const items = nodes.data ?? [];
     const targets = collectShiftTargets(selectedNodeIds, items);
-    try {
-      let count = 0;
-      for (const node of targets) {
-        if (!node.startAt || !node.endAt) continue;
-        const newStart = addDays(node.startAt, deltaDays);
-        const newEnd = addDays(node.endAt, deltaDays);
+    const outcome = emptyOutcome();
+    for (const node of targets) {
+      if (!node.startAt || !node.endAt) {
+        outcome.skipped += 1; // 날짜가 없는 항목은 옮길 것이 없다
+        continue;
+      }
+      try {
         await updateNode.mutateAsync({
           id: node.id,
           body: {
-            startAt: newStart,
-            endAt: newEnd,
+            startAt: addDays(node.startAt, deltaDays),
+            endAt: addDays(node.endAt, deltaDays),
             expectedUpdatedAt: node.updatedAt,
           },
         });
-        count += 1;
+        outcome.succeeded += 1;
+      } catch (err) {
+        outcome.failed += 1;
+        outcome.firstError ??= apiErrorMessage(err);
       }
-      const dirText = deltaDays > 0 ? `${deltaDays}일 연기` : `${Math.abs(deltaDays)}일 당김`;
-      toast.success(`${count}개 일정을 ${dirText}했습니다.`);
-    } catch (err) {
-      toast.error(apiErrorMessage(err));
-    } finally {
-      setSelectedNodeIds(new Set());
-      setBulkAction(null);
     }
+    const dirText = deltaDays > 0 ? `${deltaDays}일 연기했습니다.` : `${Math.abs(deltaDays)}일 당겼습니다.`;
+    reportBulk(outcome, dirText);
+    setSelectedNodeIds(new Set());
+    setBulkAction(null);
   }
 
   function handleBulkConfirm(mode: BulkCompleteMode) {
@@ -574,7 +589,6 @@ export default function ProjectDetailPage() {
                   allNodes={nodes.data ?? []}
                   canEdit={canEditNodes}
                   onDirtyChange={setIsDetailDirty}
-                  onSaveSuccess={handleSaveSuccess}
                 />
 
 

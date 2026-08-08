@@ -22,6 +22,27 @@ function ProjectTimelineRedirect() {
   return <Navigate to={`/projects/${id}`} replace />;
 }
 
+function NotFoundPage() {
+  const location = useLocation();
+  return (
+    <main className="mx-auto max-w-lg p-10 text-center">
+      <p className="text-4xl font-bold text-slate-300 dark:text-slate-700">404</p>
+      <h1 className="mt-3 text-base font-bold text-slate-800 dark:text-slate-100">
+        페이지를 찾을 수 없습니다.
+      </h1>
+      <p className="mt-2 break-all text-xs text-slate-500 dark:text-slate-400">
+        요청한 주소: <span className="font-mono">{location.pathname}</span>
+      </p>
+      <Link
+        to="/"
+        className="mt-6 inline-block rounded-md border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 dark:border-sky-800/80 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-950/70"
+      >
+        프로젝트 목록으로 돌아가기
+      </Link>
+    </main>
+  );
+}
+
 function RequireAuth({ children }: { children: ReactNode }) {
   const me = useMe();
   const location = useLocation();
@@ -170,7 +191,8 @@ function Footer() {
       ) {
         return;
       }
-      if (e.key === '?') {
+      // 안내 문구가 "? 또는 h" 라고 적고 있어 h 도 함께 받는다 (예전에는 ? 만 동작했다).
+      if (e.key === '?' || e.key === 'h' || e.key === 'H') {
         e.preventDefault();
         setIsModalOpen((prev) => !prev);
       }
@@ -276,7 +298,7 @@ function Footer() {
 
         {/* 중앙: 가운데 정렬 copyright */}
         <div className="text-center font-medium">
-          &quot;Club 300&quot; all right reserverd (c) 2029
+          &quot;Club 300&quot; All rights reserved (c) 2026
         </div>
 
         {/* 우측: 개발자 이메일 */}
@@ -316,7 +338,7 @@ function Footer() {
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-center">
                     <div className="font-medium text-slate-800 dark:text-slate-200">그룹 접기 / 펴기</div>
-                    <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">←</kbd> / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px">→</kbd> 화살표 키</div>
+                    <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">←</kbd> / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">→</kbd> 화살표 키</div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-center">
                     <div className="font-medium text-slate-800 dark:text-slate-200">상세 편집 창 열기</div>
@@ -490,6 +512,11 @@ export default function App() {
               </RequireAuth>
             }
           />
+          {/*
+            어디에도 걸리지 않는 주소는 안내를 보여준다. 이 라우트가 없으면 헤더와 푸터만 뜨고
+            본문이 백지로 남아서, 오타로 잘못 들어온 사용자에게는 화면이 깨진 것처럼 보인다.
+          */}
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </div>
       <Footer />

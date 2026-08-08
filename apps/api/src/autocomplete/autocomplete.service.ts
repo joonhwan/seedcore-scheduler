@@ -142,7 +142,13 @@ export class AutocompleteService implements OnModuleInit {
         },
       });
     } catch (err) {
-      this.logger.debug(`collect ignored for duplicate/race: ${cleanTitle} (${kind})`);
+      // 노드 생성·수정의 부수 작업이므로 실패해도 본 작업을 막지 않는다. 다만 원인을 삼키지
+      // 않는다 — 예전에는 어떤 오류든 "duplicate/race" 로 단정해 debug 로 흘려보내서, 정말
+      // 다른 문제(스키마 불일치 등)가 생겨도 흔적이 남지 않았다. 정각 동기화가 어차피 다시
+      // 맞춰주므로 warn 으로 충분하다.
+      this.logger.warn(
+        `autocomplete collect 실패 (무시하고 계속): ${cleanTitle} (${kind}) — ${this.stringifyError(err)}`,
+      );
     }
   }
 

@@ -10,7 +10,6 @@
   "scripts": {
     "dev": "pnpm -r --parallel --filter \"./apps/**\" run dev",
     "build": "pnpm -r run build",
-    "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",

@@ -446,7 +446,8 @@ export class ProjectsService {
         });
 
         // parent_id 가 자기참조 FK 라 부모 행이 먼저 있어야 한다. createMany 는 배열 순서
-        // 삽입을 보장하지 않으므로 depth 별로 호출을 쪼갠다. 최대 깊이 5 라서 5 회로 끝난다.
+        // 삽입을 보장하지 않으므로 depth 별로 호출을 쪼갠다.
+        // 트리 깊이 상한이 10(MAX_TREE_DEPTH)이라 최대 10 회로 끝난다.
         const maxDepth = cloned.reduce((m, n) => Math.max(m, n.depth), 0);
         for (let d = 0; d <= maxDepth; d += 1) {
           const batch = cloned.filter((n) => n.depth === d);

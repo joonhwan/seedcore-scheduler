@@ -90,6 +90,13 @@ export function buildTreeItems(rows: RawNode[]): NodeTreeItem[] {
   for (const root of childrenByParent.get(null) ?? []) {
     visit(root);
   }
+  // 부모가 목록에 없는 노드(고아)는 위 순회에서 빠진다. 그대로 두면 effective 가 전부 null 로
+  // 나가서 화면에서 기간·진척율이 통째로 비어 보인다. 트리 구조상 생기지 않아야 하는 상태지만
+  // (parentId 는 FK 이고 move 가 사이클을 막는다), 실제로 어긋났을 때 데이터가 사라진 것처럼
+  // 보이는 것보다는 홀로 계산해서라도 값을 채우는 편이 진단에 낫다.
+  for (const node of rows) {
+    if (!effective.has(node.id)) visit(node);
+  }
 
   return rows.map((r) => {
     const eff = effective.get(r.id);

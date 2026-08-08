@@ -82,7 +82,7 @@ model ScheduleNode {
   endAt       String?  @map("end_at")
   progress    Int      @default(0) // 0..100 (ITEM 만 직접 입력). GROUP 의 effective 는 자손 ITEM 단순평균. CHECK 제약은 마이그레이션에서 추가
   sortOrder   Int      @map("sort_order")
-  depth       Int // 0..4 — CHECK 제약은 마이그레이션에서 추가
+  depth       Int // 0..9 (MAX_TREE_DEPTH=10). 검증은 애플리케이션(nodes.service)에서만 한다 — DB CHECK 제약은 없다
   createdById String   @map("created_by")
   updatedById String   @map("updated_by")
   createdAt   DateTime @default(now()) @map("created_at")

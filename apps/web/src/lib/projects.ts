@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  NodeTreeItem,
   CloneProjectDto,
   CloneProjectResult,
   CreateProjectDto,
@@ -74,9 +75,14 @@ export function useImportCsv(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { csvText: string }) =>
-      api.post<any>(`/projects/${projectId}/import-csv`, input),
+      api.post<NodeTreeItem[]>(`/projects/${projectId}/import-csv`, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['projects', projectId, 'nodes'] });
+      // 프로젝트 자체도 무효화해야 한다 — 가져오기는 일정을 전량 교체하므로 헤더의 진척율·
+      // 지연 요약과 updatedAt 이 모두 달라진다. 이게 없으면 트리만 갱신되고 헤더는 옛 값이
+      // 남아, 방금 가져온 일정과 상단 배지가 어긋나 보인다.
+      qc.invalidateQueries({ queryKey: projectKey(projectId) });
+      qc.invalidateQueries({ queryKey: projectsKey });
     },
   });
 }

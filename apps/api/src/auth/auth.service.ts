@@ -132,12 +132,12 @@ export class AuthService {
       throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS' });
     }
 
-    let valid = false;
-    valid = await this.verifyPassword(user.passwordHash, password);
+    const valid = await this.verifyPassword(user.passwordHash, password);
 
     if (!valid) {
       const nextCount = user.failedLoginCount + 1;
-      const shouldLock = false;
+      // 계정 잠금은 커밋 c834f49 에서 비활성화됐다 — lockedUntil 은 항상 null 로 둔다
+      // (AGENTS.md §4.4). 실패 횟수 누적과 감사로그는 계속 남긴다.
       await this.prisma.user.update({
         where: { id: user.id },
         data: {
@@ -222,8 +222,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException({ error: 'NO_SESSION' });
 
-    let valid = false;
-    valid = await this.verifyPassword(user.passwordHash, current);
+    const valid = await this.verifyPassword(user.passwordHash, current);
     if (!valid) {
       throw new ForbiddenException({ error: 'CURRENT_PASSWORD_INVALID' });
     }
