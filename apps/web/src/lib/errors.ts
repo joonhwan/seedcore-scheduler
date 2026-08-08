@@ -12,6 +12,8 @@ const KNOWN: Record<string, string> = {
   NOT_ARCHIVED: '활성 상태에서는 삭제할 수 없습니다. 먼저 보관(ARCHIVE) 처리하세요.',
   NODE_CREATE_FORBIDDEN: '일정 추가는 프로젝트 매니저 또는 관리자만 할 수 있습니다.',
   NODE_DELETE_FORBIDDEN: '일정 삭제는 프로젝트 매니저 또는 관리자만 할 수 있습니다.',
+  NODE_IMPORT_FORBIDDEN:
+    'CSV 가져오기는 기존 일정을 모두 지우므로 프로젝트 매니저 또는 관리자만 할 수 있습니다.',
   LAST_MANAGER: '마지막 MANAGER 는 제거하거나 변경할 수 없습니다.',
   CANNOT_CHANGE_SELF_ROLE: '자기 자신의 역할은 변경할 수 없습니다.',
   NAME_CONFLICT: '같은 이름이 이미 존재합니다.',

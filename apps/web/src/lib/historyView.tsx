@@ -89,6 +89,19 @@ export function clonedFromText(diff: Record<string, unknown>): string | null {
   return null;
 }
 
+/**
+ * CSV 가져오기가 남긴 이력인지 알려주는 안내 문구. 아니면 null.
+ *
+ * 가져오기는 프로젝트의 일정을 전량 교체하므로 노드마다 DELETE + CREATE 이력이 한꺼번에 쌓인다.
+ * 표시가 없으면 사용자는 누군가 일정을 하나하나 지우고 다시 만든 것으로 읽게 된다.
+ * clonedFromText() 와 같은 이유로 마커는 {from,to} 쌍이 아니라 평범한 boolean 이다.
+ */
+export function csvImportText(diff: Record<string, unknown>): string | null {
+  if (diff.importReplacedByCsv === true) return 'CSV 가져오기로 대체되며 삭제됨';
+  if (diff.importedFromCsv === true) return 'CSV 가져오기로 생성됨';
+  return null;
+}
+
 export function formatDateTime(iso: string): string {
   try {
     return new Date(iso).toLocaleString();

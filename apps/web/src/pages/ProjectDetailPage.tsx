@@ -486,7 +486,7 @@ export default function ProjectDetailPage() {
           adminMode={adminMode}
           isAdmin={isAdmin}
           nodes={nodes.data ?? []}
-          canEdit={canEditNodes}
+          canCreate={canCreateNodes}
           onAddNode={handleHeaderAddNode}
           onZoomIn={() => timelineRef.current?.zoomIn()}
           onZoomOut={() => timelineRef.current?.zoomOut()}
@@ -789,7 +789,7 @@ function ProjectHeader({
   adminMode,
   isAdmin,
   nodes,
-  canEdit,
+  canCreate,
   onAddNode,
   onZoomIn,
   onZoomOut,
@@ -803,7 +803,8 @@ function ProjectHeader({
   adminMode: boolean;
   isAdmin: boolean;
   nodes: NodeTreeItem[];
-  canEdit: boolean;
+  /** 일정 추가 권한 — MANAGER 또는 관리자 모드. 편집(canEditNodes)보다 강한 조건이다. */
+  canCreate: boolean;
   onAddNode: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -1049,7 +1050,11 @@ function ProjectHeader({
             onSelectCsv={handleExportCsv}
             onSelectExcel={onExportExcel}
           />
-          {canEdit && (
+          {/*
+            가져오기는 기존 일정을 전부 지우고 CSV 로 대체하므로 canEdit(MEMBER 포함)이 아니라
+            canManage(MANAGER 또는 관리자 모드) 기준이다 — 서버의 assertImportAccess 와 같은 조건.
+          */}
+          {canManage && (
             <button
               type="button"
               onClick={() => setIsImportModalOpen(true)}
@@ -1062,7 +1067,7 @@ function ProjectHeader({
               </svg>
             </button>
           )}
-          {canEdit && onAddNode && (
+          {canCreate && onAddNode && (
             <button
               type="button"
               onClick={onAddNode}

@@ -22,6 +22,7 @@ import {
   type AuthenticatedRequest,
 } from '../common/request-context';
 import { OriginGuard } from '../common/origin.guard';
+import { resolveCookieSecure } from '../common/cookie-security';
 import { AuthService } from './auth.service';
 import {
   AllowPasswordChange,
@@ -29,9 +30,13 @@ import {
   SESSION_COOKIE_NAME,
 } from './auth.guard';
 
+// secure 판정은 resolveCookieSecure() 한 곳에만 있다 — 왜 NODE_ENV 를 쓰지 않는지는
+// common/cookie-security.ts 의 docstring 참고. 두 함수의 속성은 반드시 일치해야 한다:
+// clearCookie 는 Set-Cookie 로 만료를 덮어쓰는 방식이라 secure/sameSite/path 가 하나라도
+// 어긋나면 브라우저가 다른 쿠키로 보고 원본을 남겨둔다 (= 로그아웃이 안 된다).
 const cookieOptions = (expiresAt: Date) => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: resolveCookieSecure(),
   sameSite: 'lax' as const,
   path: '/api/v1',
   expires: expiresAt,
@@ -39,7 +44,7 @@ const cookieOptions = (expiresAt: Date) => ({
 
 const clearCookieOptions = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: resolveCookieSecure(),
   sameSite: 'lax' as const,
   path: '/api/v1',
 });

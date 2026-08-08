@@ -9,6 +9,7 @@ import { toast } from '../lib/toast';
 import {
   historyLabelText,
   clonedFromText,
+  csvImportText,
   formatDateTime as formatDateTimeShared,
 } from '../lib/historyView';
 
@@ -193,7 +194,14 @@ function DiffTooltip({ action, diff }: { action: string; diff: Record<string, an
       'to' in (v as object),
   ) as Array<[string, { from: any; to: any }]>;
 
+  // CSV 가져오기는 노드마다 DELETE + CREATE 를 한꺼번에 남긴다. 이 표시가 없으면
+  // 누군가 일정을 하나하나 지우고 다시 만든 것처럼 읽힌다.
+  const csvNote = csvImportText(diff);
+
   if (entries.length === 0) {
+    if (csvNote) {
+      return <p className="text-[10px] text-slate-500">{csvNote}</p>;
+    }
     if (action === 'DELETE') {
       return <p className="text-[10px] text-slate-500">노드가 영구 삭제되었습니다.</p>;
     }
@@ -209,19 +217,26 @@ function DiffTooltip({ action, diff }: { action: string; diff: Record<string, an
   }
 
   return (
-    <ul className="space-y-1 font-mono text-[10px]">
-      {entries.map(([field, ft]) => {
-        const fromVal = ft.from === null || ft.from === undefined || ft.from === '' ? '없음' : String(ft.from);
-        const toVal = ft.to === null || ft.to === undefined || ft.to === '' ? '없음' : String(ft.to);
-        return (
-          <li key={field} className="break-words">
-            <span className="font-semibold text-slate-500 dark:text-slate-400">{field}:</span>{' '}
-            <span className="line-through text-rose-500/70">{fromVal}</span>
-            <span className="text-slate-400 mx-1">→</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-bold">{toVal}</span>
-          </li>
-        );
-      })}
-    </ul>
+    <>
+      {csvNote && (
+        <p className="mb-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+          {csvNote}
+        </p>
+      )}
+      <ul className="space-y-1 font-mono text-[10px]">
+        {entries.map(([field, ft]) => {
+          const fromVal = ft.from === null || ft.from === undefined || ft.from === '' ? '없음' : String(ft.from);
+          const toVal = ft.to === null || ft.to === undefined || ft.to === '' ? '없음' : String(ft.to);
+          return (
+            <li key={field} className="break-words">
+              <span className="font-semibold text-slate-500 dark:text-slate-400">{field}:</span>{' '}
+              <span className="line-through text-rose-500/70">{fromVal}</span>
+              <span className="text-slate-400 mx-1">→</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold">{toVal}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }

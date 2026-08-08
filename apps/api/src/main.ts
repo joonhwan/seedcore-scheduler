@@ -8,6 +8,7 @@ import { DailyLoggerService } from './common/daily-logger.service';
 import { bindPrismaQueryEngine, resolveDatabaseUrl } from './common/db-path';
 import { appendPlainLog } from './common/plain-daily-log';
 import { removeLock } from './common/process-lock';
+import { describeCookieSecure } from './common/cookie-security';
 import { acquireLock } from './prisma/lock-decision';
 
 
@@ -184,6 +185,10 @@ async function bootstrap() {
   }
   // eslint-disable-next-line no-console
   console.log(`  - DB 파일 경로: ${process.env.DATABASE_URL}`);
+  // 로그인이 안 된다는 문의가 왔을 때 가장 먼저 볼 줄이다. Secure=ON 인데 위 접속 주소가
+  // http 로 찍혀 있으면 그것이 원인이다 — 브라우저가 세션 쿠키를 조용히 버린다.
+  // eslint-disable-next-line no-console
+  console.log(`  - ${describeCookieSecure()}`);
   // eslint-disable-next-line no-console
   console.log('====================================================');
 }

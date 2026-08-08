@@ -600,6 +600,29 @@ export class NodesService {
     }
   }
 
+  /**
+   * CSV 가져오기 권한: 프로젝트 MANAGER 또는 ADMIN+adminMode 만 허용.
+   *
+   * 이 검사를 assertWriteAccess(멤버면 통과)로 두면 안 된다. importCsv() 는 먼저
+   * deleteMany 로 프로젝트의 일정 트리를 통째로 지운 뒤 CSV 로 다시 채우기 때문에,
+   * 노드 하나를 지우는 것보다 훨씬 파괴적인데도 더 약한 권한으로 실행되는 모순이 생긴다
+   * ("일정 1개 삭제는 금지, 5,000개 통삭제는 허용"). 생성/삭제와 같은 기준으로 맞춘다.
+   */
+  private async assertImportAccess(
+    projectId: string,
+    ctx: ActorContext,
+  ): Promise<void> {
+    if (ctx.globalRole === 'ADMIN' && ctx.adminMode) return;
+    const m = await this.prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId: ctx.actorId } },
+      select: { role: true },
+    });
+    if (!m) throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
+    if (m.role !== 'MANAGER') {
+      throw new ForbiddenException({ error: 'NODE_IMPORT_FORBIDDEN' });
+    }
+  }
+
   private async writeHistory(
     tx: Prisma.TransactionClient,
     args: {
@@ -629,7 +652,7 @@ export class NodesService {
     ctx: ActorContext,
   ): Promise<NodeTreeItem[]> {
     await this.assertProjectExists(projectId);
-    await this.assertWriteAccess(projectId, ctx);
+    await this.assertImportAccess(projectId, ctx);
 
     const csvText = body.csvText;
     const lines = csvText.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
@@ -861,75 +884,158 @@ export class NodesService {
       }
     });
 
-    // 6. DB 반영 (한 트랜잭션 내에서 처리)
+    // 6. 삽입할 행을 미리 다 만든다 — **트랜잭션 밖에서**.
+    //
+    // id 발급·부모 매핑·sortOrder 채번은 DB 를 건드리지 않는 순수 계산이다. 이걸 트랜잭션
+    // 안에서 하면 SQLite 의 단일 writer 락을 그만큼 더 오래 쥐고 있게 된다. 락을 쥔 시간이
+    // 곧 다른 사용자의 대기 시간이므로, 트랜잭션 안에는 실제 쓰기만 남긴다.
     const tempToRealIdMap: Record<string, string> = {};
     const now = new Date();
 
+    // 부모별 sortOrder 를 독립적으로 세기 위한 카운터 맵
+    const sortOrderCounters: Record<string, number> = {};
+    const nodesToInsert: ScheduleNode[] = [];
+
+    for (const tNode of tmpNodes) {
+      if (!tNode) continue;
+
+      // 부모가 아직 매핑되지 않았다면(정상 흐름에서는 부모가 항상 앞에 온다) 이 노드를 건너뛴다.
+      // 이때 tempToRealIdMap 에 자기 id 를 등록하지 **않는** 게 중요하다 — 등록해 두면 이 노드의
+      // 자식이 살아남아 존재하지 않는 부모를 가리키고, FK 위반으로 트랜잭션 전체가 깨진다.
+      const realParentId = tNode.parentId ? tempToRealIdMap[tNode.parentId] ?? null : null;
+      if (tNode.parentId && realParentId === null) continue;
+
+      const realId = randomUUID();
+      tempToRealIdMap[tNode.tempId] = realId;
+
+      const parentKey = realParentId ?? 'ROOT';
+      const currentSort = (sortOrderCounters[parentKey] || 0) + 1;
+      sortOrderCounters[parentKey] = currentSort;
+
+      const startAt = tNode.kind === 'GROUP' ? null : tNode.rawStartAt;
+      const endAt = tNode.kind === 'GROUP' ? null : tNode.rawEndAt;
+      const progress = tNode.kind === 'GROUP' ? 0 : parseInt(tNode.rawProgress, 10);
+
+      nodesToInsert.push({
+        id: realId,
+        projectId,
+        parentId: realParentId,
+        kind: tNode.kind,
+        title: tNode.title,
+        description: null,
+        startAt,
+        endAt,
+        progress,
+        sortOrder: currentSort,
+        depth: tNode.depth,
+        createdById: ctx.actorId,
+        updatedById: ctx.actorId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    // 7. DB 반영 (한 트랜잭션 내에서 처리)
+    let deletedCount = 0;
     const createdRows = await this.prisma.$transaction(async (tx) => {
+      // 지우기 **전에** 지워질 노드들을 읽어 DELETE 이력을 남긴다.
+      //
+      // deleteMany 는 서비스 계층을 거치지 않으므로, 이 블록이 없으면 CSV 가져오기로 사라진
+      // 일정은 이력에 흔적이 전혀 남지 않는다 (AGENTS.md §4.7 "영구 삭제해도 역사적 추적 가능").
+      // diff 모양을 hardDelete() 와 똑같이 맞추는 게 중요하다 — 프로젝트 이력 화면이
+      // diff.title.from 으로 삭제된 노드의 제목을 복원하기 때문이다
+      // (project-history.service.ts 의 titleFromDiff). 모양이 다르면 전부 "(삭제된 일정)" 이 된다.
+      const doomed = await tx.scheduleNode.findMany({ where: { projectId } });
+      if (doomed.length > 0) {
+        await tx.nodeHistory.createMany({
+          data: doomed.map((n) => ({
+            id: randomUUID(),
+            // nodeId 는 FK 의 onDelete=SetNull 로 곧 null 이 된다. 조회는 nodeIdSnapshot 으로 한다.
+            nodeId: n.id,
+            nodeIdSnapshot: n.id,
+            projectIdSnapshot: projectId,
+            actorId: ctx.actorId,
+            action: 'DELETE',
+            diffJson: JSON.stringify({
+              kind: { from: n.kind, to: null },
+              title: { from: n.title, to: null },
+              description: { from: n.description, to: null },
+              parentId: { from: n.parentId, to: null },
+              sortOrder: { from: n.sortOrder, to: null },
+              depth: { from: n.depth, to: null },
+              startAt: { from: n.startAt, to: null },
+              endAt: { from: n.endAt, to: null },
+              // 개별 삭제와 구분되도록 원인을 남긴다. {from,to} 쌍이 아닌 평범한 값으로 두는 게
+              // 중요하다 — 이력 툴팁은 {from,to} 인 항목을 전부 "키: A → B" 로 나열하므로,
+              // 쌍으로 넣으면 "importReplacedByCsv: 없음 → true" 같은 군더더기가 화면에 뜬다.
+              // (clonedFrom 이 같은 이유로 같은 모양을 쓴다.)
+              importReplacedByCsv: true,
+              progress: { from: n.progress, to: null },
+            }),
+          })),
+        });
+      }
+      deletedCount = doomed.length;
+
       // 기존 노드들 일괄 삭제
       await tx.scheduleNode.deleteMany({ where: { projectId } });
 
-      // 부모별 sortOrder를 독립적으로 세기 위한 카운터 맵
-      const sortOrderCounters: Record<string, number> = {};
-
-      const nodesToInsert: ScheduleNode[] = [];
-
-      for (const tNode of tmpNodes) {
-        if (!tNode) continue;
-        const realId = randomUUID();
-        tempToRealIdMap[tNode.tempId] = realId;
-
-        const parentKey = tNode.parentId ? tempToRealIdMap[tNode.parentId] : 'ROOT';
-        if (!parentKey) continue;
-        const currentSort = (sortOrderCounters[parentKey] || 0) + 1;
-        sortOrderCounters[parentKey] = currentSort;
-
-        const realParentId = tNode.parentId ? (tempToRealIdMap[tNode.parentId] || null) : null;
-
-        const startAt = tNode.kind === 'GROUP' ? null : tNode.rawStartAt;
-        const endAt = tNode.kind === 'GROUP' ? null : tNode.rawEndAt;
-        const progress = tNode.kind === 'GROUP' ? 0 : parseInt(tNode.rawProgress, 10);
-
-        const node = await tx.scheduleNode.create({
-          data: {
-            id: realId,
-            projectId,
-            parentId: realParentId,
-            kind: tNode.kind,
-            title: tNode.title,
-            description: null,
-            startAt,
-            endAt,
-            progress,
-            sortOrder: currentSort,
-            depth: tNode.depth,
-            createdById: ctx.actorId,
-            updatedById: ctx.actorId,
-            createdAt: now,
-            updatedAt: now,
-          },
-        });
-
-        nodesToInsert.push(node);
+      // depth 얕은 쪽부터 배치로 넣는다.
+      //
+      // 노드를 하나씩 create 하면 왕복이 노드 수만큼 생겨서 5,000행에 약 2초가 걸렸다 —
+      // Prisma 의 기본 트랜잭션 타임아웃 5초에 위험할 만큼 가깝다. createMany 로 묶으면
+      // 같은 5,000행이 0.5초 수준으로 떨어진다(실측).
+      //
+      // depth 별로 쪼개는 이유는 clone() 과 같다: parent_id 가 자기참조 FK 라 부모 행이 먼저
+      // 있어야 하는데 createMany 는 배열 순서대로 넣는 것을 보장하지 않는다. 트리 깊이 상한이
+      // 10 이므로(MAX_TREE_DEPTH) 최대 10 회로 끝난다.
+      const maxDepth = nodesToInsert.reduce((m, n) => Math.max(m, n.depth), 0);
+      for (let d = 0; d <= maxDepth; d += 1) {
+        const batch = nodesToInsert.filter((n) => n.depth === d);
+        if (batch.length === 0) continue;
+        await tx.scheduleNode.createMany({ data: batch });
       }
 
-      // 히스토리 일괄 기록 (프로젝트 단위 벌크 생성)
-      await tx.nodeHistory.create({
-        data: {
-          id: randomUUID(),
-          nodeId: null,
-          nodeIdSnapshot: projectId,
-          projectIdSnapshot: projectId,
-          actorId: ctx.actorId,
-          action: 'CREATE',
-          diffJson: JSON.stringify({
-            bulk_import: { from: null, to: `Imported ${nodesToInsert.length} nodes from CSV` },
-          }),
-        },
-      });
+      // 새로 만들어진 노드마다 CREATE 이력을 남긴다 (clone() 과 같은 방식).
+      //
+      // 예전에는 nodeIdSnapshot 에 **projectId** 를 넣은 요약 한 줄만 남겼는데, 그러면 이력 화면이
+      // 그 값을 노드 id 로 알고 조회하다 실패해 "(삭제된 일정)" 으로 표시했다. 노드 단위로 남겨야
+      // 가져온 일정 하나하나가 언제 누구에 의해 들어왔는지 추적된다. 전체 건수는 감사로그에 있다.
+      if (nodesToInsert.length > 0) {
+        await tx.nodeHistory.createMany({
+          data: nodesToInsert.map((n) => ({
+            id: randomUUID(),
+            nodeId: n.id,
+            nodeIdSnapshot: n.id,
+            projectIdSnapshot: projectId,
+            actorId: ctx.actorId,
+            action: 'CREATE',
+            diffJson: JSON.stringify({
+              kind: { from: null, to: n.kind },
+              title: { from: null, to: n.title },
+              parentId: { from: null, to: n.parentId },
+              sortOrder: { from: null, to: n.sortOrder },
+              depth: { from: null, to: n.depth },
+              startAt: { from: null, to: n.startAt },
+              endAt: { from: null, to: n.endAt },
+              progress: { from: null, to: n.progress },
+              // DELETE 쪽 importReplacedByCsv 와 같은 이유로 {from,to} 쌍이 아니다.
+              importedFromCsv: true,
+            }),
+          })),
+        });
+      }
 
       return nodesToInsert;
-    });
+    },
+      // 노드 5,000 개 상한을 감안해 넉넉히 잡는다 (clone() 과 같은 값).
+      //
+      // 기본값 5초를 그냥 두면 안 된다. 이 트랜잭션은 노드 N 행 + 이력 2N 행을 쓰므로 규모가
+      // 큰 프로젝트에서 기본값에 걸리고, 그러면 P2028 로 **전량 롤백**된다 — 일정이 이미
+      // 지워진 뒤가 아니라 통째로 되돌아가긴 하지만, 사용자에게는 영문 모를 실패로만 보인다.
+      // maxWait 은 다른 쓰기가 SQLite 의 단일 writer 락을 쥐고 있을 때 기다려 주는 시간이다.
+      { timeout: 30_000, maxWait: 10_000 },
+    );
 
     // 프로젝트 업데이트 이력 추가
     await this.audit.log({
@@ -939,9 +1045,15 @@ export class NodesService {
       targetId: projectId,
       ip: ctx.ip,
       userAgent: ctx.userAgent,
+      // deletedCount 를 반드시 함께 남긴다 — 가져오기는 "추가" 가 아니라 "전량 교체" 라서,
+      // 몇 건이 들어왔는지만 있고 몇 건이 사라졌는지가 없으면 사고 조사 때 피해 규모를 알 수 없다.
       payload: ctx.adminMode
-        ? { originalAction: 'PROJECT_IMPORT_CSV', count: createdRows.length }
-        : { count: createdRows.length },
+        ? {
+            originalAction: 'PROJECT_IMPORT_CSV',
+            count: createdRows.length,
+            deletedCount,
+          }
+        : { count: createdRows.length, deletedCount },
     });
 
     // 전체 리스트 반환
