@@ -158,7 +158,10 @@ depth = clamp(round((x - LABEL_BASE_PX) / INDENT_PX), minDepth, maxDepth)
 
 아래를 모두 만족할 때만 드래그 핸들을 그린다.
 
-- `canEditNodes` 가 참 (프로젝트 MANAGER 이거나 관리자 모드)
+- `canEditNodes` 가 참 (프로젝트 MANAGER·MEMBER 이거나 관리자 모드).
+  이 프로젝트는 원래부터 **이동을 "편집"으로 분류**한다 — `ProjectDetailPage.tsx` 의
+  `canEditNodes = MANAGER | MEMBER | (ADMIN && adminMode)` 이고, 추가·삭제만 더 강한 권한이다.
+  행 메뉴의 위/아래 버튼과 "부모 그룹 변경"도 같은 정책을 따르므로 드래그만 따로 조일 이유가 없다.
 - 체크박스 다중 선택 모드가 아님 (`selectionMode === false`)
 - `empty-row-placeholder` 행이 아님
 
@@ -302,7 +305,7 @@ onMoveTo?: ((node: NodeTreeItem, newParentId: string | null, newSortOrder: numbe
 
 ### 수동 확인
 
-- MEMBER 계정으로 로그인하면 핸들이 안 보이는지
+- MEMBER 계정으로 로그인해도 핸들이 보이는지 (이동은 MEMBER 에게 허용된 편집이다)
 - 체크박스 선택 모드에서 핸들이 사라지는지
 - 마우스를 가로로 움직이면 삽입선의 들여쓰기가 따라 바뀌는지
 - 부모가 바뀌는 드롭에서 선이 amber 로, 안 바뀌면 sky 로 나오는지
