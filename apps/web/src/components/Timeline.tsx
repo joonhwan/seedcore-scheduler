@@ -11,6 +11,7 @@ import { applyDrag, pxToDays, parseYmd, dayDiff, type DragMode } from '../lib/ga
 import { recomputeEffective, diffAffectedGroups } from '../lib/ganttAggregate';
 import type { BarChangeProposal } from '../lib/ganttTypes';
 import { computeCheckStates, type CheckState } from '../lib/bulkSelection';
+import { targetFromPointer, sortOrderForTarget, type DropTarget } from '../lib/treeDnd';
 import {
   PPD,
   ROW_HEIGHT,
@@ -39,6 +40,8 @@ interface Props {
   onAddSibling?: ((sibling: NodeTreeItem) => void) | undefined;
   onMoveSibling?: ((node: NodeTreeItem, direction: -1 | 1) => void) | undefined;
   onChangeParent?: ((node: NodeTreeItem) => void) | undefined;
+  // 드래그 앤 드롭으로 노드를 옮긴다. 성공 후 접힌 그룹을 펼쳐야 해서 Promise 를 받는다.
+  onMoveTo?: ((node: NodeTreeItem, newParentId: string | null, newSortOrder: number) => Promise<void>) | undefined;
   onDelete?: ((node: NodeTreeItem) => void) | undefined;
   onAddRoot?: (() => void) | undefined;
   onAddNode?: (() => void) | undefined; // 선택 노드 기준 스마트 추가(Ctrl-I 와 동일)
@@ -77,6 +80,7 @@ function TimelineComponent({
   onAddSibling,
   onMoveSibling,
   onChangeParent,
+  onMoveTo,
   onDelete,
   onAddRoot,
   onAddNode,
@@ -130,6 +134,11 @@ function TimelineComponent({
   };
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+
+  // 트리 행 드래그(순서/부모 변경). 간트 막대 편집(barDrag), 배경 패닝(isDragging)과 별개다.
+  const [nodeDrag, setNodeDrag] = useState<{ nodeId: string; active: boolean } | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
 
   // 막대 드래그 편집 상태 (배경 패닝용 isDragging 과 별개)
   const [barDrag, setBarDrag] = useState<{
@@ -206,6 +215,9 @@ function TimelineComponent({
     };
     return [...list, emptyNode];
   }, [items, collapsedIds]);
+
+  // 드롭 대상 계산용. 마지막의 "최상단 일정 추가..." 가짜 행은 트리 노드가 아니므로 뺀다.
+  const dragRows = useMemo(() => flat.filter((n) => n.id !== 'empty-row-placeholder'), [flat]);
 
   // 미리보기(드래그 반영) 노드를 id 로 빠르게 찾기 위한 맵. 드래그 중이 아니면 previewItems === items.
   const previewMap = useMemo(
@@ -481,6 +493,78 @@ function TimelineComponent({
       startScrollLeft: scrollerRef.current?.scrollLeft ?? 0,
       deltaDays: 0,
     });
+  };
+
+  // 라벨 칸의 ∷ 핸들에서만 시작한다. 3px 넘게 움직여야 실제 드래그로 전환.
+  const startNodeDrag = (node: TreeNode, e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation(); // 배경 가로 패닝이 함께 시작되지 않게
+    const startX = e.clientX;
+    const startY = e.clientY;
+    setNodeDrag({ nodeId: node.id, active: false });
+
+    const computeTarget = (clientX: number, clientY: number): DropTarget | null => {
+      const rowsEl = rowsRef.current;
+      if (!rowsEl) return null;
+      const rect = rowsEl.getBoundingClientRect();
+      // x 는 라벨 칸 왼쪽 끝 기준. 라벨 칸은 sticky left-0 이라 스크롤러 왼쪽 끝과 같다.
+      const scroller = scrollerRef.current;
+      const labelLeft = scroller ? scroller.getBoundingClientRect().left : rect.left;
+      return targetFromPointer(dragRows, items, node, clientX - labelLeft, clientY - rect.top);
+    };
+
+    const onMove = (ev: PointerEvent) => {
+      const moved = Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY);
+      setNodeDrag((prev) => {
+        if (!prev) return prev;
+        if (!prev.active && moved < 3) return prev;
+        return prev.active ? prev : { ...prev, active: true };
+      });
+      if (moved < 3) return;
+      setDropTarget(computeTarget(ev.clientX, ev.clientY));
+    };
+
+    const finish = (ev: PointerEvent | null) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('keydown', onKey);
+      const target = ev ? computeTarget(ev.clientX, ev.clientY) : null;
+      setNodeDrag(null);
+      setDropTarget(null);
+      return target;
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      const moved = Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY);
+      const target = finish(moved < 3 ? null : ev);
+      if (!target || !target.ok || !onMoveTo) return;
+      void onMoveTo(node, target.parentId, sortOrderForTarget(target))
+        .then(() => {
+          // 접힌 그룹 안으로 넣었으면 결과가 안 보이므로 펼쳐준다.
+          if (target.parentId) {
+            setCollapsedIds((prev) => {
+              if (!prev.has(target.parentId!)) return prev;
+              const next = new Set(prev);
+              next.delete(target.parentId!);
+              return next;
+            });
+          }
+        })
+        .catch(() => {
+          /* 에러 토스트는 호출부(ProjectDetailPage)가 띄운다 */
+        });
+    };
+
+    const onCancel = () => finish(null);
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') finish(null);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('keydown', onKey);
   };
 
   useEffect(() => {
@@ -914,7 +998,8 @@ function TimelineComponent({
                 style={{ left: labelWidth + band.leftPx, width: band.widthPx }}
               />
             ))}
-            {flat.map((n) => {
+            <div ref={rowsRef} className="relative">
+              {flat.map((n) => {
               const siblings = n.parentId
                 ? nodeMap.get(n.parentId)?.children ?? []
                 : fullTree;
@@ -960,9 +1045,13 @@ function TimelineComponent({
                   onChangeParent={onChangeParent}
                   onDelete={onDelete}
                   onAddRoot={onAddRoot}
+                  canDrag={!!canEdit && !selectionMode && n.id !== 'empty-row-placeholder' && !!onMoveTo}
+                  onDragStart={startNodeDrag}
+                  isDragging={nodeDrag?.active === true && nodeDrag.nodeId === n.id}
                 />
               );
-            })}
+              })}
+            </div>
 
             {/* 오늘선: 라벨 칸(sticky) 뒤로 스크롤돼 들어가면 그리지 않는다.
                 화면상 위치(labelWidth + todayOffset*ppd - scrollLeftPx)가 labelWidth 미만이면
@@ -1024,6 +1113,9 @@ function Row({
   checkState,
   showCheckbox,
   onToggleSelect,
+  canDrag,
+  onDragStart,
+  isDragging,
 }: {
   node: TreeNode;
   range: { start: Date; end: Date };
@@ -1056,6 +1148,9 @@ function Row({
   checkState: CheckState;
   showCheckbox: boolean;
   onToggleSelect?: ((id: string) => void) | undefined;
+  canDrag: boolean;
+  onDragStart: (node: TreeNode, e: React.PointerEvent) => void;
+  isDragging: boolean;
 }) {
 
   const isGroup = node.kind === 'GROUP';
@@ -1093,7 +1188,7 @@ function Row({
 
   return (
     <div
-      className="group/row flex border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40"
+      className={`group/row flex border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40${isDragging ? ' opacity-40' : ''}`}
       style={{ height: ROW_HEIGHT }}
     >
       <div
@@ -1104,6 +1199,22 @@ function Row({
         }`}
         style={{ width: labelWidth, paddingLeft: 8 + node.depth * 16 }}
       >
+        {/* 드래그 핸들: 여기서 시작한 pointerdown 만 노드 이동 드래그로 취급한다.
+            자리는 항상 차지하고 hover 때만 보이게 해서 레이아웃이 흔들리지 않게 한다. */}
+        <span
+          className={`w-3 shrink-0 select-none text-slate-400 transition-opacity ${
+            canDrag
+              ? 'cursor-grab opacity-0 group-hover/row:opacity-100'
+              : 'pointer-events-none opacity-0'
+          }`}
+          onPointerDown={(e) => {
+            if (canDrag) onDragStart(node, e);
+          }}
+          title="드래그해서 순서나 상위 그룹을 바꿉니다"
+          aria-hidden={!canDrag}
+        >
+          ⠿
+        </span>
         {/* 다중 선택 체크박스 (hover 또는 선택 모드/선택됨일 때 표시) */}
         {showCheckbox && !isEmptyRow && (
           <input
