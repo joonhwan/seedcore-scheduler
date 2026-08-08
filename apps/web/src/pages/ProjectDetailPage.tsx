@@ -33,6 +33,7 @@ import ProjectNameEditor from '../components/ProjectNameEditor';
 import GanttExportDialog from '../components/GanttExportDialog';
 import ExcelExportDialog from '../components/ExcelExportDialog';
 import { useTheme } from '../lib/theme';
+import { siblingsExcluding } from '../lib/treeDnd';
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -283,24 +284,32 @@ export default function ProjectDetailPage() {
   }
   if (!project.data || !id) return null;
 
+  // 노드 이동의 단일 진입점. 드래그 앤 드롭과 행 액션 메뉴의 위/아래 버튼이 함께 쓴다.
+  // newSortOrder 는 "목표 부모의 자식 중 자기 자신을 뺀 1-based 삽입 위치" 다 (서버 시맨틱).
+  async function moveTo(
+    node: NodeTreeItem,
+    newParentId: string | null,
+    newSortOrder: number,
+  ): Promise<void> {
+    await moveNode.mutateAsync({
+      id: node.id,
+      body: {
+        newParentId,
+        newSortOrder,
+        expectedUpdatedAt: node.updatedAt,
+      },
+    });
+  }
+
+  // 위/아래 한 칸 이동. 방향을 삽입 위치로 환산해 moveTo 로 넘긴다.
   async function onMoveSibling(node: NodeTreeItem, direction: -1 | 1) {
-    const siblings =
-      nodes.data?.filter((n) => n.parentId === node.parentId).sort((a, b) => a.sortOrder - b.sortOrder) ?? [];
-    const idx = siblings.findIndex((n) => n.id === node.id);
-    const targetIdx = idx + direction;
-    if (targetIdx < 0 || targetIdx >= siblings.length) return;
-    const target = siblings[targetIdx];
-    if (!target) return;
-    const targetSortOrder = target.sortOrder;
+    const siblings = siblingsExcluding(nodes.data ?? [], node.parentId, node.id);
+    // 자기 자신을 뺀 배열에서 지금 자리
+    const current = siblings.filter((s) => s.sortOrder < node.sortOrder).length;
+    const nextIndex = current + direction;
+    if (nextIndex < 0 || nextIndex > siblings.length) return;
     try {
-      await moveNode.mutateAsync({
-        id: node.id,
-        body: {
-          newParentId: node.parentId,
-          newSortOrder: targetSortOrder,
-          expectedUpdatedAt: node.updatedAt,
-        },
-      });
+      await moveTo(node, node.parentId, nextIndex + 1);
     } catch (err) {
       toast.error(apiErrorMessage(err));
     }
