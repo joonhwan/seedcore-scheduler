@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, type ForwardedRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, type ForwardedRef } from 'react';
 import { calculateTreeNodesDelayInfo, getNodeDelayInfo, getDelayStatusTooltip, getTodayIso, type NodeTreeItem, type NodeHistoryItem, type ExpectedProgressResult } from '@sam/shared';
 import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
 import NodeRowActionMenu from './NodeRowActionMenu';
@@ -146,8 +146,27 @@ function TimelineComponent({
   // 트리 행 드래그(순서/부모 변경). 간트 막대 편집(barDrag), 배경 패닝(isDragging)과 별개다.
   const [nodeDrag, setNodeDrag] = useState<{ nodeId: string; active: boolean } | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
-  const [dragCursor, setDragCursor] = useState<{ x: number; y: number } | null>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
+  // 배지는 커서를 따라다녀야 하지만 위치를 state 로 두면 pointermove 마다 행 전체가 다시 그려진다.
+  // 그래서 위치는 DOM 에 직접 쓴다. 렌더 여부는 dropTarget 이 정한다.
+  const badgeRef = useRef<HTMLDivElement>(null);
+  const cursorRef = useRef<{ x: number; y: number } | null>(null);
+
+  const placeBadge = () => {
+    const el = badgeRef.current;
+    const c = cursorRef.current;
+    if (!el || !c) return;
+    // 화면 오른쪽/아래 끝에 닿으면 반대쪽으로 뒤집는다.
+    const flipX = c.x > window.innerWidth - 220;
+    const flipY = c.y > window.innerHeight - 60;
+    el.style.left = flipX ? 'auto' : `${c.x + 12}px`;
+    el.style.right = flipX ? `${window.innerWidth - c.x + 12}px` : 'auto';
+    el.style.top = flipY ? 'auto' : `${c.y + 16}px`;
+    el.style.bottom = flipY ? `${window.innerHeight - c.y + 16}px` : 'auto';
+  };
+
+  // 배지가 방금 나타난 프레임에도 자리를 잡아 준다.
+  useLayoutEffect(placeBadge);
   // 드래그 중 언마운트되면 window 리스너가 남으므로, 해제 함수를 붙들고 있다가 정리한다.
   // (기존 barDrag/패닝 드래그는 useEffect cleanup 으로 같은 문제를 피한다)
   const nodeDragCleanupRef = useRef<(() => void) | null>(null);
@@ -541,7 +560,8 @@ function TimelineComponent({
       if (moved < 3) return;
       const next = computeTarget(ev.clientX, ev.clientY);
       setDropTarget((prev) => (sameDropTarget(prev, next) ? prev : next));
-      setDragCursor({ x: ev.clientX, y: ev.clientY });
+      cursorRef.current = { x: ev.clientX, y: ev.clientY };
+      placeBadge();
     };
 
     const detach = () => {
@@ -557,7 +577,7 @@ function TimelineComponent({
       const target = ev ? computeTarget(ev.clientX, ev.clientY) : null;
       setNodeDrag(null);
       setDropTarget(null);
-      setDragCursor(null);
+      cursorRef.current = null;
       return target;
     };
 
@@ -896,9 +916,9 @@ function TimelineComponent({
         onScroll={(e) => setScrollLeftPx(e.currentTarget.scrollLeft)}
         className={`flex-1 min-h-0 overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 ${
           nodeDrag?.active
-            ? dropTarget?.ok
-              ? 'cursor-grabbing select-none'
-              : 'cursor-not-allowed select-none'
+            ? dropTarget && !dropTarget.ok
+              ? 'cursor-not-allowed select-none'
+              : 'cursor-grabbing select-none'
             : isDragging
               ? 'cursor-grabbing select-none'
               : 'cursor-grab'
@@ -1084,20 +1104,28 @@ function TimelineComponent({
                 />
               );
               })}
-            {/* 드롭 삽입선. 라벨 칸 안에만 그린다 — 라벨 칸은 sticky left-0 이라
-                간트 영역을 가로로 스크롤해도 제자리에 남는다. */}
-            {nodeDrag?.active && dropTarget?.ok && (
-              <div
-                className={`pointer-events-none absolute z-30 h-0.5 ${
-                  dragNode && changesParent(dragNode, dropTarget) ? 'bg-amber-500' : 'bg-sky-500'
-                }`}
-                style={{
-                  top: dropTarget.boundary * ROW_HEIGHT - 1,
-                  left: LABEL_BASE_PX + dropTarget.depth * INDENT_PX,
-                  width: Math.max(labelWidth - LABEL_BASE_PX - dropTarget.depth * INDENT_PX, 8),
-                }}
-              />
-            )}
+            {nodeDrag?.active && dropTarget?.ok && (() => {
+              // 라벨 칸은 sticky left-0 이라 화면상 늘 스크롤러 왼쪽 끝에 붙어 있지만, 이 선은
+              // 가로로 스크롤되는 내용 안의 absolute 요소다. 그래서 scrollLeftPx 를 더해 줘야
+              // 스크롤과 무관하게 라벨 칸에 붙어 보인다. (오늘선이 쓰는 것과 같은 값)
+              const rawLeft = LABEL_BASE_PX + dropTarget.depth * INDENT_PX;
+              // 라벨 칸을 150px 까지 줄이고 깊이가 9면 rawLeft 가 라벨 칸을 넘어선다.
+              // 최소 24px 는 라벨 칸 안에 남도록 당긴다.
+              const left = Math.min(rawLeft, Math.max(labelWidth - 24, 0));
+              const width = Math.max(labelWidth - left, 8);
+              return (
+                <div
+                  className={`pointer-events-none absolute z-30 h-0.5 ${
+                    dragNode && changesParent(dragNode, dropTarget) ? 'bg-amber-500' : 'bg-sky-500'
+                  }`}
+                  style={{
+                    top: dropTarget.boundary * ROW_HEIGHT - 1,
+                    left: scrollLeftPx + left,
+                    width,
+                  }}
+                />
+              );
+            })()}
             </div>
 
             {/* 오늘선: 라벨 칸(sticky) 뒤로 스크롤돼 들어가면 그리지 않는다.
@@ -1120,27 +1148,20 @@ function TimelineComponent({
             y={hoveredNode.y}
           />
         )}
-        {/* 드래그 중 결과를 글로 알려주는 배지. 무효한 위치에서는 사유를 띄운다. */}
-        {nodeDrag?.active && dragCursor && dragNode && dropTarget && (() => {
+        {/* 드래그 중 결과를 글로 알려주는 배지. 무효한 위치에서는 사유를 띄운다.
+            위치는 placeBadge() 가 DOM 에 직접 쓴다(리렌더 방지). */}
+        {nodeDrag?.active && dragNode && dropTarget && (() => {
           const { text, tone } = describeDropTarget(items, dragNode, dropTarget);
           const toneClass =
             tone === 'rose'
-              ? 'bg-rose-600 text-white'
+              ? 'bg-rose-600 dark:bg-rose-500 text-white'
               : tone === 'amber'
-                ? 'bg-amber-500 text-white'
-                : 'bg-sky-600 text-white';
-          // 화면 오른쪽/아래 끝에 닿으면 반대쪽으로 뒤집는다.
-          const flipX = dragCursor.x > window.innerWidth - 220;
-          const flipY = dragCursor.y > window.innerHeight - 60;
+                ? 'bg-amber-500 dark:bg-amber-400 text-white'
+                : 'bg-sky-600 dark:bg-sky-500 text-white';
           return (
             <div
+              ref={badgeRef}
               className={`pointer-events-none fixed z-50 max-w-xs truncate rounded px-2 py-1 text-xs shadow-lg ${toneClass}`}
-              style={{
-                left: flipX ? undefined : dragCursor.x + 12,
-                right: flipX ? window.innerWidth - dragCursor.x + 12 : undefined,
-                top: flipY ? undefined : dragCursor.y + 16,
-                bottom: flipY ? window.innerHeight - dragCursor.y + 16 : undefined,
-              }}
             >
               {text}
             </div>
