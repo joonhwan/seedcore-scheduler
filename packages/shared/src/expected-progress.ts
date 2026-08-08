@@ -236,34 +236,95 @@ export function getItemNodeDelayInfo(
   };
 }
 
-/**
- * 전체 노드 배열에서 특정 GROUP 노드의 모든 자손 ITEM 노드들을 수집합니다.
- * childrenByParentMap을 전달하면 O(N)으로 탐색을 최적화합니다.
- */
-function collectSubtreeItemNodes<T extends NodeDelayInput>(
-  groupId: string,
-  allNodes: T[],
-  childrenByParentMap?: Map<string, T[]>,
-): T[] {
-  const items: T[] = [];
-  const queue = [groupId];
+// ─── 집계 규칙 (GROUP 버블업 · 프로젝트 요약 공용) ─────────────────────────
+//
+// 여러 ITEM 의 지연 정보를 하나로 합치는 규칙은 **여기 한 곳에만** 둔다.
+// 예전에는 GROUP 버블업(calculateTreeNodesDelayInfo)과 프로젝트 요약
+// (calculateProjectDelaySummary)이 각자 평균을 내다가 실제로 어긋났다:
+// 버블업은 예상 진척률을 "날짜가 있는 ITEM" 으로 평균 내면서 실제 진척률은
+// progressEffective(=날짜 유무와 무관한 전체 ITEM 평균)를 썼다. 분모가 달라서
+// 날짜 미기입 항목이 하나만 있어도 실제 진척률이 끌어내려지고 지연이 부풀려졌다.
+// (예: 20% 인 항목 하나 + 날짜 없는 항목 하나 → 예상 25% / 실제 10% → gap 15,
+//  같은 상황에서 프로젝트 요약은 gap 5 를 냈다.)
+//
+// 규칙: **판단 가능한 ITEM 만 세고, 예상과 실제를 그 같은 집합으로 평균 낸다.**
+// 날짜가 없어 판단할 수 없는 항목은 분자에도 분모에도 넣지 않는다 — 모르는 것을
+// 0% 로 치면 없는 지연을 만들어낸다.
 
-  while (queue.length > 0) {
-    const currentId = queue.shift()!;
-    const children = childrenByParentMap
-      ? childrenByParentMap.get(currentId) || []
-      : allNodes.filter((n) => n.parentId === currentId);
+interface DelayAccumulator {
+  sumExpected: number;
+  sumActual: number;
+  validCount: number;
+  criticalCount: number;
+  warningCount: number;
+  slightCount: number;
+  onTrackCount: number;
+}
 
-    for (const child of children) {
-      if (child.kind === 'ITEM' || (!child.kind && child.startAt && child.endAt)) {
-        items.push(child);
-      } else if (child.id) {
-        queue.push(child.id);
-      }
-    }
+function emptyAccumulator(): DelayAccumulator {
+  return {
+    sumExpected: 0,
+    sumActual: 0,
+    validCount: 0,
+    criticalCount: 0,
+    warningCount: 0,
+    slightCount: 0,
+    onTrackCount: 0,
+  };
+}
+
+/** ITEM 하나의 판정 결과를 누적기에 더한다. 판단 불가(UNKNOWN)면 아무것도 세지 않는다. */
+function addToAccumulator(acc: DelayAccumulator, info: ExpectedProgressResult): void {
+  if (
+    info.status === 'UNKNOWN' ||
+    info.expectedProgress === null ||
+    info.actualProgress === null
+  ) {
+    return;
   }
+  acc.validCount += 1;
+  acc.sumExpected += info.expectedProgress;
+  acc.sumActual += info.actualProgress;
+  if (info.status === 'CRITICAL') acc.criticalCount += 1;
+  else if (info.status === 'WARNING') acc.warningCount += 1;
+  else if (info.status === 'SLIGHT') acc.slightCount += 1;
+  else if (info.status === 'ON_TRACK') acc.onTrackCount += 1;
+}
 
-  return items;
+/** 하위 누적기를 상위로 합친다. 평균의 평균이 되지 않도록 합계·개수를 그대로 올린다. */
+function mergeAccumulator(target: DelayAccumulator, source: DelayAccumulator): void {
+  target.sumExpected += source.sumExpected;
+  target.sumActual += source.sumActual;
+  target.validCount += source.validCount;
+  target.criticalCount += source.criticalCount;
+  target.warningCount += source.warningCount;
+  target.slightCount += source.slightCount;
+  target.onTrackCount += source.onTrackCount;
+}
+
+/** 누적기를 최종 지연 정보로 환산한다. 판단 가능한 항목이 하나도 없으면 UNKNOWN. */
+function finishAccumulator(acc: DelayAccumulator): ExpectedProgressResult {
+  if (acc.validCount === 0) {
+    return {
+      expectedProgress: null,
+      actualProgress: null,
+      delayGap: 0,
+      status: 'UNKNOWN',
+    };
+  }
+  const expectedProgress = Math.round(acc.sumExpected / acc.validCount);
+  const actualProgress = Math.round(acc.sumActual / acc.validCount);
+  // 자손 중 최악을 위로 올린다. 하나라도 심각하면 그 그룹은 심각이다.
+  let status: DelayStatus = 'ON_TRACK';
+  if (acc.criticalCount > 0) status = 'CRITICAL';
+  else if (acc.warningCount > 0) status = 'WARNING';
+  else if (acc.slightCount > 0) status = 'SLIGHT';
+  return {
+    expectedProgress,
+    actualProgress,
+    delayGap: expectedProgress - actualProgress,
+    status,
+  };
 }
 
 /**
@@ -277,86 +338,62 @@ export function calculateTreeNodesDelayInfo<T extends NodeDelayInput>(
 ): Map<string, ExpectedProgressResult> {
   const resultMap = new Map<string, ExpectedProgressResult>();
 
-  // 0) 부모-자식 관계 맵 인덱싱 (O(N) 탐색용)
+  // 부모 → 자식 인덱스. 이게 있어야 아래 순회가 한 번으로 끝난다.
   const childrenByParentMap = new Map<string, T[]>();
   for (const node of allNodes) {
-    if (node.parentId) {
-      let list = childrenByParentMap.get(node.parentId);
-      if (!list) {
-        list = [];
-        childrenByParentMap.set(node.parentId, list);
-      }
-      list.push(node);
+    if (!node.parentId) continue;
+    let list = childrenByParentMap.get(node.parentId);
+    if (!list) {
+      list = [];
+      childrenByParentMap.set(node.parentId, list);
     }
+    list.push(node);
   }
 
-  // 1) ITEM 노드들 지연 상태 먼저 계산
-  const itemMap = new Map<string, ExpectedProgressResult>();
-  for (const node of allNodes) {
+  // 후위 순회(post-order)로 한 번에 올린다.
+  //
+  // 예전에는 GROUP 마다 collectSubtreeItemNodes() 로 자기 서브트리를 통째로 다시 훑어서,
+  // 깊은 트리에서 같은 노드를 깊이만큼 반복해 읽었다(최악 O(N²)). 자식의 누적기를 부모로
+  // 합쳐 올리면 노드당 정확히 한 번만 본다. 합계·개수를 올리는 방식이라 "평균의 평균" 도
+  // 생기지 않는다 — 손자 항목이 자식 그룹 수에 따라 가중되는 일이 없다.
+  const visiting = new Set<string>();
+
+  function visit(node: T): DelayAccumulator {
+    const acc = emptyAccumulator();
+
+    // ITEM 은 자기 판정이 곧 누적값이다.
     if (node.kind === 'ITEM' || (!node.kind && (node.startAt || node.endAt))) {
       const info = getItemNodeDelayInfo(node, todayIso);
-      if (node.id) {
-        itemMap.set(node.id, info);
-        resultMap.set(node.id, info);
-      }
+      if (node.id) resultMap.set(node.id, info);
+      addToAccumulator(acc, info);
+      return acc;
     }
+
+    // GROUP: 자손을 합쳐 올린다.
+    if (node.id) {
+      // DB 제약상 순환은 생기지 않지만(move 가 사이클을 거부한다), 여기서 무한 재귀에
+      // 빠지면 화면 전체가 멈추므로 방어한다.
+      if (visiting.has(node.id)) return acc;
+      visiting.add(node.id);
+    }
+    for (const child of childrenByParentMap.get(node.id ?? '') ?? []) {
+      mergeAccumulator(acc, visit(child));
+    }
+    if (node.id) {
+      visiting.delete(node.id);
+      resultMap.set(node.id, finishAccumulator(acc));
+    }
+    return acc;
   }
 
-  // 2) GROUP 노드들 버블업(전파) 지연 상태 계산
+  // 루트(부모 없음)부터 훑는다.
   for (const node of allNodes) {
-    if (node.kind === 'GROUP' && node.id) {
-      const childItems = collectSubtreeItemNodes(node.id, allNodes, childrenByParentMap);
-      if (childItems.length === 0) {
-        resultMap.set(node.id, {
-          expectedProgress: null,
-          actualProgress: node.progressEffective ?? null,
-          delayGap: 0,
-          status: 'UNKNOWN',
-        });
-        continue;
-      }
-
-      // 자손 ITEM 노드들의 ExpectedProgress 평균 및 지연 상태 확인
-      let sumExpected = 0;
-      let validExpectedCount = 0;
-      let hasCritical = false;
-      let hasWarning = false;
-      let hasSlight = false;
-
-      for (const item of childItems) {
-        const itemInfo = itemMap.get(item.id || '') || getItemNodeDelayInfo(item, todayIso);
-        if (itemInfo.expectedProgress !== null) {
-          sumExpected += itemInfo.expectedProgress;
-          validExpectedCount++;
-        }
-
-        if (itemInfo.status === 'CRITICAL') hasCritical = true;
-        else if (itemInfo.status === 'WARNING') hasWarning = true;
-        else if (itemInfo.status === 'SLIGHT') hasSlight = true;
-      }
-
-      const avgExpected = validExpectedCount > 0 ? Math.round(sumExpected / validExpectedCount) : null;
-      const actualProgress = node.progressEffective ?? (validExpectedCount > 0 ? Math.round(childItems.reduce((acc, cur) => acc + (cur.progress ?? 0), 0) / childItems.length) : null);
-      const delayGap = (avgExpected !== null && actualProgress !== null) ? (avgExpected - actualProgress) : 0;
-
-      // 지연 상태 버블업(Bubble-up):
-      // 자손 중 심각이 1개라도 있으면 심각, 주의만 있으면 주의, 소폭이 있으면 소폭, 그 외는 정상
-      let status: DelayStatus = 'ON_TRACK';
-      if (hasCritical) {
-        status = 'CRITICAL';
-      } else if (hasWarning) {
-        status = 'WARNING';
-      } else if (hasSlight) {
-        status = 'SLIGHT';
-      }
-
-      resultMap.set(node.id, {
-        expectedProgress: avgExpected,
-        actualProgress,
-        delayGap,
-        status,
-      });
-    }
+    if (!node.parentId) visit(node);
+  }
+  // 부모가 목록에 없는 노드(부분 트리를 넘겨받은 경우 등)는 위 순회에서 빠진다.
+  // 화면에서 배지가 통째로 사라지는 것보다는 홀로 계산해서라도 채우는 편이 낫다.
+  for (const node of allNodes) {
+    if (node.id && !resultMap.has(node.id)) visit(node);
   }
 
   return resultMap;
@@ -411,71 +448,29 @@ export function calculateProjectDelaySummary<T extends NodeDelayInput>(
   todayIso: string = getTodayIso(),
 ): ProjectDelaySummary {
   const itemNodes = nodes.filter((n) => n.kind === 'ITEM' || (!n.kind && n.startAt && n.endAt));
+  // ITEM 이 하나도 없으면(폴더만 만들어 둔 상태) 넘어온 노드를 그대로 대상으로 둔다.
+  // GROUP 은 getItemNodeDelayInfo() 에서 ON_TRACK 으로 판정되므로 결과적으로 "정상" 이 된다.
+  // 일정이 없는데 정상이라 부르는 게 옳으냐는 별개 논의라, 여기서는 기존 동작을 유지한다.
   const targetNodes = itemNodes.length > 0 ? itemNodes : nodes;
 
-  let criticalCount = 0;
-  let warningCount = 0;
-  let slightCount = 0;
-  let onTrackCount = 0;
-
-  let totalExpected = 0;
-  let totalActual = 0;
-  let validNodes = 0;
-
+  // 집계 규칙은 GROUP 버블업과 공유한다 — 둘이 따로 평균을 내다가 실제로 어긋난 적이 있다
+  // (DelayAccumulator 위 주석 참고). 정책이 바뀌면 이제 한 곳만 고치면 된다.
+  const acc = emptyAccumulator();
   for (const node of targetNodes) {
-    const info = getItemNodeDelayInfo(node, todayIso);
-    if (info.status === 'UNKNOWN' || info.expectedProgress === null || info.actualProgress === null) {
-      continue;
-    }
-
-    validNodes++;
-    totalExpected += info.expectedProgress;
-    totalActual += info.actualProgress;
-
-    if (info.status === 'CRITICAL') criticalCount++;
-    else if (info.status === 'WARNING') warningCount++;
-    else if (info.status === 'SLIGHT') slightCount++;
-    else if (info.status === 'ON_TRACK') onTrackCount++;
+    addToAccumulator(acc, getItemNodeDelayInfo(node, todayIso));
   }
-
-  if (validNodes === 0) {
-    return {
-      totalNodes: nodes.length,
-      validNodes: 0,
-      criticalCount: 0,
-      warningCount: 0,
-      slightCount: 0,
-      onTrackCount: 0,
-      avgExpectedProgress: null,
-      avgActualProgress: null,
-      avgDelayGap: 0,
-      status: 'UNKNOWN',
-    };
-  }
-
-  const avgExpectedProgress = Math.round(totalExpected / validNodes);
-  const avgActualProgress = Math.round(totalActual / validNodes);
-  const avgDelayGap = avgExpectedProgress - avgActualProgress;
-
-  let status: DelayStatus = 'ON_TRACK';
-  if (criticalCount > 0) {
-    status = 'CRITICAL';
-  } else if (warningCount > 0) {
-    status = 'WARNING';
-  } else if (slightCount > 0) {
-    status = 'SLIGHT';
-  }
+  const aggregate = finishAccumulator(acc);
 
   return {
     totalNodes: nodes.length,
-    validNodes,
-    criticalCount,
-    warningCount,
-    slightCount,
-    onTrackCount,
-    avgExpectedProgress,
-    avgActualProgress,
-    avgDelayGap,
-    status,
+    validNodes: acc.validCount,
+    criticalCount: acc.criticalCount,
+    warningCount: acc.warningCount,
+    slightCount: acc.slightCount,
+    onTrackCount: acc.onTrackCount,
+    avgExpectedProgress: aggregate.expectedProgress,
+    avgActualProgress: aggregate.actualProgress,
+    avgDelayGap: aggregate.delayGap,
+    status: aggregate.status,
   };
 }

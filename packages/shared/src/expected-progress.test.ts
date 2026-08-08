@@ -280,6 +280,90 @@ describe('calculateTreeNodesDelayInfo (버블업 지연 전파)', () => {
     const groupInfo = map.get('group1')!;
     expect(groupInfo.status).toBe('CRITICAL');
   });
+
+  // ── 분모 불일치 회귀 ──
+  // 예전 버블업은 예상 진척률을 "날짜 있는 ITEM" 으로 평균 내면서, 실제 진척률은
+  // progressEffective(=날짜 유무 무관 전체 평균)를 썼다. 그래서 날짜 미기입 항목이
+  // 하나만 있어도 실제가 끌어내려져 없는 지연이 만들어졌고, 같은 상황에서 프로젝트
+  // 요약은 다른 값을 냈다. 두 경로가 같은 답을 내는지 고정한다.
+  it('날짜 없는 ITEM 은 예상/실제 양쪽 분모에서 함께 빠진다', () => {
+    const nodes = [
+      { id: 'g', kind: 'GROUP', parentId: null, progressEffective: 10 }, // (20+0)/2 = 10
+      { id: 'dated', kind: 'ITEM', parentId: 'g', startAt: '2026-08-01', endAt: '2026-08-31', progress: 20 },
+      { id: 'undated', kind: 'ITEM', parentId: 'g', startAt: null, endAt: null, progress: 0 },
+    ];
+    const info = calculateTreeNodesDelayInfo(nodes, '2026-08-08').get('g')!;
+
+    // 판단 가능한 항목은 dated 하나뿐 → 예상도 실제도 그 항목만으로 낸다.
+    expect(info.actualProgress).toBe(20); // 예전엔 progressEffective 인 10 이었다
+    expect(info.delayGap).toBe(info.expectedProgress! - 20);
+  });
+
+  it('같은 트리에서 그룹 버블업과 프로젝트 요약이 같은 gap 을 낸다', () => {
+    const nodes = [
+      { id: 'g', kind: 'GROUP', parentId: null, progressEffective: 10 },
+      { id: 'dated', kind: 'ITEM', parentId: 'g', startAt: '2026-08-01', endAt: '2026-08-31', progress: 20 },
+      { id: 'undated', kind: 'ITEM', parentId: 'g', startAt: null, endAt: null, progress: 0 },
+    ];
+    const group = calculateTreeNodesDelayInfo(nodes, '2026-08-08').get('g')!;
+    const summary = calculateProjectDelaySummary(nodes, '2026-08-08');
+
+    expect(group.expectedProgress).toBe(summary.avgExpectedProgress);
+    expect(group.actualProgress).toBe(summary.avgActualProgress);
+    expect(group.delayGap).toBe(summary.avgDelayGap);
+    expect(group.status).toBe(summary.status);
+  });
+
+  it('자손 ITEM 이 모두 날짜 미기입이면 판단하지 않는다 (UNKNOWN)', () => {
+    const nodes = [
+      { id: 'g', kind: 'GROUP', parentId: null, progressEffective: 0 },
+      { id: 'i', kind: 'ITEM', parentId: 'g', startAt: null, endAt: null, progress: 0 },
+    ];
+    expect(calculateTreeNodesDelayInfo(nodes, '2026-08-08').get('g')!.status).toBe('UNKNOWN');
+  });
+
+  it('손자 항목이 중간 그룹 수에 따라 가중되지 않는다 (평균의 평균 방지)', () => {
+    // gA 아래 항목 1개(0%), gB 아래 항목 3개(100%) → 전체 평균은 75% 여야 한다.
+    // 자식 그룹의 평균을 다시 평균 내면 50% 가 나온다.
+    const nodes = [
+      { id: 'root', kind: 'GROUP', parentId: null },
+      { id: 'gA', kind: 'GROUP', parentId: 'root' },
+      { id: 'gB', kind: 'GROUP', parentId: 'root' },
+      { id: 'a1', kind: 'ITEM', parentId: 'gA', startAt: '2026-08-01', endAt: '2026-08-31', progress: 0 },
+      { id: 'b1', kind: 'ITEM', parentId: 'gB', startAt: '2026-08-01', endAt: '2026-08-31', progress: 100 },
+      { id: 'b2', kind: 'ITEM', parentId: 'gB', startAt: '2026-08-01', endAt: '2026-08-31', progress: 100 },
+      { id: 'b3', kind: 'ITEM', parentId: 'gB', startAt: '2026-08-01', endAt: '2026-08-31', progress: 100 },
+    ];
+    expect(calculateTreeNodesDelayInfo(nodes, '2026-08-08').get('root')!.actualProgress).toBe(75);
+  });
+
+  it('부모가 목록에 없는 노드도 배지가 비지 않는다', () => {
+    const nodes = [
+      { id: 'orphan', kind: 'ITEM', parentId: 'gone', startAt: '2026-08-01', endAt: '2026-08-31', progress: 50 },
+    ];
+    expect(calculateTreeNodesDelayInfo(nodes, '2026-08-08').has('orphan')).toBe(true);
+  });
+
+  it('노드가 많아도 선형 시간에 끝난다 (예전 O(N²) 회귀)', () => {
+    // 깊이 10 짜리 사슬을 여러 개 — 예전 구현은 그룹마다 서브트리를 다시 훑었다.
+    const nodes: Record<string, unknown>[] = [];
+    for (let chain = 0; chain < 300; chain += 1) {
+      let parentId: string | null = null;
+      for (let d = 0; d < 9; d += 1) {
+        const id = `g${chain}_${d}`;
+        nodes.push({ id, kind: 'GROUP', parentId });
+        parentId = id;
+      }
+      nodes.push({
+        id: `i${chain}`, kind: 'ITEM', parentId,
+        startAt: '2026-08-01', endAt: '2026-08-31', progress: 50,
+      });
+    }
+    const started = Date.now();
+    const map = calculateTreeNodesDelayInfo(nodes as never[], '2026-08-08');
+    expect(map.size).toBe(nodes.length);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
 });
 
 describe('calculateProjectDelaySummary', () => {

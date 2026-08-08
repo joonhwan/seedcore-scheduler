@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, forwardRef, useImperativeHandle } from 'react';
 import { calculateExpectedProgress, getNodeDelayInfo, getTodayIso, type NodeTreeItem, type UpdateNodeDto } from '@sam/shared';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
@@ -38,6 +38,14 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
   
   const update = useUpdateNode(projectId);
   const isGroup = node.kind === 'GROUP';
+
+  // getNodeDelayInfo 에 **배열**을 넘기면 그 안에서 트리 전체의 지연 맵을 새로 만든다
+  // (expected-progress.ts 의 getNodeDelayInfo 참고). 렌더 본문에서 직접 부르면 타이핑
+  // 한 글자마다 그 계산이 다시 돈다. Timeline 은 맵을 만들어 재사용하는데 여기만 빠져 있었다.
+  const delayInfo = useMemo(
+    () => getNodeDelayInfo(node, undefined, allNodes),
+    [node, allNodes],
+  );
 
   useEffect(() => {
     setTitle(node.title);
@@ -198,7 +206,6 @@ export const NodeDetail = forwardRef<NodeDetailRef, Props>(function NodeDetail(
 
       {/* 노드 지연 상태 및 예상 진척률 요약 바 */}
       {(() => {
-        const delayInfo = getNodeDelayInfo(node, undefined, allNodes);
         if (delayInfo.status === 'UNKNOWN') return null;
 
         return (
