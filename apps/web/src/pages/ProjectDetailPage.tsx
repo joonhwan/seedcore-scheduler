@@ -556,6 +556,7 @@ export default function ProjectDetailPage() {
                 setCreateInsertAfter(s); // 이 노드 바로 뒤에 삽입
               }}
               onMoveSibling={onMoveSibling}
+              moveInFlight={isMovingNode > 0}
               onMoveTo={canEditNodes ? async (node, newParentId, newSortOrder) => {
                 try {
                   await moveTo(node, newParentId, newSortOrder);

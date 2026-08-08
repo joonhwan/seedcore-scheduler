@@ -50,6 +50,10 @@ interface Props {
   onChangeParent?: ((node: NodeTreeItem) => void) | undefined;
   // 드래그 앤 드롭으로 노드를 옮긴다. 성공 후 접힌 그룹을 펼쳐야 해서 Promise 를 받는다.
   onMoveTo?: ((node: NodeTreeItem, newParentId: string | null, newSortOrder: number) => Promise<void>) | undefined;
+  // 앞선 이동 요청이 아직 반영되지 않은 상태. 이때 또 드래그하면 갱신 안 된 목록으로 삽입 위치를
+  // 계산하게 되고(선이 가리킨 자리와 다른 곳에 떨어짐), 재배열로 updatedAt 이 바뀐 형제를 옮기면
+  // 엉뚱한 409 가 난다. 그래서 반영이 끝날 때까지 드래그만 받지 않는다.
+  moveInFlight?: boolean | undefined;
   onDelete?: ((node: NodeTreeItem) => void) | undefined;
   onAddRoot?: (() => void) | undefined;
   onAddNode?: (() => void) | undefined; // 선택 노드 기준 스마트 추가(Ctrl-I 와 동일)
@@ -89,6 +93,7 @@ function TimelineComponent({
   onMoveSibling,
   onChangeParent,
   onMoveTo,
+  moveInFlight,
   onDelete,
   onAddRoot,
   onAddNode,
@@ -1147,6 +1152,7 @@ function TimelineComponent({
                   onDelete={onDelete}
                   onAddRoot={onAddRoot}
                   canDrag={!!canEdit && !selectionMode && n.id !== 'empty-row-placeholder' && !!onMoveTo}
+                  dragBlocked={!!moveInFlight}
                   onDragStart={handleRowDragStart}
                   isRowDragging={nodeDrag?.active === true && nodeDrag.nodeId === n.id}
                 />
@@ -1262,6 +1268,7 @@ const Row = memo(function Row({
   showCheckbox,
   onToggleSelect,
   canDrag,
+  dragBlocked,
   onDragStart,
   isRowDragging,
 }: {
@@ -1297,6 +1304,7 @@ const Row = memo(function Row({
   showCheckbox: boolean;
   onToggleSelect?: ((id: string) => void) | undefined;
   canDrag: boolean;
+  dragBlocked: boolean;
   onDragStart: (node: TreeNode, e: React.PointerEvent) => void;
   // Row 자신이 드래그되고 있는지 여부. Timeline 컴포넌트 레벨의 배경 패닝용 isDragging 과
   // 이름이 겹치면 헷갈리므로 이 prop 은 isRowDragging 으로 부른다.
@@ -1354,15 +1362,22 @@ const Row = memo(function Row({
             흐름에서 빼내 라벨 칸 왼쪽 끝에 고정한다. 그래서 모든 행의 핸들이 한 줄로 선다.
             빠진 자리는 paddingLeft 의 LABEL_BASE_PX 여백이 대신 차지한다. */}
         <span
-          className={`absolute left-1 top-0 flex h-full w-3 items-center justify-center select-none text-slate-400 transition-opacity ${
-            canDrag
-              ? 'cursor-grab opacity-0 group-hover/row:opacity-100'
-              : 'pointer-events-none opacity-0'
+          className={`absolute left-1 top-0 flex h-full w-3 items-center justify-center select-none transition-opacity ${
+            !canDrag
+              ? 'pointer-events-none opacity-0'
+              : dragBlocked
+                ? // 이동이 반영되는 동안엔 잡히지 않는다. 그래도 hover 는 받아야 툴팁으로 이유를 알린다.
+                  'cursor-wait text-slate-300 opacity-0 group-hover/row:opacity-100 dark:text-slate-600'
+                : 'cursor-grab text-slate-400 opacity-0 group-hover/row:opacity-100'
           }`}
           onPointerDown={(e) => {
-            if (canDrag) onDragStart(node, e);
+            if (canDrag && !dragBlocked) onDragStart(node, e);
           }}
-          title="드래그해서 순서나 상위 그룹을 바꿉니다"
+          title={
+            dragBlocked
+              ? '앞서 옮긴 일정을 반영하는 중입니다. 잠시 후 다시 시도하세요.'
+              : '드래그해서 순서나 상위 그룹을 바꿉니다'
+          }
           // 브라유 글리프는 의미가 없어 보조기술에는 항상 숨긴다. 키보드 사용자는 행 액션
           // 메뉴의 위/아래 버튼과 "부모 그룹 변경" 다이얼로그로 동일한 기능을 이미 쓸 수 있다.
           aria-hidden={true}
