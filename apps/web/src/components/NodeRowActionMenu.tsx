@@ -189,12 +189,12 @@ export default function NodeRowActionMenu({
           {onChangeParent && (
             <button
               type="button"
-              title={`부모 변경 (서브트리 깊이 ${currentSubtreeDepth})`}
+              title={`부모 그룹 변경 (서브트리 깊이 ${currentSubtreeDepth})`}
               onClick={() => handleAction(() => onChangeParent(node))}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700/60"
             >
               <span className="font-mono text-xs w-4">⇄</span>
-              <span>부모 일정 변경</span>
+              <span>부모 그룹 변경</span>
             </button>
           )}
 

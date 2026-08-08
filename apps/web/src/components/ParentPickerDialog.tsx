@@ -47,7 +47,14 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
     return set;
   }, [items, node]);
 
-  function isDisabled(targetId: string | null, targetDepth: number): { ok: boolean; reason?: string } {
+  function isDisabled(
+    targetId: string | null,
+    targetDepth: number,
+    targetKind?: NodeTreeItem['kind'],
+  ): { ok: boolean; reason?: string } {
+    if (targetId !== null && targetKind !== 'GROUP') {
+      return { ok: false, reason: 'ITEM 은 부모가 될 수 없음' };
+    }
     if (targetId === node.parentId) return { ok: false, reason: '현재 부모와 동일' };
     if (targetId !== null && descendants.has(targetId)) {
       return { ok: false, reason: '자기 자신/자손은 부모로 지정 불가' };
@@ -61,7 +68,7 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
 
   async function pick(target: NodeTreeItem | null) {
     setError(null);
-    const { ok, reason } = isDisabled(target?.id ?? null, target?.depth ?? -1);
+    const { ok, reason } = isDisabled(target?.id ?? null, target?.depth ?? -1, target?.kind);
     if (!ok) {
       setError(reason ?? '이동할 수 없습니다.');
       return;
@@ -83,12 +90,16 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
     }
   }
 
+  // ITEM 은 자식을 가질 수 없으므로 목록에는 GROUP 만 남긴다 (renderRows 가 걸러낸다).
+  const groupRows = tree.flatMap((root) => renderRows(root, 0));
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-        <h2 className="text-base font-semibold">"{node.title}" 의 새 부모 선택</h2>
+        <h2 className="text-base font-semibold">"{node.title}" 의 새 부모 그룹 선택</h2>
         <p className="mt-1 text-xs text-slate-500">
-          서브트리 깊이 {subtreeRelative + 1}단계. 새 부모 깊이 + {subtreeRelative + 1} ≤ {MAX_TREE_DEPTH}
+          ITEM은 하위 노드를 가질 수 없으므로 GROUP 만 고를 수 있습니다. 서브트리 깊이{' '}
+          {subtreeRelative + 1}단계. 새 부모 깊이 + {subtreeRelative + 1} ≤ {MAX_TREE_DEPTH}
         </p>
 
         <div className="mt-3 flex-1 overflow-auto rounded border border-slate-200 dark:border-slate-700">
@@ -99,11 +110,16 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
             className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-slate-800"
             title={isDisabled(null, -1).reason}
           >
-            ◇ (루트로 이동)
+            ◇ 최상위 (그룹 없이 최상위로 이동)
           </button>
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {tree.flatMap((root) => renderRows(root, 0))}
+            {groupRows}
           </ul>
+          {groupRows.length === 0 && (
+            <p className="px-3 py-2 text-xs text-slate-500">
+              선택할 수 있는 GROUP 이 없습니다. 최상위로만 옮길 수 있습니다.
+            </p>
+          )}
         </div>
 
         {error && (
@@ -129,7 +145,12 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
     n: ReturnType<typeof buildTree>[number],
     indent: number,
   ): React.ReactNode[] {
-    const dis = isDisabled(n.id, n.depth);
+    // ITEM 은 부모가 될 수 없으니 행 자체를 만들지 않는다. 자식이 있을 리 없지만
+    // 방어적으로 같은 들여쓰기 단계에서 이어서 훑는다.
+    if (n.kind !== 'GROUP') {
+      return n.children.flatMap((c) => renderRows(c, indent));
+    }
+    const dis = isDisabled(n.id, n.depth, n.kind);
     return [
       <li key={n.id}>
         <button
@@ -140,8 +161,7 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
           className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-slate-800"
           style={{ paddingLeft: 12 + indent * 16 }}
         >
-          <span className="text-[10px] text-slate-400">[{n.kind === 'GROUP' ? 'G' : 'I'}]</span>{' '}
-          {n.title}
+          <span className="text-[10px] text-slate-400">[G]</span> {n.title}
           <span className="ml-1 text-[10px] text-slate-400">d{n.depth}</span>
         </button>
       </li>,
