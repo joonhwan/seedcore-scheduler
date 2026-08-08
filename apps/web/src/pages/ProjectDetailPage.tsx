@@ -549,6 +549,14 @@ export default function ProjectDetailPage() {
                 setCreateInsertAfter(s); // 이 노드 바로 뒤에 삽입
               }}
               onMoveSibling={onMoveSibling}
+              onMoveTo={canEditNodes ? async (node, newParentId, newSortOrder) => {
+                try {
+                  await moveTo(node, newParentId, newSortOrder);
+                } catch (err) {
+                  toast.error(apiErrorMessage(err));
+                  throw err; // Timeline 이 성공했을 때만 접힌 그룹을 펼치도록
+                }
+              } : undefined}
               onChangeParent={(n) => setPickParentFor(n)}
               onDelete={onDeleteNode}
               onAddRoot={() => {

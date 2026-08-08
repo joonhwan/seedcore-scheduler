@@ -562,6 +562,21 @@ function TimelineComponent({
       setDropTarget((prev) => (sameDropTarget(prev, next) ? prev : next));
       cursorRef.current = { x: ev.clientX, y: ev.clientY };
       placeBadge();
+
+      // 스크롤러 위/아래 32px 안에 들어가면 세로로 자동 스크롤한다.
+      const scroller = scrollerRef.current;
+      if (scroller) {
+        const box = scroller.getBoundingClientRect();
+        const EDGE = 32;
+        const MAX_SPEED = 12;
+        let dy = 0;
+        if (ev.clientY < box.top + EDGE) {
+          dy = -MAX_SPEED * Math.min(1, (box.top + EDGE - ev.clientY) / EDGE);
+        } else if (ev.clientY > box.bottom - EDGE) {
+          dy = MAX_SPEED * Math.min(1, (ev.clientY - (box.bottom - EDGE)) / EDGE);
+        }
+        if (dy !== 0) scroller.scrollTop += dy;
+      }
     };
 
     const detach = () => {
