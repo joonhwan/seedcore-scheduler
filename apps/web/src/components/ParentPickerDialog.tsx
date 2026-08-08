@@ -3,7 +3,8 @@ import { MAX_TREE_DEPTH, type NodeTreeItem } from '@sam/shared';
 import { useMoveNode } from '../lib/nodes';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
-import { buildTree, maxDescendantDepth } from './NodeTree';
+import { canDropInto, appendSortOrder, subtreeRelativeDepth } from '../lib/treeDnd';
+import { buildTree } from './NodeTree';
 
 interface Props {
   projectId: string;
@@ -15,55 +16,19 @@ interface Props {
 export default function ParentPickerDialog({ projectId, items, node, onClose }: Props) {
   const tree = useMemo(() => buildTree(items), [items]);
 
-  const subtreeMax = useMemo(() => {
-    function findDeep(arr: ReturnType<typeof buildTree>): ReturnType<typeof buildTree>[number] | null {
-      for (const n of arr) {
-        if (n.id === node.id) return n;
-        const r = findDeep(n.children);
-        if (r) return r;
-      }
-      return null;
-    }
-    const t = findDeep(tree);
-    return t ? maxDescendantDepth(t) : node.depth;
-  }, [tree, node]);
-
-  const subtreeRelative = subtreeMax - node.depth;
+  const subtreeRelative = useMemo(() => subtreeRelativeDepth(items, node.id), [items, node.id]);
   const move = useMoveNode(projectId);
   const [error, setError] = useState<string | null>(null);
 
-  const descendants = useMemo(() => {
-    const set = new Set<string>([node.id]);
-    const stack = [node.id];
-    while (stack.length > 0) {
-      const cur = stack.pop()!;
-      for (const it of items) {
-        if (it.parentId === cur && !set.has(it.id)) {
-          set.add(it.id);
-          stack.push(it.id);
-        }
-      }
-    }
-    return set;
-  }, [items, node]);
-
   function isDisabled(
     targetId: string | null,
-    targetDepth: number,
-    targetKind?: NodeTreeItem['kind'],
+    _targetDepth: number,
+    _targetKind?: NodeTreeItem['kind'],
   ): { ok: boolean; reason?: string } {
-    if (targetId !== null && targetKind !== 'GROUP') {
-      return { ok: false, reason: 'ITEM 은 부모가 될 수 없음' };
-    }
+    // 목록에서 현재 부모를 다시 고르는 건 의미가 없다. 이건 판정이 아니라 목록 UI 의 사정이라
+    // 공용 canDropInto 가 아니라 여기서 본다.
     if (targetId === node.parentId) return { ok: false, reason: '현재 부모와 동일' };
-    if (targetId !== null && descendants.has(targetId)) {
-      return { ok: false, reason: '자기 자신/자손은 부모로 지정 불가' };
-    }
-    const newDepth = targetDepth + 1;
-    if (newDepth + subtreeRelative >= MAX_TREE_DEPTH) {
-      return { ok: false, reason: `이동 시 최대 깊이 ${MAX_TREE_DEPTH} 초과` };
-    }
-    return { ok: true };
+    return canDropInto(items, node, targetId);
   }
 
   async function pick(target: NodeTreeItem | null) {
@@ -74,7 +39,7 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
       return;
     }
     try {
-      const newSortOrder = computeAppendSortOrder(items, target?.id ?? null, node.id);
+      const newSortOrder = appendSortOrder(items, target?.id ?? null, node.id);
       await move.mutateAsync({
         id: node.id,
         body: {
@@ -168,13 +133,4 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
       ...n.children.flatMap((c) => renderRows(c, indent + 1)),
     ];
   }
-}
-
-function computeAppendSortOrder(
-  items: NodeTreeItem[],
-  parentId: string | null,
-  excludeId: string,
-): number {
-  const siblings = items.filter((x) => x.parentId === parentId && x.id !== excludeId);
-  return siblings.length + 1;
 }
