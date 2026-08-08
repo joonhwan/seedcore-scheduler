@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { NodeTreeItem } from '@sam/shared';
 import type { TreeNode } from '../components/NodeTree';
-import { INDENT_PX, LABEL_BASE_PX, depthRangeAt, depthFromX, descendantIdsOf, subtreeRelativeDepth, canDropInto, resolveTarget, siblingsExcluding, sortOrderForTarget, changesParent, type DropTarget } from './treeDnd';
+import { INDENT_PX, LABEL_BASE_PX, depthRangeAt, depthFromX, descendantIdsOf, subtreeRelativeDepth, canDropInto, resolveTarget, siblingsExcluding, sortOrderForTarget, changesParent, targetFromPointer, describeDropTarget, appendSortOrder, type DropTarget } from './treeDnd';
 
 function item(
   partial: Partial<NodeTreeItem> & { id: string; kind: NodeTreeItem['kind'] },
@@ -258,5 +258,81 @@ describe('changesParent', () => {
     expect(changesParent(tById('C1'), same)).toBe(false);
     const moved = resolveTarget(T_ROWS, T_ITEMS, tById('C1'), 4, 0); // 최상위로
     expect(changesParent(tById('C1'), moved)).toBe(true);
+  });
+});
+
+describe('targetFromPointer', () => {
+  const X_D0 = LABEL_BASE_PX;              // 깊이 0 을 가리키는 가로 좌표
+  const X_D1 = LABEL_BASE_PX + INDENT_PX;  // 깊이 1
+
+  it('행의 위 절반은 그 행 위 경계, 아래 절반은 아래 경계로 읽는다', () => {
+    // rows: [G, C1, C2, S]. S 를 드래그 중.
+    // C1 행(index 1)의 위 절반 → boundary 1 → depth 1 → G 의 첫 자식
+    const up = targetFromPointer(T_ROWS, T_ITEMS, tById('S'), X_D1, 32 * 1 + 4);
+    expect(up).toMatchObject({ boundary: 1, parentId: 'G', insertIndex: 0 });
+    // C1 행의 아래 절반 → boundary 2 → depth 1 → G 안 C1 뒤
+    const down = targetFromPointer(T_ROWS, T_ITEMS, tById('S'), X_D1, 32 * 1 + 28);
+    expect(down).toMatchObject({ boundary: 2, parentId: 'G', insertIndex: 1 });
+  });
+
+  it('가로 위치로 깊이가 갈린다', () => {
+    // C2 행(index 2)의 아래 절반 → boundary 3. C1 을 드래그 중.
+    // depth 1 → G 안 C2 뒤 / depth 0 → 최상위 G 뒤. 세로는 같고 가로만 다르다.
+    const deep = targetFromPointer(T_ROWS, T_ITEMS, tById('C1'), X_D1, 32 * 2 + 28);
+    expect(deep).toMatchObject({ parentId: 'G' });
+    const shallow = targetFromPointer(T_ROWS, T_ITEMS, tById('C1'), X_D0, 32 * 2 + 28);
+    expect(shallow).toMatchObject({ parentId: null });
+  });
+
+  it('제자리면 null 을 돌려준다', () => {
+    // C1(G 의 첫 자식)을 드래그 중. 자기 행 위 절반과 아래 절반 둘 다 제자리.
+    expect(targetFromPointer(T_ROWS, T_ITEMS, tById('C1'), X_D1, 32 * 1 + 4)).toBeNull();
+    expect(targetFromPointer(T_ROWS, T_ITEMS, tById('C1'), X_D1, 32 * 1 + 28)).toBeNull();
+  });
+
+  it('범위를 벗어난 세로 좌표는 양 끝 경계로 clamp 한다', () => {
+    expect(targetFromPointer(T_ROWS, T_ITEMS, tById('S'), X_D0, -500)?.boundary).toBe(0);
+    expect(targetFromPointer(T_ROWS, T_ITEMS, tById('C1'), X_D0, 99999)?.boundary).toBe(4);
+  });
+});
+
+describe('describeDropTarget', () => {
+  it('같은 부모면 순서만 알려주고 sky 다', () => {
+    const t = resolveTarget(T_ROWS, T_ITEMS, tById('C1'), 3, 1);
+    expect(describeDropTarget(T_ITEMS, tById('C1'), t)).toEqual({
+      text: '2번째로 이동',
+      tone: 'sky',
+    });
+  });
+
+  it('다른 부모 안으로 가면 부모 이름을 붙이고 amber 다', () => {
+    const t = resolveTarget(T_ROWS, T_ITEMS, tById('S'), 1, 1);
+    expect(describeDropTarget(T_ITEMS, tById('S'), t)).toEqual({
+      text: '"G" 안 1번째로 이동',
+      tone: 'amber',
+    });
+  });
+
+  it('최상위로 가면 최상위라고 적고 amber 다', () => {
+    const t = resolveTarget(T_ROWS, T_ITEMS, tById('C1'), 4, 0);
+    expect(describeDropTarget(T_ITEMS, tById('C1'), t)).toEqual({
+      text: '최상위 3번째로 이동',
+      tone: 'amber',
+    });
+  });
+
+  it('무효한 대상은 사유를 그대로 적고 rose 다', () => {
+    const t = resolveTarget(T_ROWS, T_ITEMS, tById('G'), 1, 1);
+    expect(describeDropTarget(T_ITEMS, tById('G'), t)).toEqual({
+      text: '자기 하위로는 옮길 수 없습니다',
+      tone: 'rose',
+    });
+  });
+});
+
+describe('appendSortOrder', () => {
+  it('자기 자신을 뺀 자식 수 + 1 이다', () => {
+    expect(appendSortOrder(T_ITEMS, 'G', 'C1')).toBe(2);
+    expect(appendSortOrder(T_ITEMS, 'G', 'zzz')).toBe(3);
   });
 });

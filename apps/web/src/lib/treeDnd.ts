@@ -4,6 +4,7 @@
 // DOM 에 의존하지 않는다 — 좌표 보정은 호출부(Timeline.tsx)가 끝내서 넘긴다.
 import { MAX_TREE_DEPTH, type NodeTreeItem } from '@sam/shared';
 import type { TreeNode } from '../components/NodeTree';
+import { ROW_HEIGHT } from './ganttLayout';
 
 /** 트리 한 단계당 들여쓰기 픽셀. 라벨 칸의 paddingLeft 계산과 같은 값이어야 한다. */
 export const INDENT_PX = 16;
@@ -177,4 +178,67 @@ export function sortOrderForTarget(target: DropTarget): number {
 /** 이 드롭이 부모까지 바꾸는지 (표시 색 sky/amber 를 가른다). */
 export function changesParent(node: NodeTreeItem, target: DropTarget): boolean {
   return target.parentId !== node.parentId;
+}
+
+/**
+ * 포인터 좌표를 드롭 대상으로 바꾼다.
+ * - `y`: 행 컨테이너 상단 기준 (첫 행 위쪽이 0)
+ * - `x`: 라벨 칸 왼쪽 끝 기준
+ * 둘 다 스크롤 보정이 끝난 값이어야 한다.
+ *
+ * 제자리면 null 을 돌려준다. 무효(ok:false)와 달리 알릴 사유가 없어
+ * 선도 배지도 그리지 않기 때문이다.
+ */
+export function targetFromPointer(
+  rows: TreeNode[],
+  items: NodeTreeItem[],
+  node: NodeTreeItem,
+  x: number,
+  y: number,
+): DropTarget | null {
+  const rowIndex = Math.floor(y / ROW_HEIGHT);
+  const withinRow = y - rowIndex * ROW_HEIGHT;
+  const rawBoundary = withinRow < ROW_HEIGHT / 2 ? rowIndex : rowIndex + 1;
+  const boundary = Math.max(0, Math.min(rows.length, rawBoundary));
+
+  const depth = depthFromX(rows, boundary, x);
+  const target = resolveTarget(rows, items, node, boundary, depth);
+
+  // 제자리 판정: 부모가 그대로이고 삽입 위치가 지금 자리와 같다.
+  if (target.parentId === node.parentId) {
+    const current = siblingsExcluding(items, node.parentId, node.id).filter(
+      (s) => s.sortOrder < node.sortOrder,
+    ).length;
+    if (target.insertIndex === current) return null;
+  }
+  return target;
+}
+
+/** 커서 배지에 띄울 문구와 톤. */
+export function describeDropTarget(
+  items: NodeTreeItem[],
+  node: NodeTreeItem,
+  target: DropTarget,
+): { text: string; tone: 'sky' | 'amber' | 'rose' } {
+  if (!target.ok) {
+    return { text: target.reason ?? '여기로는 옮길 수 없습니다', tone: 'rose' };
+  }
+  const nth = sortOrderForTarget(target);
+  if (!changesParent(node, target)) {
+    return { text: `${nth}번째로 이동`, tone: 'sky' };
+  }
+  if (target.parentId === null) {
+    return { text: `최상위 ${nth}번째로 이동`, tone: 'amber' };
+  }
+  const parent = items.find((n) => n.id === target.parentId);
+  return { text: `"${parent?.title ?? '?'}" 안 ${nth}번째로 이동`, tone: 'amber' };
+}
+
+/** 어떤 부모의 맨 뒤에 붙일 때 쓸 1-based sortOrder. */
+export function appendSortOrder(
+  items: NodeTreeItem[],
+  parentId: string | null,
+  excludeId: string,
+): number {
+  return siblingsExcluding(items, parentId, excludeId).length + 1;
 }
