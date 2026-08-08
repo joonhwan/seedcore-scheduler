@@ -11,7 +11,15 @@ import { applyDrag, pxToDays, parseYmd, dayDiff, type DragMode } from '../lib/ga
 import { recomputeEffective, diffAffectedGroups } from '../lib/ganttAggregate';
 import type { BarChangeProposal } from '../lib/ganttTypes';
 import { computeCheckStates, type CheckState } from '../lib/bulkSelection';
-import { targetFromPointer, sortOrderForTarget, type DropTarget } from '../lib/treeDnd';
+import {
+  targetFromPointer,
+  sortOrderForTarget,
+  describeDropTarget,
+  changesParent,
+  INDENT_PX,
+  LABEL_BASE_PX,
+  type DropTarget,
+} from '../lib/treeDnd';
 import {
   PPD,
   ROW_HEIGHT,
@@ -138,6 +146,7 @@ function TimelineComponent({
   // 트리 행 드래그(순서/부모 변경). 간트 막대 편집(barDrag), 배경 패닝(isDragging)과 별개다.
   const [nodeDrag, setNodeDrag] = useState<{ nodeId: string; active: boolean } | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const [dragCursor, setDragCursor] = useState<{ x: number; y: number } | null>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   // 드래그 중 언마운트되면 window 리스너가 남으므로, 해제 함수를 붙들고 있다가 정리한다.
   // (기존 barDrag/패닝 드래그는 useEffect cleanup 으로 같은 문제를 피한다)
@@ -222,6 +231,11 @@ function TimelineComponent({
 
   // 드롭 대상 계산용. 마지막의 "최상단 일정 추가..." 가짜 행은 트리 노드가 아니므로 뺀다.
   const dragRows = useMemo(() => flat.filter((n) => n.id !== 'empty-row-placeholder'), [flat]);
+
+  const dragNode = useMemo(
+    () => (nodeDrag ? items.find((n) => n.id === nodeDrag.nodeId) ?? null : null),
+    [items, nodeDrag],
+  );
 
   // 미리보기(드래그 반영) 노드를 id 로 빠르게 찾기 위한 맵. 드래그 중이 아니면 previewItems === items.
   const previewMap = useMemo(
@@ -527,6 +541,7 @@ function TimelineComponent({
       if (moved < 3) return;
       const next = computeTarget(ev.clientX, ev.clientY);
       setDropTarget((prev) => (sameDropTarget(prev, next) ? prev : next));
+      setDragCursor({ x: ev.clientX, y: ev.clientY });
     };
 
     const detach = () => {
@@ -542,6 +557,7 @@ function TimelineComponent({
       const target = ev ? computeTarget(ev.clientX, ev.clientY) : null;
       setNodeDrag(null);
       setDropTarget(null);
+      setDragCursor(null);
       return target;
     };
 
@@ -879,7 +895,13 @@ function TimelineComponent({
         onMouseLeave={handleMouseLeave}
         onScroll={(e) => setScrollLeftPx(e.currentTarget.scrollLeft)}
         className={`flex-1 min-h-0 overflow-auto rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 ${
-          isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'
+          nodeDrag?.active
+            ? dropTarget?.ok
+              ? 'cursor-grabbing select-none'
+              : 'cursor-not-allowed select-none'
+            : isDragging
+              ? 'cursor-grabbing select-none'
+              : 'cursor-grab'
         }`}
       >
         <div
@@ -1062,6 +1084,20 @@ function TimelineComponent({
                 />
               );
               })}
+            {/* 드롭 삽입선. 라벨 칸 안에만 그린다 — 라벨 칸은 sticky left-0 이라
+                간트 영역을 가로로 스크롤해도 제자리에 남는다. */}
+            {nodeDrag?.active && dropTarget?.ok && (
+              <div
+                className={`pointer-events-none absolute z-30 h-0.5 ${
+                  dragNode && changesParent(dragNode, dropTarget) ? 'bg-amber-500' : 'bg-sky-500'
+                }`}
+                style={{
+                  top: dropTarget.boundary * ROW_HEIGHT - 1,
+                  left: LABEL_BASE_PX + dropTarget.depth * INDENT_PX,
+                  width: Math.max(labelWidth - LABEL_BASE_PX - dropTarget.depth * INDENT_PX, 8),
+                }}
+              />
+            )}
             </div>
 
             {/* 오늘선: 라벨 칸(sticky) 뒤로 스크롤돼 들어가면 그리지 않는다.
@@ -1084,6 +1120,32 @@ function TimelineComponent({
             y={hoveredNode.y}
           />
         )}
+        {/* 드래그 중 결과를 글로 알려주는 배지. 무효한 위치에서는 사유를 띄운다. */}
+        {nodeDrag?.active && dragCursor && dragNode && dropTarget && (() => {
+          const { text, tone } = describeDropTarget(items, dragNode, dropTarget);
+          const toneClass =
+            tone === 'rose'
+              ? 'bg-rose-600 text-white'
+              : tone === 'amber'
+                ? 'bg-amber-500 text-white'
+                : 'bg-sky-600 text-white';
+          // 화면 오른쪽/아래 끝에 닿으면 반대쪽으로 뒤집는다.
+          const flipX = dragCursor.x > window.innerWidth - 220;
+          const flipY = dragCursor.y > window.innerHeight - 60;
+          return (
+            <div
+              className={`pointer-events-none fixed z-50 max-w-xs truncate rounded px-2 py-1 text-xs shadow-lg ${toneClass}`}
+              style={{
+                left: flipX ? undefined : dragCursor.x + 12,
+                right: flipX ? window.innerWidth - dragCursor.x + 12 : undefined,
+                top: flipY ? undefined : dragCursor.y + 16,
+                bottom: flipY ? window.innerHeight - dragCursor.y + 16 : undefined,
+              }}
+            >
+              {text}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
