@@ -562,21 +562,30 @@ function TimelineComponent({
       setDropTarget((prev) => (sameDropTarget(prev, next) ? prev : next));
       cursorRef.current = { x: ev.clientX, y: ev.clientY };
       placeBadge();
+    };
 
-      // 스크롤러 위/아래 32px 안에 들어가면 세로로 자동 스크롤한다.
+    // 세로 자동 스크롤. 마우스가 멈춰 있어도 가장자리에 있으면 계속 스크롤돼야 하므로
+    // pointermove 가 아니라 rAF 루프가 돌린다(막대 드래그의 가로 자동 스크롤과 같은 방식).
+    // 스크롤하면 행이 커서 밑에서 움직이므로 드롭 대상도 함께 다시 계산한다.
+    const EDGE = 32;
+    const MAX_SPEED = 12;
+    let rafId = 0;
+    const tick = () => {
+      rafId = requestAnimationFrame(tick);
       const scroller = scrollerRef.current;
-      if (scroller) {
-        const box = scroller.getBoundingClientRect();
-        const EDGE = 32;
-        const MAX_SPEED = 12;
-        let dy = 0;
-        if (ev.clientY < box.top + EDGE) {
-          dy = -MAX_SPEED * Math.min(1, (box.top + EDGE - ev.clientY) / EDGE);
-        } else if (ev.clientY > box.bottom - EDGE) {
-          dy = MAX_SPEED * Math.min(1, (ev.clientY - (box.bottom - EDGE)) / EDGE);
-        }
-        if (dy !== 0) scroller.scrollTop += dy;
+      const c = cursorRef.current;
+      if (!scroller || !c) return;
+      const box = scroller.getBoundingClientRect();
+      let dy = 0;
+      if (c.y < box.top + EDGE) {
+        dy = -MAX_SPEED * Math.min(1, (box.top + EDGE - c.y) / EDGE);
+      } else if (c.y > box.bottom - EDGE) {
+        dy = MAX_SPEED * Math.min(1, (c.y - (box.bottom - EDGE)) / EDGE);
       }
+      if (dy === 0) return;
+      scroller.scrollTop += dy;
+      const next = computeTarget(c.x, c.y);
+      setDropTarget((prev) => (sameDropTarget(prev, next) ? prev : next));
     };
 
     const detach = () => {
@@ -584,6 +593,7 @@ function TimelineComponent({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
       window.removeEventListener('keydown', onKey);
+      cancelAnimationFrame(rafId);
       nodeDragCleanupRef.current = null;
     };
 
@@ -626,6 +636,7 @@ function TimelineComponent({
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
     window.addEventListener('keydown', onKey);
+    rafId = requestAnimationFrame(tick);
     nodeDragCleanupRef.current = detach;
   };
 
