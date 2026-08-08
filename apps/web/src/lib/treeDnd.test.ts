@@ -242,6 +242,14 @@ describe('resolveTarget', () => {
     expect(t.ok).toBe(false);
     expect(t.reason).toBe('최대 깊이 10단계를 넘습니다');
   });
+
+  it('조상이 드래그 중인 노드 자신이면 지금 자리를 그대로 쓴다', () => {
+    // boundary 2 = C1 과 C2 사이. above=C1 이고 C1 을 드래그 중이므로
+    // 조상 탐색이 곧바로 C1(=자기 자신)에서 멈춘다.
+    // 자기 자신을 뺀 형제는 [C2] 뿐이고 C2.sortOrder(2) > C1.sortOrder(1) 이라 insertIndex 0.
+    const t = resolveTarget(T_ROWS, T_ITEMS, tById('C1'), 2, 1);
+    expect(t).toMatchObject({ parentId: 'G', insertIndex: 0, ok: true });
+  });
 });
 
 describe('changesParent', () => {
