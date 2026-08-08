@@ -524,3 +524,23 @@ export class ProjectsController {
 
 *M3d 종료 시점 — 다음 작업은 v1 출시 폴리시 / 오프라인 번들 / 복원 UI.*
 *마지막 커밋: M3a, M3b, M3c, M3d 4개 커밋 + 본 HANDOFF 갱신.*
+
+---
+
+## 마일스톤 상황 및 향후 방향
+
+> `AGENTS.md` §6에서 옮겨온 내용입니다. (매 세션 상주시킬 이유가 없어 이관)
+
+현재 **M0 ~ M3(a/b/c/d)** 마일스톤이 완료되어 인증, 코어 일정 트리, 댓글 및 이력 조회, 진행률 집계, 백업 자동화(NestJS 스케줄러 내장), 그리고 읽기 전용 타임라인(Gantt) 뷰가 완성되어 있습니다.
+
+다음 개발 마일스톤 단계는 다음과 같습니다:
+1. **M4**: 에어갭 오프라인 배포를 위한 패키징 검증
+   - `docker compose` 빌드 검증 및 이미지 `tar` 파일 저장
+   - `deploy/scripts` 내 설치(`install.sh`), 업그레이드(`upgrade.sh`), 시스템 복원(`restore-system.sh`) 스크립트 작성 및 dry-run 검증
+   - `docs/ops-guide.md` (운영 가이드 문서) 작성
+   - exe 배포판 DB 마이그레이션 (`sp-migrate.exe`) 구현 완료 — `docs/superpowers/specs/2026-07-29-exe-migration-design.md`
+2. **M5**: 프로젝트 단위 백업 및 복원 UI
+   - 특정 프로젝트를 manifest 데이터를 포함한 단일 ZIP 파일로 백업하고, 업로드 시 새 프로젝트로 시딩 및 매핑해 복원하는 관리자 플로우 구현
+   - 프로젝트 복제 (일정 트리 승계 + 날짜 재매핑) 구현 완료 — `docs/superpowers/specs/2026-08-01-project-clone-design.md`
+3. **v1.x 이후**: 타임라인 드래그 편집 기능 지원, 캘린더 뷰, 파일 첨부 기능 등
+

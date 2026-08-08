@@ -31,25 +31,6 @@ SAM Scheduler는 외부 네트워크와 격리된 **폐쇄망(Air-gap) 환경**�
     `upgrade-insecure-requests`와 HSTS를 껐습니다. 이유는 `apps/api/src/main.ts`의 helmet 설정 주석 참고.
     TLS를 정식 도입할 때 그 두 개를 함께 되살려야 합니다.
 
-### 2.2 디렉터리 구조
-```
-sam-scheduler/
-├─ apps/
-│  ├─ api/               # NestJS 백엔드 애플리케이션
-│  │  ├─ prisma/         # Prisma 스키마 및 마이그레이션 파일
-│  │  └─ src/            # 컨트롤러, 서비스, 가드, 모듈 등
-│  └─ web/               # React 프론트엔드 (Vite SPA)
-│     ├─ src/components/ # 트리 및 타임라인 등 핵심 UI 컴포넌트
-│     └─ src/pages/      # 뷰 페이지들
-├─ packages/
-│  └─ shared/            # 백엔드/프론트엔드 공통 Zod DTO 및 유틸리티
-├─ deploy/               # 운영 배포 구성 (compose.yaml, nginx.conf)
-├─ scripts/              # 백그라운드 백업/복원 셸 스크립트 (수동 Fallback)
-├─ DESIGN.md             # v1.0 상세 설계 문서
-├─ README.md             # 로컬 개발 및 운영 배포 가이드
-└─ HANDOFF.md            # 마일스톤 이관 및 작업 히스토리 문서
-```
-
 ---
 
 ## 3. 로컬 개발 및 빌드 순서
@@ -147,72 +128,19 @@ pnpm dev
 
 ## 5. 자주 만나는 문제 및 트러블슈팅
 
-### 5.1 SQLite `database is locked` (P2002 / P2010 등)
-- **원인**: SQLite는 단일 Writer 구조를 가집니다. 개발 서버(`pnpm dev`)가 켜져 있어 DB 접속 핸들을 쥐고 있는 상태에서 터미널을 통해 `prisma migrate dev`를 수행하면 데이터베이스 락이 발생합니다.
-- **해결**: 마이그레이션 명령어를 돌릴 때는 **반드시 임시로 개발 서버를 종료**한 뒤 수행하시기 바랍니다.
+> 상세 원인 분석과 해결 절차는 **`sam-troubleshooting` 스킬**에 있습니다. 아래는 미리 알고 있어야 하는 요약입니다.
+> 다루는 문제: SQLite `database is locked`, TypeScript incremental 캐시로 인한 옛날 빌드 실행,
+> `@sam/shared` 임포트 실패, shared 새 export 추가 후 빈 화면.
 
-### 5.2 TypeScript incremental 캐시 컴파일 오류
-- **증상**: 코드를 분명히 수정했음에도 `Cannot find module '.../dist/main'` 또는 이전 컴파일 버전의 빌드가 적용되어 런타임 에러가 발생하는 경우.
-- **해결**: `apps/api/tsconfig.json` 파일의 `incremental` 설정이 `false`인지 확인하고, `apps/api/tsconfig.tsbuildinfo` 파일과 `apps/api/dist` 디렉터리를 수동으로 삭제한 뒤 빌드를 재수행하십시오.
-
-### 5.3 Shared 패키지 가져오기 실패
-- **증상**: 프론트엔드나 백엔드에서 `@sam/shared` 모듈의 타입을 가져올 수 없다는 에러 발생.
-- **해결**: 패키지 간의 가벼운 의존성 관리를 위해 `tsconfig.base.json`의 `paths`는 제거되어 있습니다. 반드시 로컬 개발 전 `pnpm -F @sam/shared build`를 먼저 수행하여 패키지 내 `dist` 폴더를 컴pile해야 빌드 도구(Vite, NestJS)가 정상적으로 모듈을 해석할 수 있습니다.
-
-### 5.4 Shared 에 새 export 를 추가한 뒤 웹 화면이 빈 화면으로 뜬다
-- **증상**: `packages/shared` 에 새 함수·스키마를 추가하고 그것을 쓰는 페이지로 들어가면 **아무 에러 메시지 없이 화면이 하얗게(또는 검게) 비어 있음.** 다른 페이지는 정상. `pnpm -r typecheck` 와 테스트는 전부 통과하고, vite 콘솔에도 빌드 에러가 없어서 코드 버그로 착각하기 쉽습니다.
-
-- **원인**: vite 의 의존성 사전 번들링 캐시(`apps/web/node_modules/.vite/deps/@sam_shared.js`)가 낡은 것입니다.
-  이 캐시는 **lockfile 과 vite 설정의 해시로만 무효화**되며, 워크스페이스로 링크된 `packages/shared/dist` 가
-  새로 빌드된 것은 감지하지 않습니다. 개발 서버를 띄운 뒤에 shared 에 새 export 를 추가하면
-  캐시에는 그 심볼이 없는 상태로 남습니다.
-
-  `@sam/shared` 는 CJS 출력이라 vite 가 named import 를 **속성 접근**으로 변환합니다.
-
-  ```js
-  // vite 가 변환한 결과
-  const findDateSpan = __vite__cjsImport5__sam_shared["findDateSpan"];
-  ```
-
-  캐시에 그 심볼이 없으면 로드 시점에 에러가 나지 않고 조용히 `undefined` 가 됩니다. 그래서 렌더 중
-  `findDateSpan(...)` 을 호출하는 순간 `TypeError` 로 컴포넌트 트리가 죽고, 원인 지점(임포트)이 아니라
-  한참 뒤(호출)에서 터집니다. ESM 이라면 `does not provide an export named ...` 로 즉시 알려줍니다.
-
-- **해결**: 캐시를 지우고 개발 서버를 재시작합니다.
-
-  ```bash
-  rm -rf apps/web/node_modules/.vite && pnpm dev
-  ```
-
-  vite 만 따로 띄운다면 `pnpm -F @sam/web exec vite --force` 도 같은 효과입니다.
-
-- **주의**: 루트에서 `pnpm dev --force` 는 통하지 않습니다. 루트 `dev` 스크립트가
-  `pnpm -r --parallel --filter "./apps/**" run dev` 라서 `--force` 가 **pnpm 자신의 플래그로 먹히고**
-  (pnpm 에도 동명의 옵션이 있습니다) vite 까지 전달되지 않습니다. `--` 로 넘겨도 중간 pnpm 이 가로챕니다.
-
-- **기억할 규칙**: shared 에 **새 이름(export)** 이 생기면 `.vite` 를 지운다. 기존 함수의 내용만 바꾼
-  경우에는 캐시가 심볼 목록을 이미 갖고 있으므로 `pnpm -F @sam/shared build` 만으로 반영됩니다.
-
-- **근본 해결(미적용)**: shared 를 ESM/CJS dual output 으로 바꾸면 vite 가 사전 번들링 없이 소스로
-  취급해 이 캐시가 개입하지 않고, 심볼 누락도 즉시 에러로 드러납니다. 단 `apps/api`(NestJS, CJS)가
-  같은 `dist` 를 쓰므로 `package.json` 의 `exports` 를 import/require 로 분리해야 합니다.
-
----
+- **`prisma migrate dev`는 개발 서버를 끄고 돌린다.** SQLite는 단일 Writer라 `pnpm dev`가 DB 핸들을 쥐고 있으면 락이 걸립니다.
+- **`shared` 에 새 export(새 이름)를 추가하면 `apps/web/node_modules/.vite` 를 지우고 dev 서버를 재시작한다.**
+  안 지우면 vite 사전 번들링 캐시에 그 심볼이 없어 조용히 `undefined` 가 되고, **에러 메시지 없이 화면만 빈 채로** 뜹니다.
+  (기존 함수 내용만 바꾼 경우는 `pnpm -F @sam/shared build` 로 충분)
 
 ## 6. 마일스톤 상황 및 향후 방향
 
-현재 **M0 ~ M3(a/b/c/d)** 마일스톤이 완료되어 인증, 코어 일정 트리, 댓글 및 이력 조회, 진행률 집계, 백업 자동화(NestJS 스케줄러 내장), 그리고 읽기 전용 타임라인(Gantt) 뷰가 완성되어 있습니다.
-
-다음 개발 마일스톤 단계는 다음과 같습니다:
-1. **M4**: 에어갭 오프라인 배포를 위한 패키징 검증
-   - `docker compose` 빌드 검증 및 이미지 `tar` 파일 저장
-   - `deploy/scripts` 내 설치(`install.sh`), 업그레이드(`upgrade.sh`), 시스템 복원(`restore-system.sh`) 스크립트 작성 및 dry-run 검증
-   - `docs/ops-guide.md` (운영 가이드 문서) 작성
-   - exe 배포판 DB 마이그레이션 (`sp-migrate.exe`) 구현 완료 — `docs/superpowers/specs/2026-07-29-exe-migration-design.md`
-2. **M5**: 프로젝트 단위 백업 및 복원 UI
-   - 특정 프로젝트를 manifest 데이터를 포함한 단일 ZIP 파일로 백업하고, 업로드 시 새 프로젝트로 시딩 및 매핑해 복원하는 관리자 플로우 구현
-   - 프로젝트 복제 (일정 트리 승계 + 날짜 재매핑) 구현 완료 — `docs/superpowers/specs/2026-08-01-project-clone-design.md`
-3. **v1.x 이후**: 타임라인 드래그 편집 기능 지원, 캘린더 뷰, 파일 첨부 기능 등
+완료된 마일스톤(M0~M3)과 앞으로의 M4·M5·v1.x 계획은 **`HANDOFF.md`** 에 정리되어 있습니다.
+진행 상황을 알아야 하는 작업이라면 그 파일을 읽으십시오.
 
 ## 7. 개발자/에이전트 준수 사항 및 알림 규칙
 
