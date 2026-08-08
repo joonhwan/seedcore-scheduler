@@ -139,6 +139,10 @@ function TimelineComponent({
   const [nodeDrag, setNodeDrag] = useState<{ nodeId: string; active: boolean } | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
+  // 드래그 중 언마운트되면 window 리스너가 남으므로, 해제 함수를 붙들고 있다가 정리한다.
+  // (기존 barDrag/패닝 드래그는 useEffect cleanup 으로 같은 문제를 피한다)
+  const nodeDragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => nodeDragCleanupRef.current?.(), []);
 
   // 막대 드래그 편집 상태 (배경 패닝용 isDragging 과 별개)
   const [barDrag, setBarDrag] = useState<{
@@ -521,14 +525,20 @@ function TimelineComponent({
         return prev.active ? prev : { ...prev, active: true };
       });
       if (moved < 3) return;
-      setDropTarget(computeTarget(ev.clientX, ev.clientY));
+      const next = computeTarget(ev.clientX, ev.clientY);
+      setDropTarget((prev) => (sameDropTarget(prev, next) ? prev : next));
     };
 
-    const finish = (ev: PointerEvent | null) => {
+    const detach = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
       window.removeEventListener('keydown', onKey);
+      nodeDragCleanupRef.current = null;
+    };
+
+    const finish = (ev: PointerEvent | null) => {
+      detach();
       const target = ev ? computeTarget(ev.clientX, ev.clientY) : null;
       setNodeDrag(null);
       setDropTarget(null);
@@ -565,6 +575,7 @@ function TimelineComponent({
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
     window.addEventListener('keydown', onKey);
+    nodeDragCleanupRef.current = detach;
   };
 
   useEffect(() => {
@@ -1599,5 +1610,19 @@ function formatTooltipVal(v: unknown): string {
   if (typeof v === 'string') return v.length > 30 ? `${v.slice(0, 30)}…` : v;
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
+}
+
+// 드롭 대상이 실제로 달라졌는지 비교한다. targetFromPointer 는 매번 새 객체를 돌려주므로
+// 이 비교 없이 setState 하면 포인터가 1px 움직일 때마다 행 전체가 다시 그려진다.
+function sameDropTarget(a: DropTarget | null, b: DropTarget | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.boundary === b.boundary &&
+    a.depth === b.depth &&
+    a.parentId === b.parentId &&
+    a.insertIndex === b.insertIndex &&
+    a.ok === b.ok
+  );
 }
 
