@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type {
+  NodeDelayInput,
   CloneProjectDto,
   CloneProjectResult,
   CreateProjectDto,
@@ -19,7 +20,6 @@ import { buildRemapPlan, findDateSpan, calculateProjectDelaySummary } from '@sam
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { buildClonedNodes } from './clone-tree';
-import { buildTreeItems } from '../nodes/tree-aggregation';
 
 interface ActorContext {
   actorId: string;
@@ -54,15 +54,17 @@ export class ProjectsService {
           where: { userId: ctx.actorId },
           select: { role: true },
         },
-        _count: { select: { members: true } },
-        nodes: true,
+        _count: { select: { members: true, nodes: true } },
+        // 지연 요약에 필요한 최소한만 읽는다 — DELAY_SUMMARY_NODE_QUERY 주석 참고.
+        // 예전에는 nodes: true 로 전 컬럼을 통째로 읽고 buildTreeItems 로 트리까지 만들었다.
+        // 프로젝트 500 개 × 노드 5,000 개 상한을 곱하면 목록 화면 한 번에 최대 250 만 행이다.
+        nodes: DELAY_SUMMARY_NODE_QUERY,
       },
       take: 500,
     });
 
     return projects.map((p) => {
-      const treeItems = buildTreeItems(p.nodes);
-      const delaySummary = calculateProjectDelaySummary(treeItems);
+      const delaySummary = summarizeDelay(p.nodes, p._count.nodes);
       return {
         id: p.id,
         name: p.name,
@@ -87,8 +89,8 @@ export class ProjectsService {
           where: { userId: ctx.actorId },
           select: { role: true },
         },
-        _count: { select: { members: true } },
-        nodes: true,
+        _count: { select: { members: true, nodes: true } },
+        nodes: DELAY_SUMMARY_NODE_QUERY,
       },
     });
     if (!project) throw new NotFoundException({ error: 'PROJECT_NOT_FOUND' });
@@ -99,8 +101,7 @@ export class ProjectsService {
       throw new ForbiddenException({ error: 'NOT_A_MEMBER' });
     }
 
-    const treeItems = buildTreeItems(project.nodes);
-    const delaySummary = calculateProjectDelaySummary(treeItems);
+    const delaySummary = summarizeDelay(project.nodes, project._count.nodes);
 
     return {
       id: project.id,
@@ -528,6 +529,52 @@ export class ProjectsService {
       nodeCount: cloned.length,
     };
   }
+}
+
+/**
+ * 지연 요약을 만들 때 노드에서 읽을 것 — **ITEM 의 날짜와 진척율뿐이다.**
+ *
+ * calculateProjectDelaySummary() 는 kind==='ITEM' 인 행만 골라 startAt/endAt/progress 로
+ * 계산한다. GROUP 의 집계값(startAtEffective 등)은 쓰지 않으므로 buildTreeItems() 로 트리를
+ * 만들 필요도, description·createdBy 같은 나머지 컬럼을 읽을 필요도 없다.
+ * ITEM 은 startAtEffective===startAt, progressEffective===progress 라서 이 셋만으로
+ * 트리를 만든 것과 결과가 같다 (getItemNodeDelayInfo 의 `??` 폴백이 그대로 받는다).
+ */
+const DELAY_SUMMARY_NODE_QUERY = {
+  where: { kind: 'ITEM' },
+  select: { startAt: true, endAt: true, progress: true },
+} as const;
+
+type DelaySummaryNode = { startAt: string | null; endAt: string | null; progress: number };
+
+/**
+ * 위 쿼리 결과로 프로젝트 지연 요약을 만든다.
+ *
+ * totalNodes 는 요약 함수가 "받은 배열의 길이" 로 채우는데, 우리는 ITEM 만 넘기므로
+ * 그대로 두면 GROUP 이 빠진 수가 된다. _count 로 받은 진짜 전체 노드 수로 덮어쓴다.
+ *
+ * ITEM 이 하나도 없는 프로젝트(폴더만 만들어 둔 상태)는 GROUP 자리표를 넘겨 예전 동작을
+ * 그대로 유지한다. 예전 코드는 이 경우 GROUP 들을 대상으로 요약을 계산해 ON_TRACK("정상
+ * 진행 중")을 돌려줬다. 일정이 하나도 없는데 정상이라고 말하는 게 맞느냐는 따져볼 만하지만,
+ * 성능 개선이 목록 화면의 배지를 조용히 바꾸는 것은 다른 문제다 — 판단은 분리한다.
+ * (GROUP 의 progress 는 생성·수정·가져오기 모든 경로에서 0 으로 고정된다.)
+ */
+function summarizeDelay(itemNodes: DelaySummaryNode[], totalNodeCount: number) {
+  const input: NodeDelayInput[] =
+    itemNodes.length > 0
+      ? itemNodes.map((n) => ({
+          kind: 'ITEM' as const,
+          startAt: n.startAt,
+          endAt: n.endAt,
+          progress: n.progress,
+        }))
+      : Array.from({ length: totalNodeCount }, () => ({
+          kind: 'GROUP' as const,
+          progress: 0,
+          progressEffective: null,
+        }));
+
+  return { ...calculateProjectDelaySummary(input), totalNodes: totalNodeCount };
 }
 
 function roleOf(role: string | null): ProjectRole | null {

@@ -403,7 +403,12 @@ export interface ProjectDelaySummary {
  */
 export function calculateProjectDelaySummary<T extends NodeDelayInput>(
   nodes: T[],
-  todayIso: string = new Date().toISOString().slice(0, 10),
+  // getTodayIso() 를 쓴다. 예전에는 여기만 new Date().toISOString().slice(0,10) 으로 **UTC**
+  // 날짜를 썼는데, 같은 파일의 getItemNodeDelayInfo() 등은 getTodayIso() 로 **로컬** 날짜를
+  // 쓴다. KST(UTC+9)에서는 00:00~08:59 동안 두 값이 하루 어긋나므로, 그 시간대에 프로젝트
+  // 헤더의 종합 배지와 트리 각 행의 배지가 서로 다른 기준일로 계산돼 결과가 엇갈렸다.
+  // "오늘" 의 정의는 이 파일 전체에서 getTodayIso() 하나여야 한다.
+  todayIso: string = getTodayIso(),
 ): ProjectDelaySummary {
   const itemNodes = nodes.filter((n) => n.kind === 'ITEM' || (!n.kind && n.startAt && n.endAt));
   const targetNodes = itemNodes.length > 0 ? itemNodes : nodes;

@@ -308,49 +308,78 @@ export class AutocompleteService implements OnModuleInit {
     const started = Date.now();
 
     try {
-      // 1. isSystem = false 인 AutocompleteTerm 중 실제 DB 노드에 쓰이지 않는 것들 삭제
-      const dynamicTerms = await this.prisma.autocompleteTerm.findMany({
-        where: { isSystem: false },
-      });
+      // 양쪽을 한 번씩만 읽고 차집합은 메모리에서 구한다.
+      //
+      // 예전에는 dynamic term 마다 scheduleNode.count 를, distinct 조합마다 findUnique 를
+      // 날려서 쿼리가 (term 수 + 조합 수) 만큼 나갔다. 매시 정각에 도는 작업인데 SQLite 는
+      // 단일 writer 라, 그 시간대의 사용자 쓰기가 이 수천 건 뒤에 줄을 섰다.
+      const [allTerms, activeNodes] = await Promise.all([
+        // 추가 여부는 isSystem 과 무관하게 (title, kind) 유일 제약으로 판단해야 하므로
+        // 시스템 항목까지 다 읽는다. 삭제 대상만 isSystem=false 로 거른다.
+        this.prisma.autocompleteTerm.findMany({
+          select: { id: true, title: true, kind: true, isSystem: true },
+        }),
+        this.prisma.scheduleNode.findMany({
+          select: { title: true, kind: true },
+          distinct: ['title', 'kind'],
+        }),
+      ]);
 
+      // (title, kind) 를 한 문자열로 합쳐 Set 으로 비교한다. 제목에 나올 수 없는 NUL 로 잇는다 —
+      // 눈에 보이는 구분자를 쓰면 제목이 그 문자를 품을 때 서로 다른 조합이 같은 키가 된다.
+      const keyOf = (title: string, kind: string): string => `${title.trim()}\u0000${kind}`;
+
+      const nodeKeys = new Set<string>();
+      for (const n of activeNodes) {
+        if (!n.title || !n.title.trim()) continue;
+        nodeKeys.add(keyOf(n.title, n.kind));
+      }
+      const termKeys = new Set(allTerms.map((t) => keyOf(t.title, t.kind)));
+
+      // 1. 노드에서 더 이상 쓰이지 않는 동적 항목 삭제.
+      //    양쪽 다 trim 한 값으로 비교하는 것이 중요하다. 저장은 collect() 가 trim 해서 하는데
+      //    예전 코드는 그 trim 된 제목을 노드의 **원본** 제목과 대조해서, 제목 앞뒤에 공백이
+      //    있는 노드의 항목이 매 사이클 지워졌다 다시 생기기를 반복했다.
+      const staleIds = allTerms
+        .filter((t) => !t.isSystem && !nodeKeys.has(keyOf(t.title, t.kind)))
+        .map((t) => t.id);
       let deletedCount = 0;
-      for (const term of dynamicTerms) {
-        const count = await this.prisma.scheduleNode.count({
-          where: { title: term.title, kind: term.kind },
+      if (staleIds.length > 0) {
+        const r = await this.prisma.autocompleteTerm.deleteMany({
+          where: { id: { in: staleIds } },
         });
-        if (count === 0) {
-          await this.prisma.autocompleteTerm.delete({
-            where: { id: term.id },
-          }).catch(() => {});
-          deletedCount++;
-        }
+        deletedCount = r.count;
       }
 
-      // 2. 실제 DB 노드에 있는 title & kind 쌍 중 AutocompleteTerm에 없는 것 추가
-      const activeNodes = await this.prisma.scheduleNode.findMany({
-        select: { title: true, kind: true },
-        distinct: ['title', 'kind'],
-      });
+      // 2. 노드에는 있는데 항목에 없는 조합 추가.
+      const toAdd = activeNodes
+        .filter((n) => n.title && n.title.trim() && !termKeys.has(keyOf(n.title, n.kind)))
+        .map((n) => ({
+          id: randomUUID(),
+          title: n.title.trim(),
+          kind: n.kind,
+          isSystem: false,
+        }));
 
       let addedCount = 0;
-      for (const node of activeNodes) {
-        if (!node.title || !node.title.trim()) continue;
-        const cleanTitle = node.title.trim();
-
-        const exists = await this.prisma.autocompleteTerm.findUnique({
-          where: { title_kind: { title: cleanTitle, kind: node.kind } },
-        });
-
-        if (!exists) {
-          await this.prisma.autocompleteTerm.create({
-            data: {
-              id: randomUUID(),
-              title: cleanTitle,
-              kind: node.kind,
-              isSystem: false,
-            },
-          }).catch(() => {});
-          addedCount++;
+      if (toAdd.length > 0) {
+        try {
+          const r = await this.prisma.autocompleteTerm.createMany({ data: toAdd });
+          addedCount = r.count;
+        } catch (err) {
+          // 사이 동안 collect() 가 같은 조합을 먼저 넣으면 유일 제약에 걸려 createMany 가
+          // 통째로 실패한다(SQLite 는 skipDuplicates 미지원). 그 한 건 때문에 나머지를
+          // 버리지 않도록 개별 삽입으로 물러난다. 다음 사이클에 다시 맞춰지므로 치명적이진 않다.
+          this.logger.warn(
+            `autocomplete bulk insert failed, falling back to per-row: ${this.stringifyError(err)}`,
+          );
+          for (const row of toAdd) {
+            const ok = await this.prisma.autocompleteTerm
+              .create({ data: row })
+              .then(() => true)
+              .catch(() => false);
+            if (ok) addedCount += 1;
+          }
         }
       }
 

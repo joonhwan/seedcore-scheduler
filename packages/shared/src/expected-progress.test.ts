@@ -7,7 +7,54 @@ import {
   calculateProjectDelaySummary,
   DELAY_THRESHOLDS,
   getDelayStatusTooltip,
+  getTodayIso,
+  getItemNodeDelayInfo,
 } from './expected-progress';
+
+describe('"오늘" 의 정의는 파일 전체에서 하나여야 한다', () => {
+  // calculateProjectDelaySummary 의 기본 기준일만 UTC 였던 적이 있다. KST(UTC+9)에서는
+  // 00:00~08:59 동안 UTC 날짜가 하루 뒤처져, 그 시간대에 프로젝트 헤더 배지와 트리 각 행의
+  // 배지가 서로 다른 기준일로 계산됐다. 기본값을 생략했을 때 두 경로가 같은 날을 보는지 본다.
+  const dated = (startAt: string, endAt: string, progress: number) => ({
+    id: 'n1',
+    kind: 'ITEM',
+    parentId: null,
+    startAt,
+    endAt,
+    progress,
+  });
+
+  it('기본 기준일이 getTodayIso() 와 같다 — 어제/오늘 경계에서 갈리지 않는다', () => {
+    const today = getTodayIso();
+    // 오늘 하루짜리 일정: 기준일이 오늘이면 expectedProgress 가 확정된다.
+    const nodes = [dated(today, today, 0)];
+
+    const viaSummary = calculateProjectDelaySummary(nodes); // 기본값 사용
+    const viaSummaryExplicit = calculateProjectDelaySummary(nodes, today);
+
+    expect(viaSummary.avgExpectedProgress).toBe(viaSummaryExplicit.avgExpectedProgress);
+    expect(viaSummary.status).toBe(viaSummaryExplicit.status);
+  });
+
+  it('요약과 개별 노드 계산이 같은 기준일을 쓴다', () => {
+    const today = getTodayIso();
+    const nodes = [dated(today, today, 0)];
+
+    const summary = calculateProjectDelaySummary(nodes); // 기본값
+    const item = getItemNodeDelayInfo(nodes[0]!); // 기본값
+
+    expect(summary.avgExpectedProgress).toBe(item.expectedProgress);
+    expect(summary.avgActualProgress).toBe(item.actualProgress);
+  });
+
+  it('getTodayIso() 는 UTC 가 아니라 로컬 날짜다', () => {
+    const d = new Date();
+    const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+      d.getDate(),
+    ).padStart(2, '0')}`;
+    expect(getTodayIso()).toBe(local);
+  });
+});
 
 describe('DELAY_THRESHOLDS & getDelayStatusTooltip', () => {
   it('should export correct threshold constants', () => {

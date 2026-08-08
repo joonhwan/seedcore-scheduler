@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import {
   MAX_TREE_DEPTH,
   ImportCsvDto,
+  getTodayIso,
   type CreateNodeDto,
   type MoveNodeDto,
   type NodeAction,
@@ -20,6 +21,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AutocompleteService } from '../autocomplete/autocomplete.service';
 import { buildTreeItems } from './tree-aggregation';
+import { detectCsvLayout } from './csv-layout';
 import { assertProjectReadAccess } from '../common/project-access';
 
 interface ActorContext {
@@ -689,40 +691,15 @@ export class NodesService {
 
     const parsedLines = lines.map(line => parseCsvLine(line));
 
-    // 2. 유동적 컬럼 분석 (날짜 열 찾기)
-    let startDateColIdx = 5;
-    let endDateColIdx = 6;
-    let progressColIdx = 7;
-
-    const datePattern = /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$/;
-    const colMatchCounts: Record<number, number> = {};
-
-    // 각 열 별로 날짜 패턴에 맞는 데이터 수 카운트
-    parsedLines.forEach(cols => {
-      cols.forEach((col, idx) => {
-        if (datePattern.test(col)) {
-          colMatchCounts[idx] = (colMatchCounts[idx] || 0) + 1;
-        }
-      });
-    });
-
-    const colIndices = Object.keys(colMatchCounts)
-      .map(Number)
-      .sort((a, b) => (colMatchCounts[b] || 0) - (colMatchCounts[a] || 0));
-
-    if (colIndices.length >= 2) {
-      const first = colIndices[0];
-      const second = colIndices[1];
-      if (first !== undefined && second !== undefined) {
-        const detected = [first, second].sort((a, b) => a - b);
-        startDateColIdx = detected[0] ?? 5;
-        endDateColIdx = detected[1] ?? 6;
-        progressColIdx = endDateColIdx + 1;
-      }
-    }
-
-    // 트리 깊이 컬럼 수 (최소 1개, 최대 10개 제한)
-    const maxDepth = Math.max(1, Math.min(10, startDateColIdx));
+    // 2. 열 배치 판정 — 헤더 행 우선, 없으면 날짜 패턴 추론.
+    //    판정 근거와 각 분기의 이유는 csv-layout.ts 의 docstring 참고.
+    const {
+      startDateColIdx,
+      endDateColIdx,
+      progressColIdx,
+      maxDepth,
+      headerRowIndex,
+    } = detectCsvLayout(parsedLines);
 
     // 3. 임시 노드 생성 및 보정 규칙 적용
     interface TmpNode {
@@ -744,6 +721,10 @@ export class NodesService {
     for (let rowIndex = 0; rowIndex < parsedLines.length; rowIndex++) {
       const cols = parsedLines[rowIndex];
       if (!cols) continue;
+
+      // 헤더 행은 노드가 아니다. 이 검사가 없으면 헤더의 첫 칸("일정1")이 제목으로 읽혀
+      // 내보낸 파일을 다시 가져올 때마다 "일정1" 이라는 가짜 최상위 노드가 하나씩 생긴다.
+      if (rowIndex === headerRowIndex) continue;
 
       // 트리 깊이 컬럼 중 최초로 텍스트가 발견되는 컬럼 탐색
       let foundDepth = -1;
@@ -828,7 +809,10 @@ export class NodesService {
     }
 
     // 5. ITEM 노드 필드 보정 (날짜/진척율 정규화)
-    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    // 날짜가 비어 있는 행에 채울 기본값. getTodayIso() 로 **로컬(서버 시각)** 날짜를 쓴다 —
+    // UTC 로 뽑으면 KST 00:00~08:59 에 가져오기를 돌린 사용자에게 어제 날짜가 박힌다.
+    // 지연 계산도 같은 함수를 기준으로 하므로 정의를 하나로 맞춘다.
+    const todayStr = getTodayIso();
 
     const parseDateStr = (dateStr: string): string => {
       if (!dateStr) return '';
