@@ -8,8 +8,12 @@ import { ROW_HEIGHT } from './ganttLayout';
 
 /** 트리 한 단계당 들여쓰기 픽셀. 라벨 칸의 paddingLeft 계산과 같은 값이어야 한다. */
 export const INDENT_PX = 16;
-/** 깊이 0 의 왼쪽 여백. 라벨 칸의 paddingLeft 계산과 같은 값이어야 한다. */
-export const LABEL_BASE_PX = 8;
+/**
+ * 깊이 0 의 왼쪽 여백. 라벨 칸의 paddingLeft 계산과 같은 값이어야 한다.
+ * 이 여백 안에 드래그 핸들이 절대 위치로 들어앉는다(모든 행의 핸들을 한 줄로 세우려고
+ * 흐름에서 빼냈다). 그래서 핸들 폭을 포함한 값이다.
+ */
+export const LABEL_BASE_PX = 24;
 
 /**
  * 경계 `boundary` 에서 고를 수 있는 깊이의 범위.

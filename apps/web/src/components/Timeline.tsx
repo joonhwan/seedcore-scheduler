@@ -1347,12 +1347,14 @@ const Row = memo(function Row({
             ? 'bg-sky-50 dark:bg-sky-950'
             : 'bg-white dark:bg-slate-900 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800'
         }`}
-        style={{ width: labelWidth, paddingLeft: 8 + node.depth * 16 }}
+        style={{ width: labelWidth, paddingLeft: LABEL_BASE_PX + node.depth * INDENT_PX }}
       >
         {/* 드래그 핸들: 여기서 시작한 pointerdown 만 노드 이동 드래그로 취급한다.
-            자리는 항상 차지하고 hover 때만 보이게 해서 레이아웃이 흔들리지 않게 한다. */}
+            들여쓰기(paddingLeft)를 따라 밀리면 깊이마다 핸들 위치가 어긋나 보이므로,
+            흐름에서 빼내 라벨 칸 왼쪽 끝에 고정한다. 그래서 모든 행의 핸들이 한 줄로 선다.
+            빠진 자리는 paddingLeft 의 LABEL_BASE_PX 여백이 대신 차지한다. */}
         <span
-          className={`w-3 shrink-0 select-none text-slate-400 transition-opacity ${
+          className={`absolute left-1 top-0 flex h-full w-3 items-center justify-center select-none text-slate-400 transition-opacity ${
             canDrag
               ? 'cursor-grab opacity-0 group-hover/row:opacity-100'
               : 'pointer-events-none opacity-0'

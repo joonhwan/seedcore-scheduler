@@ -50,6 +50,13 @@ export default function ProjectDetailPage() {
   const isMutating = useIsMutating({
     mutationKey: ['nodes', id],
   });
+  // 이동(드래그, 위/아래 버튼)은 전체 화면 커튼에서 뺀다.
+  // 커튼은 페이드인만 200ms 라, 수십 ms 면 끝나는 이동에까지 씌우면 "놓았는데 한 박자 늦게
+  // 반응한다"는 체감만 남는다. 대량 작업·삭제처럼 오래 걸리고 되돌리기 어려운 변경에만 남긴다.
+  const isMovingNode = useIsMutating({
+    mutationKey: ['nodes', id, 'move'],
+  });
+  const showBusyOverlay = isMutating - isMovingNode > 0;
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createParent, setCreateParent] = useState<NodeTreeItem | null | 'root'>(
@@ -786,7 +793,7 @@ export default function ProjectDetailPage() {
         />
       )}
 
-      {isMutating > 0 && (
+      {showBusyOverlay && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/30 backdrop-blur-[1.5px] cursor-wait animate-in fade-in duration-200">
           <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white/95 px-5 py-3 shadow-lg dark:border-slate-800 dark:bg-slate-900/95 animate-in fade-in zoom-in-95 duration-150">
             <svg className="animate-spin h-5 w-5 text-sky-600 dark:text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
