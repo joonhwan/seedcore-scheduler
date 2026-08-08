@@ -20,11 +20,7 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
   const move = useMoveNode(projectId);
   const [error, setError] = useState<string | null>(null);
 
-  function isDisabled(
-    targetId: string | null,
-    _targetDepth: number,
-    _targetKind?: NodeTreeItem['kind'],
-  ): { ok: boolean; reason?: string } {
+  function isDisabled(targetId: string | null): { ok: boolean; reason?: string } {
     // 목록에서 현재 부모를 다시 고르는 건 의미가 없다. 이건 판정이 아니라 목록 UI 의 사정이라
     // 공용 canDropInto 가 아니라 여기서 본다.
     if (targetId === node.parentId) return { ok: false, reason: '현재 부모와 동일' };
@@ -33,7 +29,7 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
 
   async function pick(target: NodeTreeItem | null) {
     setError(null);
-    const { ok, reason } = isDisabled(target?.id ?? null, target?.depth ?? -1, target?.kind);
+    const { ok, reason } = isDisabled(target?.id ?? null);
     if (!ok) {
       setError(reason ?? '이동할 수 없습니다.');
       return;
@@ -71,9 +67,9 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
           <button
             type="button"
             onClick={() => pick(null)}
-            disabled={!isDisabled(null, -1).ok}
+            disabled={!isDisabled(null).ok}
             className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-slate-800"
-            title={isDisabled(null, -1).reason}
+            title={isDisabled(null).reason}
           >
             ◇ 최상위 (그룹 없이 최상위로 이동)
           </button>
@@ -115,7 +111,7 @@ export default function ParentPickerDialog({ projectId, items, node, onClose }: 
     if (n.kind !== 'GROUP') {
       return n.children.flatMap((c) => renderRows(c, indent));
     }
-    const dis = isDisabled(n.id, n.depth, n.kind);
+    const dis = isDisabled(n.id);
     return [
       <li key={n.id}>
         <button

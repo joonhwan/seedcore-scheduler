@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, type ForwardedRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, memo, type ForwardedRef } from 'react';
 import { calculateTreeNodesDelayInfo, getNodeDelayInfo, getDelayStatusTooltip, getTodayIso, type NodeTreeItem, type NodeHistoryItem, type ExpectedProgressResult } from '@sam/shared';
 import { buildTree, maxDescendantDepth, type TreeNode } from './NodeTree';
 import NodeRowActionMenu from './NodeRowActionMenu';
@@ -157,7 +157,9 @@ function TimelineComponent({
     const c = cursorRef.current;
     if (!el || !c) return;
     // 화면 오른쪽/아래 끝에 닿으면 반대쪽으로 뒤집는다.
-    const flipX = c.x > window.innerWidth - 220;
+    // 320 은 배지의 max-w-xs(320px)와 맞춘 값이다 — 이보다 작으면 긴 부모 이름이
+    // 화면 밖으로 잘려 나갈 수 있다. 배지 클래스를 바꾸면 이 값도 함께 맞춰야 한다.
+    const flipX = c.x > window.innerWidth - 320;
     const flipY = c.y > window.innerHeight - 60;
     el.style.left = flipX ? 'auto' : `${c.x + 12}px`;
     el.style.right = flipX ? `${window.innerWidth - c.x + 12}px` : 'auto';
@@ -262,7 +264,9 @@ function TimelineComponent({
     [previewItems],
   );
 
-  const toggleCollapse = (id: string) => {
+  // Row 가 React.memo 로 감싸여 있으므로, Row 에 넘기는 콜백은 매 렌더마다
+  // 새 identity 를 갖지 않도록 useCallback 으로 고정한다(그렇지 않으면 memo 가 무력화된다).
+  const toggleCollapse = useCallback((id: string) => {
     setCollapsedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -272,7 +276,7 @@ function TimelineComponent({
       }
       return next;
     });
-  };
+  }, []);
 
   const collapseAll = () => {
     const groupIds = items.filter((n) => n.kind === 'GROUP').map((n) => n.id);
@@ -520,7 +524,8 @@ function TimelineComponent({
   }, [isDragging]);
 
   // 막대 위 mousedown 에서 호출 — 드래그 시작
-  const startBarDrag = (node: NodeTreeItem, mode: DragMode, e: React.MouseEvent) => {
+  // Row 의 memo 를 무력화하지 않도록 useCallback 으로 identity 를 고정한다.
+  const startBarDrag = useCallback((node: NodeTreeItem, mode: DragMode, e: React.MouseEvent) => {
     if (!canEdit || selectionMode || node.kind !== 'ITEM' || !node.startAt || !node.endAt) return;
     e.stopPropagation(); // 배경 패닝/상위 전파 방지
     setBarDrag({
@@ -530,7 +535,7 @@ function TimelineComponent({
       startScrollLeft: scrollerRef.current?.scrollLeft ?? 0,
       deltaDays: 0,
     });
-  };
+  }, [canEdit, selectionMode]);
 
   // 라벨 칸의 ∷ 핸들에서만 시작한다. 3px 넘게 움직여야 실제 드래그로 전환.
   const startNodeDrag = (node: TreeNode, e: React.PointerEvent) => {
@@ -550,14 +555,19 @@ function TimelineComponent({
       return targetFromPointer(dragRows, items, node, clientX - labelLeft, clientY - rect.top);
     };
 
+    // 3px 임계값은 드래그가 "활성화되는" 순간에만 적용한다. 한번 활성화되면 커서가
+    // 시작점 근처로 되돌아와도 계속 활성 상태를 유지해야 한다(그래야 삽입선이 보이는 동안은
+    // 항상 그 위치로 드롭된다는 불변조건이 지켜진다). React 상태(nodeDrag.active)는 비동기라
+    // 같은 이벤트 틱 안에서 곧바로 최신값을 읽을 수 없으므로, 클로저에 잡힌 평범한 불리언으로
+    // 활성화 여부를 판정한다.
+    let isActive = false;
     const onMove = (ev: PointerEvent) => {
-      const moved = Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY);
-      setNodeDrag((prev) => {
-        if (!prev) return prev;
-        if (!prev.active && moved < 3) return prev;
-        return prev.active ? prev : { ...prev, active: true };
-      });
-      if (moved < 3) return;
+      if (!isActive) {
+        const moved = Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY);
+        if (moved < 3) return;
+        isActive = true;
+        setNodeDrag((prev) => (prev ? { ...prev, active: true } : prev));
+      }
       const next = computeTarget(ev.clientX, ev.clientY);
       setDropTarget((prev) => (sameDropTarget(prev, next) ? prev : next));
       cursorRef.current = { x: ev.clientX, y: ev.clientY };
@@ -607,8 +617,10 @@ function TimelineComponent({
     };
 
     const onUp = (ev: PointerEvent) => {
-      const moved = Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY);
-      const target = finish(moved < 3 ? null : ev);
+      // moved 를 다시 재는 대신 isActive 플래그로 판정한다 — 시작점에서 멀리 나갔다가
+      // 다시 3px 안으로 돌아온 뒤 놓으면, 재측정으로는 "드래그 안 함"이 되어 아무 일도
+      // 일어나지 않는데 삽입선은 여전히 보이는 모순이 생긴다.
+      const target = finish(isActive ? ev : null);
       if (!target || !target.ok || !onMoveTo) return;
       void onMoveTo(node, target.parentId, sortOrderForTarget(target))
         .then(() => {
@@ -639,6 +651,15 @@ function TimelineComponent({
     rafId = requestAnimationFrame(tick);
     nodeDragCleanupRef.current = detach;
   };
+
+  // startNodeDrag 는 렌더마다 새 함수가 되므로 그대로 넘기면 Row 의 memo 가 무력화된다.
+  // 최신 구현은 ref 에 담고, Row 에는 신원이 고정된 래퍼만 넘긴다.
+  const startNodeDragRef = useRef(startNodeDrag);
+  startNodeDragRef.current = startNodeDrag;
+  const handleRowDragStart = useCallback(
+    (node: TreeNode, e: React.PointerEvent) => startNodeDragRef.current(node, e),
+    [],
+  );
 
   useEffect(() => {
     if (!barDrag) return;
@@ -875,13 +896,14 @@ function TimelineComponent({
   const todayInRange = todayOffset >= 0 && todayOffset <= totalDays;
 
   // 막대 선택 콜백 — move 드래그 직후의 click 은 한 번 무시한다.
-  const handleBarSelect = (id: string) => {
+  // Row 에 넘기는 콜백이라 useCallback 으로 identity 를 고정한다(memo 무력화 방지).
+  const handleBarSelect = useCallback((id: string) => {
     if (justDraggedRef.current) {
       justDraggedRef.current = false;
       return;
     }
     onSelect(id);
-  };
+  }, [onSelect]);
 
   return (
     <div className="relative group/timeline w-full h-full flex flex-col overflow-hidden">
@@ -1125,8 +1147,8 @@ function TimelineComponent({
                   onDelete={onDelete}
                   onAddRoot={onAddRoot}
                   canDrag={!!canEdit && !selectionMode && n.id !== 'empty-row-placeholder' && !!onMoveTo}
-                  onDragStart={startNodeDrag}
-                  isDragging={nodeDrag?.active === true && nodeDrag.nodeId === n.id}
+                  onDragStart={handleRowDragStart}
+                  isRowDragging={nodeDrag?.active === true && nodeDrag.nodeId === n.id}
                 />
               );
               })}
@@ -1182,7 +1204,9 @@ function TimelineComponent({
             tone === 'rose'
               ? 'bg-rose-600 dark:bg-rose-500 text-white'
               : tone === 'amber'
-                ? 'bg-amber-500 dark:bg-amber-400 text-white'
+                // dark:bg-amber-400 위에 흰 글씨는 대비 2:1 정도라 어두운 테마에서
+                // 읽기 어렵다. 어두운 테마에서는 진한 글씨로, 밝은 테마는 흰 글씨 그대로 둔다.
+                ? 'bg-amber-500 text-white dark:bg-amber-400 dark:text-slate-900'
                 : 'bg-sky-600 dark:bg-sky-500 text-white';
           return (
             <div
@@ -1201,7 +1225,11 @@ function TimelineComponent({
 const Timeline = forwardRef(TimelineComponent);
 export default Timeline;
 
-function Row({
+// 5,000개까지 늘어날 수 있는 트리에서 드래그 중 dropTarget 이 바뀔 때마다(포인터가 ~16px
+// 움직일 때마다) 전체 행이 다시 그려지는 걸 막기 위해 memo 로 감싼다. Row 에 넘기는 콜백
+// prop(onDragStart 등)은 전부 위에서 useCallback/ref 로 identity 를 고정해 뒀다 — 그렇지
+// 않으면 매 렌더 새 함수 참조 때문에 이 memo 는 아무 효과가 없다.
+const Row = memo(function Row({
   node,
   range,
   ppd,
@@ -1235,7 +1263,7 @@ function Row({
   onToggleSelect,
   canDrag,
   onDragStart,
-  isDragging,
+  isRowDragging,
 }: {
   node: TreeNode;
   range: { start: Date; end: Date };
@@ -1270,7 +1298,9 @@ function Row({
   onToggleSelect?: ((id: string) => void) | undefined;
   canDrag: boolean;
   onDragStart: (node: TreeNode, e: React.PointerEvent) => void;
-  isDragging: boolean;
+  // Row 자신이 드래그되고 있는지 여부. Timeline 컴포넌트 레벨의 배경 패닝용 isDragging 과
+  // 이름이 겹치면 헷갈리므로 이 prop 은 isRowDragging 으로 부른다.
+  isRowDragging: boolean;
 }) {
 
   const isGroup = node.kind === 'GROUP';
@@ -1308,7 +1338,7 @@ function Row({
 
   return (
     <div
-      className={`group/row flex border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40${isDragging ? ' opacity-40' : ''}`}
+      className={`group/row flex border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40${isRowDragging ? ' opacity-40' : ''}`}
       style={{ height: ROW_HEIGHT }}
     >
       <div
@@ -1331,7 +1361,9 @@ function Row({
             if (canDrag) onDragStart(node, e);
           }}
           title="드래그해서 순서나 상위 그룹을 바꿉니다"
-          aria-hidden={!canDrag}
+          // 브라유 글리프는 의미가 없어 보조기술에는 항상 숨긴다. 키보드 사용자는 행 액션
+          // 메뉴의 위/아래 버튼과 "부모 그룹 변경" 다이얼로그로 동일한 기능을 이미 쓸 수 있다.
+          aria-hidden={true}
         >
           ⠿
         </span>
@@ -1597,7 +1629,7 @@ function Row({
       </div>
     </div>
   );
-}
+});
 
 function HistoryTooltip({
   nodeId,

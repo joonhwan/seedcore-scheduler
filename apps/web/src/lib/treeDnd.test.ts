@@ -110,6 +110,13 @@ describe('subtreeRelativeDepth', () => {
     expect(subtreeRelativeDepth(ITEMS, 'GC')).toBe(1);
     expect(subtreeRelativeDepth(ITEMS, 'G')).toBe(2);
   });
+
+  it('미리 계산한 자손 집합을 넘겨도 넘기지 않았을 때와 같은 결과다', () => {
+    for (const id of ['L', 'GC', 'G']) {
+      const precomputed = descendantIdsOf(ITEMS, id);
+      expect(subtreeRelativeDepth(ITEMS, id, precomputed)).toBe(subtreeRelativeDepth(ITEMS, id));
+    }
+  });
 });
 
 describe('canDropInto', () => {
@@ -152,6 +159,35 @@ describe('canDropInto', () => {
 
   it('없는 부모를 지정하면 거절한다', () => {
     expect(canDropInto(ITEMS, byId('G'), 'nope').ok).toBe(false);
+  });
+
+  // descendantIdsOf 최적화(맵으로 한 번만 순회) 이후에도 결과가 같은지 확인하는 회귀 테스트.
+  // 리프 노드로만 테스트하면 "자손이 있는 노드"의 경로(canDropInto 안 이중 호출 제거)가
+  // 검증되지 않으므로, 다단계 서브트리를 가진 GROUP 을 대상으로 확인한다.
+  describe('다단계 서브트리를 가진 GROUP', () => {
+    //   G          (GROUP, d0)  ─ 서브트리: GC, L
+    //     GC       (GROUP, d1)
+    //       L      (ITEM,  d2)
+    //   OTHER      (GROUP, d0)  ─ G 와 무관, 자리 있음
+    const withOther: NodeTreeItem[] = [
+      ...ITEMS,
+      item({ id: 'OTHER', kind: 'GROUP', depth: 0, sortOrder: 3 }),
+    ];
+
+    it('자기 자신의 자손(GC, L)이 대상이면 거절한다', () => {
+      expect(canDropInto(withOther, byId('G'), 'GC')).toEqual({
+        ok: false,
+        reason: '자기 하위로는 옮길 수 없습니다',
+      });
+      expect(canDropInto(withOther, byId('G'), 'L')).toEqual({
+        ok: false,
+        reason: '자기 하위로는 옮길 수 없습니다',
+      });
+    });
+
+    it('무관한 GROUP 이면서 깊이에 여유가 있으면 허용한다', () => {
+      expect(canDropInto(withOther, byId('G'), 'OTHER')).toEqual({ ok: true });
+    });
   });
 });
 

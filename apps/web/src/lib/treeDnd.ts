@@ -38,14 +38,29 @@ export function depthFromX(rows: TreeNode[], boundary: number, x: number): numbe
   return Math.max(minDepth, Math.min(maxDepth, raw));
 }
 
-/** 자기 자신을 포함한 자손 id 집합. */
+/** parentId → 자식 목록 맵. O(n)으로 한 번만 만들어 재사용한다. */
+function buildChildrenMap(items: NodeTreeItem[]): Map<string | null, NodeTreeItem[]> {
+  const map = new Map<string | null, NodeTreeItem[]>();
+  for (const it of items) {
+    const key = it.parentId;
+    const list = map.get(key);
+    if (list) list.push(it);
+    else map.set(key, [it]);
+  }
+  return map;
+}
+
+/** 자기 자신을 포함한 자손 id 집합. `items` 전체를 매번 스캔하지 않도록 parentId→children 맵을 한 번만 만들어 순회한다. */
 export function descendantIdsOf(items: NodeTreeItem[], nodeId: string): Set<string> {
+  const childrenMap = buildChildrenMap(items);
   const out = new Set<string>([nodeId]);
   const stack = [nodeId];
   while (stack.length > 0) {
     const cur = stack.pop()!;
-    for (const it of items) {
-      if (it.parentId === cur && !out.has(it.id)) {
+    const children = childrenMap.get(cur);
+    if (!children) continue;
+    for (const it of children) {
+      if (!out.has(it.id)) {
         out.add(it.id);
         stack.push(it.id);
       }
@@ -54,9 +69,17 @@ export function descendantIdsOf(items: NodeTreeItem[], nodeId: string): Set<stri
   return out;
 }
 
-/** 서브트리가 자기 아래로 몇 단계까지 뻗는지. 자손이 없으면 0. */
-export function subtreeRelativeDepth(items: NodeTreeItem[], nodeId: string): number {
-  const ids = descendantIdsOf(items, nodeId);
+/**
+ * 서브트리가 자기 아래로 몇 단계까지 뻗는지. 자손이 없으면 0.
+ * `precomputedDescendantIds` 를 주면 다시 계산하지 않고 그대로 쓴다
+ * (canDropInto 가 이미 계산해둔 집합을 넘겨 이중 순회를 피할 때 쓴다).
+ */
+export function subtreeRelativeDepth(
+  items: NodeTreeItem[],
+  nodeId: string,
+  precomputedDescendantIds?: Set<string>,
+): number {
+  const ids = precomputedDescendantIds ?? descendantIdsOf(items, nodeId);
   const self = items.find((n) => n.id === nodeId);
   if (!self) return 0;
   let max = self.depth;
@@ -76,11 +99,13 @@ export function canDropInto(
   parentId: string | null,
 ): { ok: boolean; reason?: string } {
   let parentDepth = -1;
+  // 자손 집합은 한 번만 계산해서 자기-하위 검사와 subtreeRelativeDepth 둘 다에 재사용한다.
+  const descendantIds = descendantIdsOf(items, node.id);
 
   if (parentId !== null) {
     const parent = items.find((n) => n.id === parentId);
     if (!parent) return { ok: false, reason: '대상 그룹을 찾을 수 없습니다' };
-    if (descendantIdsOf(items, node.id).has(parentId)) {
+    if (descendantIds.has(parentId)) {
       return { ok: false, reason: '자기 하위로는 옮길 수 없습니다' };
     }
     if (parent.kind !== 'GROUP') {
@@ -90,7 +115,7 @@ export function canDropInto(
   }
 
   const newDepth = parentDepth + 1;
-  if (newDepth + subtreeRelativeDepth(items, node.id) >= MAX_TREE_DEPTH) {
+  if (newDepth + subtreeRelativeDepth(items, node.id, descendantIds) >= MAX_TREE_DEPTH) {
     return { ok: false, reason: `최대 깊이 ${MAX_TREE_DEPTH}단계를 넘습니다` };
   }
   return { ok: true };
