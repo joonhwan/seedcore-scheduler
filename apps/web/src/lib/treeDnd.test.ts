@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { NodeTreeItem } from '@sam/shared';
 import type { TreeNode } from '../components/NodeTree';
-import { INDENT_PX, LABEL_BASE_PX, depthRangeAt, depthFromX, descendantIdsOf, subtreeRelativeDepth, canDropInto } from './treeDnd';
+import { INDENT_PX, LABEL_BASE_PX, depthRangeAt, depthFromX, descendantIdsOf, subtreeRelativeDepth, canDropInto, resolveTarget, siblingsExcluding, sortOrderForTarget, changesParent, type DropTarget } from './treeDnd';
 
 function item(
   partial: Partial<NodeTreeItem> & { id: string; kind: NodeTreeItem['kind'] },
@@ -152,5 +152,103 @@ describe('canDropInto', () => {
 
   it('없는 부모를 지정하면 거절한다', () => {
     expect(canDropInto(ITEMS, byId('G'), 'nope').ok).toBe(false);
+  });
+});
+
+//   G          (GROUP, d0, sortOrder 1)
+//     C1       (ITEM,  d1, sortOrder 1)
+//     C2       (ITEM,  d1, sortOrder 2)
+//   S          (ITEM,  d0, sortOrder 2)
+const T_ITEMS: NodeTreeItem[] = [
+  item({ id: 'G', kind: 'GROUP', depth: 0, sortOrder: 1 }),
+  item({ id: 'C1', kind: 'ITEM', depth: 1, sortOrder: 1, parentId: 'G' }),
+  item({ id: 'C2', kind: 'ITEM', depth: 1, sortOrder: 2, parentId: 'G' }),
+  item({ id: 'S', kind: 'ITEM', depth: 0, sortOrder: 2 }),
+];
+const T_ROWS: TreeNode[] = T_ITEMS.map((n) => ({ ...n, children: [] }));
+function tById(id: string): NodeTreeItem {
+  const found = T_ITEMS.find((n) => n.id === id);
+  if (!found) throw new Error(`no such test node: ${id}`);
+  return found;
+}
+
+describe('siblingsExcluding', () => {
+  it('sortOrder 순으로 정렬하고 자기 자신을 뺀다', () => {
+    expect(siblingsExcluding(T_ITEMS, 'G', 'C1').map((n) => n.id)).toEqual(['C2']);
+    expect(siblingsExcluding(T_ITEMS, null, 'zzz').map((n) => n.id)).toEqual(['G', 'S']);
+  });
+});
+
+describe('resolveTarget', () => {
+  it('트리 맨 위 경계는 최상위 맨 앞이다', () => {
+    // S 를 최상위 첫 번째로
+    const t = resolveTarget(T_ROWS, T_ITEMS, tById('S'), 0, 0);
+    expect(t).toMatchObject({ parentId: null, insertIndex: 0, ok: true });
+    expect(sortOrderForTarget(t)).toBe(1);
+  });
+
+  it('GROUP 바로 아래 경계에서 한 단계 깊으면 그 그룹의 첫 자식이 된다', () => {
+    // boundary 1 = G 와 C1 사이, depth 1 → G 의 첫 자식
+    const t = resolveTarget(T_ROWS, T_ITEMS, tById('S'), 1, 1);
+    expect(t).toMatchObject({ parentId: 'G', insertIndex: 0, ok: true });
+    expect(sortOrderForTarget(t)).toBe(1);
+  });
+
+  it('같은 경계라도 얕은 깊이를 고르면 부모가 달라진다', () => {
+    // boundary 3 = C2 와 S 사이.
+    // depth 1 → G 안, C2 뒤
+    const deep = resolveTarget(T_ROWS, T_ITEMS, tById('S'), 3, 1);
+    expect(deep).toMatchObject({ parentId: 'G', insertIndex: 2, ok: true });
+    expect(sortOrderForTarget(deep)).toBe(3);
+    // depth 0 → 최상위, G 뒤
+    const shallow = resolveTarget(T_ROWS, T_ITEMS, tById('S'), 3, 0);
+    expect(shallow).toMatchObject({ parentId: null, insertIndex: 1, ok: true });
+    expect(sortOrderForTarget(shallow)).toBe(2);
+  });
+
+  it('트리 맨 끝 경계에서 깊이 0 이면 최상위 맨 뒤로 간다', () => {
+    // boundary 4 = S 아래. C1 을 최상위 맨 뒤로
+    const t = resolveTarget(T_ROWS, T_ITEMS, tById('C1'), 4, 0);
+    expect(t).toMatchObject({ parentId: null, insertIndex: 2, ok: true });
+    expect(sortOrderForTarget(t)).toBe(3);
+  });
+
+  it('같은 부모 안에서 아래로 옮기는 위치를 맞게 계산한다', () => {
+    // C1 을 boundary 3(C2 와 S 사이), depth 1 → G 안 C2 뒤.
+    // 자기 자신을 뺀 형제는 [C2] 이므로 insertIndex 1
+    const t = resolveTarget(T_ROWS, T_ITEMS, tById('C1'), 3, 1);
+    expect(t).toMatchObject({ parentId: 'G', insertIndex: 1, ok: true });
+    expect(sortOrderForTarget(t)).toBe(2);
+  });
+
+  it('자기 하위로 가는 대상은 사유를 달고 ok=false 로 돌아온다', () => {
+    // boundary 1 = G 와 C1 사이, depth 1 → 부모가 G. G 자신을 드래그 중이면 무효.
+    const t = resolveTarget(T_ROWS, T_ITEMS, tById('G'), 1, 1);
+    expect(t.ok).toBe(false);
+    expect(t.reason).toBe('자기 하위로는 옮길 수 없습니다');
+  });
+
+  it('깊이 초과 대상도 사유를 달고 ok=false 로 돌아온다', () => {
+    const deepItems: NodeTreeItem[] = [
+      item({ id: 'D8', kind: 'GROUP', depth: 8, sortOrder: 1 }),
+      item({ id: 'D9', kind: 'ITEM', depth: 9, sortOrder: 1, parentId: 'D8' }),
+      item({ id: 'BIG', kind: 'GROUP', depth: 0, sortOrder: 2 }),
+      item({ id: 'BIGC', kind: 'ITEM', depth: 1, sortOrder: 1, parentId: 'BIG' }),
+    ];
+    const deepRows: TreeNode[] = deepItems.map((n) => ({ ...n, children: [] }));
+    const bigNode = deepItems.find((n) => n.id === 'BIG')!;
+    // boundary 1 = D8 과 D9 사이, depth 9 → 부모 D8. BIG 은 상대깊이 1 이라 9+1 = 10 >= 10
+    const t = resolveTarget(deepRows, deepItems, bigNode, 1, 9);
+    expect(t.ok).toBe(false);
+    expect(t.reason).toBe('최대 깊이 10단계를 넘습니다');
+  });
+});
+
+describe('changesParent', () => {
+  it('부모가 바뀌는지로 표시 색을 가른다', () => {
+    const same = resolveTarget(T_ROWS, T_ITEMS, tById('C1'), 3, 1); // G 안 그대로
+    expect(changesParent(tById('C1'), same)).toBe(false);
+    const moved = resolveTarget(T_ROWS, T_ITEMS, tById('C1'), 4, 0); // 최상위로
+    expect(changesParent(tById('C1'), moved)).toBe(true);
   });
 });

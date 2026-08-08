@@ -94,3 +94,87 @@ export function canDropInto(
   }
   return { ok: true };
 }
+
+export interface DropTarget {
+  /** 삽입선을 그릴 행 경계 (0 .. rows.length) */
+  boundary: number;
+  /** 삽입선 들여쓰기 = LABEL_BASE_PX + depth * INDENT_PX */
+  depth: number;
+  parentId: string | null;
+  /** 자기 자신을 뺀 형제 배열에서의 0-based 삽입 위치 */
+  insertIndex: number;
+  ok: boolean;
+  reason?: string;
+}
+
+/** 같은 부모를 가진 형제를 sortOrder 순으로, 드래그 중인 노드만 빼고 돌려준다. */
+export function siblingsExcluding(
+  items: NodeTreeItem[],
+  parentId: string | null,
+  excludeId: string,
+): NodeTreeItem[] {
+  return items
+    .filter((n) => n.parentId === parentId && n.id !== excludeId)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+/** (경계, 깊이) 를 실제 부모와 삽입 위치로 바꾸고 이동 가능한지 판정한다. */
+export function resolveTarget(
+  rows: TreeNode[],
+  items: NodeTreeItem[],
+  node: NodeTreeItem,
+  boundary: number,
+  depth: number,
+): DropTarget {
+  const above = boundary > 0 ? rows[boundary - 1] : undefined;
+
+  let parentId: string | null;
+  let anchor: NodeTreeItem | undefined; // 이 노드 "뒤"에 끼운다. 없으면 맨 앞.
+
+  if (!above) {
+    parentId = null;
+  } else if (depth === above.depth + 1) {
+    // 위 행의 첫 자식이 된다.
+    parentId = above.id;
+  } else {
+    // 위 행에서 부모를 타고 올라가 목표 깊이의 조상을 찾는다.
+    let cur: NodeTreeItem | undefined = items.find((n) => n.id === above.id);
+    while (cur && cur.depth > depth) {
+      cur = cur.parentId ? items.find((n) => n.id === cur!.parentId) : undefined;
+    }
+    anchor = cur;
+    parentId = anchor ? anchor.parentId : null;
+  }
+
+  const siblings = siblingsExcluding(items, parentId, node.id);
+  let insertIndex: number;
+  if (!anchor) {
+    insertIndex = 0;
+  } else if (anchor.id === node.id) {
+    // 조상이 드래그 중인 노드 자신이면 위 배열에 없다. 지금 자리를 그대로 쓴다.
+    insertIndex = siblings.filter((s) => s.sortOrder < node.sortOrder).length;
+  } else {
+    insertIndex = siblings.findIndex((s) => s.id === anchor!.id) + 1;
+  }
+
+  const verdict = canDropInto(items, node, parentId);
+  const target: DropTarget = {
+    boundary,
+    depth,
+    parentId,
+    insertIndex,
+    ok: verdict.ok,
+  };
+  if (verdict.reason !== undefined) target.reason = verdict.reason;
+  return target;
+}
+
+/** 서버가 받는 1-based 삽입 위치. */
+export function sortOrderForTarget(target: DropTarget): number {
+  return target.insertIndex + 1;
+}
+
+/** 이 드롭이 부모까지 바꾸는지 (표시 색 sky/amber 를 가른다). */
+export function changesParent(node: NodeTreeItem, target: DropTarget): boolean {
+  return target.parentId !== node.parentId;
+}
