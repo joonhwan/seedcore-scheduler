@@ -20,7 +20,7 @@ export default function UserGuidePage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">사용설명서</h1>
             <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
-              SAM Scheduler v1.5
+              SAM Scheduler v1.6
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
