@@ -1602,7 +1602,13 @@ const Row = memo(function Row({
                     : 'bg-sky-600 dark:bg-sky-400';
                   return (
                     <div
-                      className={`absolute top-0 bottom-0 w-px z-10 pointer-events-none ${lineColor} shadow-[0_0_1px_rgba(0,0,0,0.4)] dark:shadow-[0_0_1px_rgba(255,255,255,0.6)]`}
+                      // z-index 를 주면 안 된다. 부모인 막대는 z 가 없어 쌓임 맥락을 만들지
+                      // 않으므로, 이 선의 z 는 막대 안이 아니라 바깥 공용 맥락에서 해석된다.
+                      // 그러면 라벨 칸(sticky left-0 z-10)과 같은 층에서 겨루게 되고, DOM 상
+                      // 뒤에 있는 이 선이 이겨서 가로 스크롤 시 트리 위에 그려진다.
+                      // z 없이 두면 막대 서브트리째 라벨 칸 아래로 내려간다. 절대 위치라
+                      // 막대 안의 진척 채움(정적 배치)보다는 여전히 위에 그려진다.
+                      className={`absolute top-0 bottom-0 w-px pointer-events-none ${lineColor} shadow-[0_0_1px_rgba(0,0,0,0.4)] dark:shadow-[0_0_1px_rgba(255,255,255,0.6)]`}
                       style={{ left: `${delayInfo.expectedProgress}%` }}
                       title={`예상 진척율: ${delayInfo.expectedProgress}%`}
                     />
