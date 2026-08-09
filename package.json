@@ -14,7 +14,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "db:reset-admin": "pnpm -F @sam/api reset-admin",
-    "build:exe": "pnpm -F @sam/api build:exe"
+    "build:exe": "pnpm -F @sam/api build:exe",
+    "version:set": "pnpm -r --include-workspace-root exec npm version --no-git-tag-version --allow-same-version"
   },
   "devDependencies": {
     "marked": "^18.0.2",

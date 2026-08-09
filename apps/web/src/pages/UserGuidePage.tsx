@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { APP_VERSION_LABEL } from '../version';
 
 export default function UserGuidePage() {
   const [activeSection, setActiveSection] = useState<string>('sec-1');
@@ -20,7 +21,7 @@ export default function UserGuidePage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">사용설명서</h1>
             <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
-              SAM Scheduler v1.6
+              SAM Scheduler {APP_VERSION_LABEL}
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
@@ -565,6 +566,48 @@ export default function UserGuidePage() {
                 <li><b>삭제 (🔒 매니저/관리자)</b>: 선택한 노드 및 자손 항목 전체를 일괄 영구 삭제합니다.</li>
                 <li><b>선택 해제</b>: 체크박스 선택 상태를 전체 초기화합니다.</li>
               </ul>
+
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-6">4.3 드래그 앤 드롭으로 순서·부모 바꾸기 (🔒 매니저/관리자)</h3>
+              <p className="text-slate-600 dark:text-slate-300">
+                행에 마우스를 올리면 제목 왼쪽 끝에 <b>드래그 핸들(⠿)</b>이 나타납니다. 이 핸들을 잡고 끌면 <b>형제 간 순서 변경</b>과 <b>부모 그룹 변경</b>을 한 동작으로 처리할 수 있습니다.
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300 my-2">
+                <li><b>위아래로 끌기</b>: 놓일 자리가 가로 <b>삽입선</b>으로 표시됩니다.</li>
+                <li><b>좌우로 끌기</b>: 같은 자리에서도 오른쪽으로 밀면 <b>바로 위 그룹의 자식</b>으로, 왼쪽으로 당기면 <b>상위 그룹 밖으로</b> 빠집니다. 삽입선의 들여쓰기 위치가 곧 새 부모입니다.</li>
+                <li><b>커서 배지</b>: 끄는 동안 결과를 미리 알려주는 문구가 커서를 따라다닙니다. 순서만 바뀌면 <span className="font-mono text-xs">3번째로 이동</span>, 부모가 바뀌면 <span className="font-mono text-xs">&quot;○○&quot; 안 3번째로 이동</span>, 최상위로 뺄 때는 <span className="font-mono text-xs">최상위 3번째로 이동</span>으로 표시됩니다.</li>
+                <li><b>자동 스크롤</b>: 트리의 위/아래 가장자리로 끌면 알아서 스크롤됩니다.</li>
+                <li><b>취소</b>: 놓기 전에 <b>Esc</b>를 누르거나 트리 밖에 놓으면 아무 일도 일어나지 않습니다.</li>
+              </ul>
+              <p className="text-slate-600 dark:text-slate-300">
+                놓을 수 없는 자리에서는 배지가 붉게 바뀌며 이유를 알려줍니다.
+              </p>
+              <div className="overflow-x-auto my-3">
+                <table className="w-full text-xs text-left border-collapse border border-slate-200 dark:border-slate-800">
+                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    <tr>
+                      <th className="p-2 border">배지 문구</th>
+                      <th className="p-2 border">뜻</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                    <tr>
+                      <td className="p-2 border font-medium">자기 하위로는 옮길 수 없습니다</td>
+                      <td className="p-2 border">자기 자신이나 자기 자손 아래로는 넣을 수 없습니다(트리가 끊어집니다).</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-medium">일반 항목에는 넣을 수 없습니다</td>
+                      <td className="p-2 border">ITEM(일정)은 하위를 가질 수 없으므로 부모가 될 수 없습니다.</td>
+                    </tr>
+                    <tr>
+                      <td className="p-2 border font-medium">최대 깊이 10단계를 넘습니다</td>
+                      <td className="p-2 border">끌고 있는 가지의 높이까지 더해서 판단합니다. 3단 짜리 그룹은 8단계 자리에 넣을 수 없습니다.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-slate-600 dark:text-slate-300 text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-md p-3">
+                편집 권한이 없으면 드래그 핸들 자체가 나타나지 않습니다. 또한 서버에 이동을 반영하는 동안에는 잠깐 드래그가 잠기며, 핸들에 마우스를 올리면 &quot;앞서 옮긴 일정을 반영하는 중입니다&quot; 툴팁이 뜹니다. 드래그가 어렵거나 멀리 떨어진 그룹으로 옮길 때는 행 액션의 <b>↑ 위로 / ↓ 아래로</b> 버튼과 <b>⇄ 부모 그룹 변경</b> 대화상자를 쓰면 됩니다.
+              </p>
             </div>
           </section>
 

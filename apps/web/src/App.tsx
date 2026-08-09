@@ -3,6 +3,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useTheme } from './lib/theme';
 import { useLogout, useMe } from './lib/auth';
 import { useAdminMode } from './lib/adminMode';
+import { APP_VERSION_LABEL } from './version';
 import ToastViewport from './components/ToastViewport';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
@@ -82,7 +83,7 @@ function Header() {
         <Link to="/" className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200" title="홈(프로젝트 목록) 화면 이동">
           <img src="/logo_b.png" alt="시드코어" className="h-5 w-auto dark:invert" />
           <span className="text-sm">
-            일정관리 시스템 <span className="text-[10px] italic font-normal text-slate-400 dark:text-slate-500 ml-0.5">v1.6</span>
+            일정관리 시스템 <span className="text-[10px] italic font-normal text-slate-400 dark:text-slate-500 ml-0.5">{APP_VERSION_LABEL}</span>
           </span>
         </Link>
       </div>
