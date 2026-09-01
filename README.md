@@ -19,29 +19,30 @@ deploy/           docker compose, nginx, 백업 스크립트
 
 ## 로컬 개발
 
-> **순서가 중요합니다.** 1~4 를 먼저 완료해야 5 의 `pnpm dev` 가 정상 부팅합니다.
+평소에는 이 한 줄이면 됩니다.
+
+```bash
+pnpm dev     # 공유 패키지 빌드 → vite 캐시 삭제 → api(3000) + web(5173) 기동
+```
+
+브라우저: **http://localhost:5173** — Vite 가 `/api/*` 를 `localhost:3000` 으로 프록시합니다.
+3000 은 API 전용이므로 브라우저로 직접 열지 마십시오(exe 빌드가 남긴 옛 화면이 뜹니다).
+
+> **처음 받았거나 스키마가 바뀐 경우에만** 아래를 먼저 합니다.
 > Prisma Client / DB 가 없으면 NestJS 가 부트시 크래시 → web 의 `/api/*` 프록시가 ECONNREFUSED.
 
 ```bash
 # 1) 의존성 설치
 pnpm install
 
-# 2) 공유 패키지 빌드 (web/api 가 컴파일된 dist 를 참조)
-pnpm -F @sam/shared build
-
-# 3) API 환경변수
+# 2) API 환경변수
 cp apps/api/.env.example apps/api/.env
 
-# 4) Prisma 마이그레이션 + 클라이언트 생성 + DB 파일 생성
+# 3) Prisma 마이그레이션 + 클라이언트 생성 + DB 파일 생성
 pnpm -F @sam/api prisma:migrate:dev
 #    → apps/api/prisma/migrations/<timestamp>_init/
 #    → apps/api/prisma/data/app.db (Prisma 의 file: URL 은 schema.prisma 위치 기준 상대경로)
-
-# 5) 개발 서버 (api: 3000, web: 5173)
-pnpm dev
 ```
-
-브라우저: http://localhost:5173 — Vite 가 `/api/*` 를 `localhost:3000` 으로 프록시.
 
 ### node_modules 를 다시 깐 뒤 (재설치 후)
 

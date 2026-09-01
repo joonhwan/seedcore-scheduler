@@ -12,15 +12,14 @@
 # 작업 디렉터리
 cd D:/workspace/prj/work/sam-scheduler
 
-# 의존성 + 빌드 + DB
+# 처음 받았을 때만 (의존성 + 환경변수 + DB)
 pnpm install
-pnpm -F @sam/shared build
 cp apps/api/.env.example apps/api/.env  # 이미 있다면 생략
 pnpm -F @sam/api prisma:migrate:dev
 
-# 개발 서버
+# 개발 서버 — shared 빌드와 vite 캐시 삭제까지 이 한 줄이 처리한다
 pnpm dev
-# → http://localhost:5173 (web), http://localhost:3000 (api)
+# → 브라우저는 http://localhost:5173 만 연다 (3000 은 API 전용, 직접 열면 옛 화면이 뜬다)
 # → 헬스체크: http://localhost:5173/api/v1/health
 ```
 

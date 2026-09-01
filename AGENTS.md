@@ -35,29 +35,41 @@ SAM Scheduler는 외부 네트워크와 격리된 **폐쇄망(Air-gap) 환경**�
 
 ## 3. 로컬 개발 및 빌드 순서
 
-로컬 개발 환경을 부팅할 때는 **순서가 매우 중요**합니다. 데이터베이스와 Prisma Client가 빌드 및 시딩되지 않은 상태에서 `pnpm dev`를 실행하면 NestJS가 부팅 시 크래시를 일으키며, 프론트엔드 프록시 에러가 발생합니다.
+**매일 개발할 때는 `pnpm dev` 하나면 됩니다.** 이 명령이 `scripts/dev.mjs` 를 거쳐 공유 패키지
+빌드 → vite 사전 번들 캐시 삭제 → web·api 기동을 순서대로 처리합니다. 손으로 챙기던 두 단계를
+스크립트가 대신하므로 빠뜨릴 일이 없습니다.
+
+```bash
+pnpm dev
+# → 브라우저로 http://localhost:5173 접속
+```
+
+**저장소를 처음 받았거나 스키마가 바뀐 경우에만** 아래 준비 단계가 먼저 필요합니다. 데이터베이스와
+Prisma Client가 없는 상태로 기동하면 NestJS가 부팅 시 크래시를 일으키고, 프론트엔드에서 프록시
+에러가 납니다.
 
 ```bash
 # 1) 의존성 설치
 pnpm install
 
-# 2) 공유 패키지 빌드 (packages/shared 내 dist 디렉터리 생성)
-pnpm -F @sam/shared build
-
-# 3) API 환경변수 설정
+# 2) API 환경변수 설정
 cp apps/api/.env.example apps/api/.env
 
-# 4) Prisma 마이그레이션 + 클라이언트 생성 + 시드 데이터 적용
+# 3) Prisma 마이그레이션 + 클라이언트 생성 + 시드 데이터 적용
 pnpm -F @sam/api prisma:migrate:dev
-
-# 5) 로컬 개발 서버 실행 (web: 5173, api: 3000)
-pnpm dev
 ```
 
 > **접속 정보**:
 > - 웹 프론트엔드: `http://localhost:5173`
 > - API 헬스체크: `http://localhost:5173/api/v1/health`
 > - 초기 관리자 계정: `admin` / `ChangeMe!Now` (첫 로그인 시 비밀번호 변경 강제됨)
+
+> **브라우저로 3000 을 직접 열지 마십시오.** 5173 이 `/api` 를 3000 으로 프록시하므로 API 는 그
+> 뒤에서 함께 떠 있지만, 3000 을 직접 열면 API 서버가 곁다리로 서빙하는 정적 화면이 뜹니다.
+> 그 경로는 `resolveStaticRoot()`(`app.module.ts`)가 후보 순서대로 찾는데 `apps/api/public` 이
+> `apps/web/dist` 보다 먼저 걸리고, 그 폴더는 `pnpm build:exe` 가 남기는 산출물(git 무시 대상)이라
+> **몇 달 전 exe 를 빌드한 흔적이 있으면 그 시절 화면이 그대로 뜹니다.** 고친 기능이 반영되지
+> 않는 것처럼 보이는 전형적인 함정입니다. exe 를 검증할 때만 `pnpm dev` 를 끄고 3000 으로 접속합니다.
 
 ---
 
@@ -140,6 +152,8 @@ pnpm dev
 - **`shared` 에 새 export(새 이름)를 추가하면 `apps/web/node_modules/.vite` 를 지우고 dev 서버를 재시작한다.**
   안 지우면 vite 사전 번들링 캐시에 그 심볼이 없어 조용히 `undefined` 가 되고, **에러 메시지 없이 화면만 빈 채로** 뜹니다.
   (기존 함수 내용만 바꾼 경우는 `pnpm -F @sam/shared build` 로 충분)
+  → `pnpm dev` 로 띄우면 `scripts/dev.mjs` 가 매번 캐시를 지우므로 이 함정에 걸리지 않습니다.
+  dev 서버를 다른 방법으로 띄울 때만 손으로 챙기면 됩니다.
 
 ## 6. 마일스톤 상황 및 향후 방향
 
