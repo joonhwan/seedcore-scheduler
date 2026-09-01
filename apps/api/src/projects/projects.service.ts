@@ -63,6 +63,10 @@ export class ProjectsService {
       take: 500,
     });
 
+    const lastChanges = await this.lastScheduleChangeMap(
+      projects.map((p) => p.id),
+    );
+
     return projects.map((p) => {
       const delaySummary = summarizeDelay(p.nodes, p._count.nodes);
       return {
@@ -76,9 +80,47 @@ export class ProjectsService {
         memberCount: p._count.members,
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
+        lastScheduleChangeAt: lastChanges.get(p.id) ?? null,
         delaySummary,
       };
     });
+  }
+
+  /**
+   * 프로젝트별 "일정이 마지막으로 바뀐 시각"을 한 번의 질의로 모아 온다.
+   *
+   * 근거를 node_history 에서 읽는 이유는 ProjectListItem.lastScheduleChangeAt 의 주석에 있다.
+   * 삭제된 일정도 projectIdSnapshot 으로 남으므로, 마지막 활동이 "일정 삭제"인 프로젝트도
+   * 제대로 잡힌다. 프로젝트마다 따로 묻지 않고 groupBy 한 번으로 끝내는 것은 목록이 최대
+   * 500 개까지 올 수 있기 때문이다 ([projectIdSnapshot, occurredAt] 색인을 탄다).
+   */
+  private async lastScheduleChangeMap(
+    projectIds: string[],
+  ): Promise<Map<string, string>> {
+    if (projectIds.length === 0) return new Map();
+
+    const rows = await this.prisma.nodeHistory.groupBy({
+      by: ['projectIdSnapshot'],
+      where: { projectIdSnapshot: { in: projectIds } },
+      _max: { occurredAt: true },
+    });
+
+    const map = new Map<string, string>();
+    for (const r of rows) {
+      const at = r._max.occurredAt;
+      if (at) map.set(r.projectIdSnapshot, at.toISOString());
+    }
+    return map;
+  }
+
+  /** 프로젝트 하나의 일정 최종 변경 시각. 일정이 바뀐 적 없으면 null. */
+  private async lastScheduleChangeAt(projectId: string): Promise<string | null> {
+    const row = await this.prisma.nodeHistory.findFirst({
+      where: { projectIdSnapshot: projectId },
+      orderBy: { occurredAt: 'desc' },
+      select: { occurredAt: true },
+    });
+    return row ? row.occurredAt.toISOString() : null;
   }
 
   async getById(id: string, ctx: ActorContext): Promise<ProjectDetail> {
@@ -114,6 +156,7 @@ export class ProjectsService {
       memberCount: project._count.members,
       createdAt: project.createdAt.toISOString(),
       updatedAt: project.updatedAt.toISOString(),
+      lastScheduleChangeAt: await this.lastScheduleChangeAt(project.id),
       createdById: project.createdById,
       delaySummary,
     };
@@ -196,6 +239,8 @@ export class ProjectsService {
       memberCount: uniqueIds.length,
       createdAt: created.createdAt.toISOString(),
       updatedAt: created.updatedAt.toISOString(),
+      // 방금 만든 프로젝트라 일정이 하나도 없다.
+      lastScheduleChangeAt: null,
       createdById: created.createdById,
     };
   }
@@ -286,6 +331,7 @@ export class ProjectsService {
       memberCount: updated._count.members,
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
+      lastScheduleChangeAt: await this.lastScheduleChangeAt(updated.id),
       createdById: updated.createdById,
     };
   }
@@ -525,6 +571,9 @@ export class ProjectsService {
         memberCount: managerIds.length + memberIds.length,
         createdAt: created.createdAt.toISOString(),
         updatedAt: created.updatedAt.toISOString(),
+        // 복제는 승계한 일정마다 clonedFrom 이력을 남기므로, 노드를 하나라도 옮겼으면
+        // 그 이력의 시각이 곧 "일정이 마지막으로 바뀐 시각"이 된다.
+        lastScheduleChangeAt: await this.lastScheduleChangeAt(created.id),
         createdById: created.createdById,
       },
       nodeCount: cloned.length,

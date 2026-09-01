@@ -69,8 +69,44 @@ export const MeResponse = z.object({
   displayName: z.string(),
   globalRole: GlobalRole,
   passwordMustChange: z.boolean(),
+  /**
+   * 지금 세션이 끊기는 시각(ISO 8601). 화면이 남은 시간을 세고 만료 직전에 연장 창을
+   * 띄우는 근거다. 서버 시계를 그대로 내려주므로, 화면은 자기 시계와의 차이를 감안해
+   * 남은 시간을 계산해야 한다(lib/session.ts 참고).
+   */
+  sessionExpiresAt: z.string(),
+  /**
+   * 응답을 만든 시각(ISO 8601). 남은 시간을 `sessionExpiresAt - serverNow` 로 재고 그 뒤로는
+   * 화면이 스스로 흘려보내기 위한 기준점이다.
+   *
+   * 브라우저 시계를 그대로 믿고 빼면, 사내 PC 시계가 몇 분 어긋나 있을 때 연장 창이 엉뚱한
+   * 때에 뜨거나 아예 뜨지 않는다. 두 시각 모두 서버 것이므로 시계 차이가 상쇄된다.
+   */
+  serverNow: z.string(),
 });
 export type MeResponse = z.infer<typeof MeResponse>;
+
+/** POST /auth/extend 의 응답. 갱신된 만료 시각을 돌려준다. */
+export const SessionExtendResponse = z.object({
+  sessionExpiresAt: z.string(),
+  serverNow: z.string(),
+});
+export type SessionExtendResponse = z.infer<typeof SessionExtendResponse>;
+
+// ─── 세션 수명 정책 ────────────────────────────────────────────────────────
+/**
+ * 로그인 한 번으로 유지되는 시간. 조작 여부와 무관하게 로그인 시점부터 잰다.
+ *
+ * 예전에는 "마지막 조작으로부터 30분(슬라이딩) + 로그인 후 12시간(절대)" 두 겹이었다.
+ * 슬라이딩 쪽을 없앤 이유는 두 가지다. 첫째, 서버가 만료를 미뤄도 브라우저 쿠키의 만료는
+ * 로그인 시점 값 그대로라 실제로는 30분 만에 끊겼다(쿠키를 다시 내려보내지 않았다).
+ * 둘째, 사용자 요청이 "끊기기 전에 물어보고 연장"(관공서 시스템 방식)이라, 조용히 연장되는
+ * 슬라이딩과는 맞지 않는다. 지금은 만료 시각이 고정이고 연장은 POST /auth/extend 로만 일어난다.
+ */
+export const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12시간
+
+/** 만료 몇 분 전부터 연장 창을 띄울지. */
+export const SESSION_EXPIRY_WARNING_MS = 10 * 60 * 1000; // 10분
 
 // ─── 사용자 관리 (ADMIN) DTO ───────────────────────────────────────────────
 export const CreateUserDto = z.object({
@@ -182,9 +218,37 @@ export const ProjectListItem = z.object({
   memberCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /**
+   * 이 프로젝트의 일정이 마지막으로 바뀐 시각(ISO 8601). 일정이 한 번도 바뀐 적 없으면 null.
+   *
+   * `updatedAt` 과 따로 두는 이유는 두 가지다.
+   *  - `updatedAt` 은 프로젝트 행 자체(이름·설명·보관 상태)가 바뀔 때만 움직인다. 일정을
+   *    아무리 고쳐도 그대로라, 목록의 "수정일"이 몇 달째 고정돼 보였다.
+   *  - 그렇다고 일정 변경 때 프로젝트 행을 건드리면 `expectedUpdatedAt` 동시성 검사(AGENTS.md
+   *    §4.5)가 오작동한다. 남이 일정 하나 고친 것만으로 내 이름 변경이 409 로 튕긴다.
+   *
+   * 그래서 프로젝트 행은 손대지 않고, 일정 이력(node_history)의 최신 시각을 읽어 채운다.
+   * 이력 기반이라 삭제된 일정의 변경까지 잡히고, 댓글은 (다른 테이블이므로) 잡히지 않는다 —
+   * "댓글은 수정일에 넣지 말라"는 요구와 맞는다.
+   */
+  lastScheduleChangeAt: z.string().nullable(),
   delaySummary: ProjectDelaySummaryDto.optional(),
 });
 export type ProjectListItem = z.infer<typeof ProjectListItem>;
+
+/**
+ * 목록에 보여줄 "수정일" 하나로 합친다 — 프로젝트 행 변경과 일정 변경 중 더 최근 것.
+ * 정렬과 표시가 같은 값을 쓰도록 이 함수 하나만 부른다.
+ */
+export function projectLastModifiedAt(p: {
+  updatedAt: string;
+  lastScheduleChangeAt: string | null;
+}): string {
+  const s = p.lastScheduleChangeAt;
+  if (!s) return p.updatedAt;
+  // 둘 다 ISO 8601 UTC 문자열이라 사전식 비교가 곧 시간 순서다.
+  return s > p.updatedAt ? s : p.updatedAt;
+}
 
 
 export const ProjectDetail = ProjectListItem.extend({

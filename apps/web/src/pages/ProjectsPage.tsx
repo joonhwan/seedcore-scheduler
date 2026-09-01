@@ -1,13 +1,13 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import type { ProjectListItem, ProjectStatus } from '@sam/shared';
+import { projectLastModifiedAt, type ProjectListItem, type ProjectStatus } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
 import { useProjects, useDeleteProject } from '../lib/projects';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { DEFAULT_COLUMN_WIDTHS, computeRenderedWidths, type ProjectColumnKey } from '../lib/projectListColumns';
-import { compareProjectsByNewestFirst } from '../lib/projectListSort';
+import { compareProjectsByRecentlyModified } from '../lib/projectListSort';
 import ProjectNameCell from '../components/ProjectNameCell';
 import ProjectArchiveButton from '../components/ProjectArchiveButton';
 import DelayStatusBadge from '../components/DelayStatusBadge';
@@ -228,6 +228,16 @@ export default function ProjectsPage() {
           return sortOrder === 'asc' ? gapA - gapB : gapB - gapA;
         }
 
+        // 수정일 열은 화면에 보이는 값(프로젝트 행 변경과 일정 변경 중 최근 것)으로 정렬한다.
+        // p.updatedAt 을 그대로 쓰면 표시값과 정렬 기준이 어긋나, 위에 있어야 할 행이
+        // 아래로 가는 것처럼 보인다.
+        if (sortBy === 'updatedAt') {
+          const ma = projectLastModifiedAt(a);
+          const mb = projectLastModifiedAt(b);
+          if (ma === mb) return 0;
+          return sortOrder === 'asc' ? (ma < mb ? -1 : 1) : ma > mb ? -1 : 1;
+        }
+
         const valA = a[sortBy as keyof ProjectListItem];
         const valB = b[sortBy as keyof ProjectListItem];
 
@@ -243,7 +253,7 @@ export default function ProjectsPage() {
         }
       });
     } else {
-      list.sort(compareProjectsByNewestFirst);
+      list.sort(compareProjectsByRecentlyModified);
     }
 
     return list;
@@ -728,8 +738,18 @@ export default function ProjectsPage() {
                       <td
                         className="whitespace-nowrap px-4 py-3 text-center text-slate-600 dark:text-slate-400 truncate"
                         style={{ width: `${renderedWidths.updatedAt}px`, maxWidth: `${renderedWidths.updatedAt}px` }}
+                        title={
+                          p.lastScheduleChangeAt
+                            ? `일정 최종 변경: ${p.lastScheduleChangeAt.slice(0, 16).replace('T', ' ')}`
+                            : '이 프로젝트는 아직 일정이 바뀐 적이 없습니다'
+                        }
                       >
-                        {p.updatedAt.slice(0, 10)}
+                        {/*
+                          프로젝트 행 자체의 수정과 일정 수정 중 최근 것을 보여준다.
+                          p.updatedAt 만 쓰면 일정을 아무리 고쳐도 날짜가 그대로여서
+                          "수정일이 몇 달째 고정"으로 보였다 (2026-09 사용자 요청 7번).
+                        */}
+                        {projectLastModifiedAt(p).slice(0, 10)}
                       </td>
                       {adminMode && (
                         <td

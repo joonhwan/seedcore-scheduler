@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ProjectListItem } from '@sam/shared';
-import { compareProjectsByNewestFirst } from './projectListSort';
+import { compareProjectsByRecentlyModified } from './projectListSort';
 
 /** 테스트에 필요한 필드만 채운 프로젝트 하나를 만든다. */
 function project(over: Partial<ProjectListItem>): ProjectListItem {
@@ -13,95 +13,111 @@ function project(over: Partial<ProjectListItem>): ProjectListItem {
     memberCount: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
+    lastScheduleChangeAt: null,
     ...over,
   };
 }
 
-describe('compareProjectsByNewestFirst', () => {
-  it('최근에 만들어진 것이 앞에 온다', () => {
-    const older = project({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z' });
-    const newer = project({ id: 'b', createdAt: '2026-06-01T00:00:00.000Z' });
+describe('compareProjectsByRecentlyModified', () => {
+  it('최근에 수정된 것이 앞에 온다', () => {
+    const older = project({ id: 'a', updatedAt: '2026-01-01T00:00:00.000Z' });
+    const newer = project({ id: 'b', updatedAt: '2026-06-01T00:00:00.000Z' });
 
-    expect(compareProjectsByNewestFirst(newer, older)).toBeLessThan(0);
-    expect(compareProjectsByNewestFirst(older, newer)).toBeGreaterThan(0);
+    expect(compareProjectsByRecentlyModified(newer, older)).toBeLessThan(0);
+    expect(compareProjectsByRecentlyModified(older, newer)).toBeGreaterThan(0);
   });
 
-  it('createdAt 이 같으면 id 로 순서를 고정한다', () => {
-    const a = project({ id: 'aaa', createdAt: '2026-01-01T00:00:00.000Z' });
-    const b = project({ id: 'bbb', createdAt: '2026-01-01T00:00:00.000Z' });
+  it('일정만 고친 프로젝트가 위로 올라온다', () => {
+    // 이 테스트가 이 정렬의 존재 이유다. 프로젝트 행 자체는 몇 달째 그대로인데 일정만
+    // 계속 고치는 것이 실제 사용 형태다. lastScheduleChangeAt 을 보지 않으면 그런
+    // 프로젝트가 목록 아래에 묻힌다.
+    const busy = project({
+      id: 'busy',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      lastScheduleChangeAt: '2026-08-30T00:00:00.000Z',
+    });
+    const idle = project({
+      id: 'idle',
+      updatedAt: '2026-05-01T00:00:00.000Z',
+      lastScheduleChangeAt: null,
+    });
 
-    expect(compareProjectsByNewestFirst(a, b)).toBeLessThan(0);
-    expect(compareProjectsByNewestFirst(b, a)).toBeGreaterThan(0);
+    expect(compareProjectsByRecentlyModified(busy, idle)).toBeLessThan(0);
+  });
+
+  it('프로젝트 이름 변경이 일정 변경보다 최근이면 그쪽을 따른다', () => {
+    const renamed = project({
+      id: 'renamed',
+      updatedAt: '2026-08-31T00:00:00.000Z',
+      lastScheduleChangeAt: '2026-02-01T00:00:00.000Z',
+    });
+    const scheduled = project({
+      id: 'scheduled',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      lastScheduleChangeAt: '2026-08-30T00:00:00.000Z',
+    });
+
+    expect(compareProjectsByRecentlyModified(renamed, scheduled)).toBeLessThan(0);
+  });
+
+  it('생성일은 순서에 영향을 주지 않는다', () => {
+    const oldButBusy = project({
+      id: 'a',
+      createdAt: '2020-01-01T00:00:00.000Z',
+      lastScheduleChangeAt: '2026-08-30T00:00:00.000Z',
+    });
+    const newButIdle = project({
+      id: 'b',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    });
+
+    expect(compareProjectsByRecentlyModified(oldButBusy, newButIdle)).toBeLessThan(0);
+  });
+
+  it('수정 시각이 같으면 id 로 순서를 고정한다', () => {
+    const a = project({ id: 'aaa', updatedAt: '2026-01-01T00:00:00.000Z' });
+    const b = project({ id: 'bbb', updatedAt: '2026-01-01T00:00:00.000Z' });
+
+    expect(compareProjectsByRecentlyModified(a, b)).toBeLessThan(0);
+    expect(compareProjectsByRecentlyModified(b, a)).toBeGreaterThan(0);
   });
 
   it('같은 프로젝트끼리는 0 이다', () => {
     const a = project({ id: 'aaa' });
 
-    expect(compareProjectsByNewestFirst(a, a)).toBe(0);
+    expect(compareProjectsByRecentlyModified(a, a)).toBe(0);
   });
 
   it('status 는 순서에 영향을 주지 않는다', () => {
-    // 보관 처리를 해도 행이 제자리에 남아야 하므로, status 를 정렬 키에서 뺐다.
-    const older = project({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z', status: 'ARCHIVED' });
-    const newer = project({ id: 'b', createdAt: '2026-06-01T00:00:00.000Z', status: 'ACTIVE' });
-
-    expect(compareProjectsByNewestFirst(newer, older)).toBeLessThan(0);
-  });
-
-  it('updatedAt 은 순서에 영향을 주지 않는다', () => {
-    // 이 테스트가 이 함수의 존재 이유다. 예전에는 서버 순서(updatedAt desc)를 그대로 써서,
-    // 목록에서 뭔가를 고치면 그 행이 다른 페이지로 옮겨갔다.
+    // 보관 여부는 상태 필터와 배지가 담당한다. 보관했다고 목록 맨 뒤로 보내지 않는다.
     const older = project({
       id: 'a',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-12-31T00:00:00.000Z', // 방금 수정됨
+      updatedAt: '2026-06-01T00:00:00.000Z',
+      status: 'ARCHIVED',
     });
     const newer = project({
       id: 'b',
-      createdAt: '2026-06-01T00:00:00.000Z',
-      updatedAt: '2026-06-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      status: 'ACTIVE',
     });
 
-    expect(compareProjectsByNewestFirst(newer, older)).toBeLessThan(0);
+    expect(compareProjectsByRecentlyModified(older, newer)).toBeLessThan(0);
   });
 
-  it('정렬에 넣으면 최근에 만든 것부터 늘어선다', () => {
+  it('정렬에 넣으면 최근에 손댄 것부터 늘어선다', () => {
     const list = [
-      project({ id: 'b', createdAt: '2026-02-01T00:00:00.000Z' }),
-      project({ id: 'c', createdAt: '2026-03-01T00:00:00.000Z' }),
-      project({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z' }),
+      project({ id: 'b', updatedAt: '2026-02-01T00:00:00.000Z' }),
+      project({
+        id: 'c',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        lastScheduleChangeAt: '2026-03-01T00:00:00.000Z',
+      }),
+      project({ id: 'a', updatedAt: '2026-01-01T00:00:00.000Z' }),
     ];
 
-    expect([...list].sort(compareProjectsByNewestFirst).map((p) => p.id)).toEqual(['c', 'b', 'a']);
-  });
-
-  it('보관 처리로 status 와 updatedAt 이 바뀌어도 순서가 그대로다', () => {
-    const before = [
-      project({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z' }),
-      project({ id: 'b', createdAt: '2026-02-01T00:00:00.000Z' }),
-      project({ id: 'c', createdAt: '2026-03-01T00:00:00.000Z' }),
-    ];
-    // b 를 보관 처리한 뒤의 목록
-    const after = before.map((p) =>
-      p.id === 'b'
-        ? { ...p, status: 'ARCHIVED' as const, updatedAt: '2026-12-31T00:00:00.000Z' }
-        : p,
-    );
-
-    expect([...after].sort(compareProjectsByNewestFirst).map((p) => p.id)).toEqual(
-      [...before].sort(compareProjectsByNewestFirst).map((p) => p.id),
-    );
-  });
-
-  it('새로 만든 프로젝트가 맨 앞에 온다', () => {
-    const existing = [
-      project({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z' }),
-      project({ id: 'b', createdAt: '2026-02-01T00:00:00.000Z' }),
-    ];
-    const created = project({ id: 'new', createdAt: '2026-08-01T00:00:00.000Z' });
-
-    const sorted = [...existing, created].sort(compareProjectsByNewestFirst);
-
-    expect(sorted[0]?.id).toBe('new');
+    expect(
+      [...list].sort(compareProjectsByRecentlyModified).map((p) => p.id),
+    ).toEqual(['c', 'b', 'a']);
   });
 });

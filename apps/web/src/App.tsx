@@ -5,6 +5,8 @@ import { useLogout, useMe } from './lib/auth';
 import { useAdminMode } from './lib/adminMode';
 import { APP_VERSION_LABEL } from './version';
 import ToastViewport from './components/ToastViewport';
+import SessionCountdownBadge from './components/SessionCountdownBadge';
+import SessionExpiryDialog from './components/SessionExpiryDialog';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProjectsPage from './pages/ProjectsPage';
@@ -154,6 +156,7 @@ function Header() {
                 </button>
               </div>
             )}
+            <SessionCountdownBadge />
             <span className="text-slate-500 dark:text-slate-400 border-l border-slate-200 dark:border-slate-700 pl-3">
               {me.data.displayName}
               {isAdmin ? ' (ADMIN)' : ''}
@@ -522,6 +525,11 @@ export default function App() {
       </div>
       <Footer />
       <ToastViewport />
+      {/*
+        세션 만료 안내 창. 라우트 밖에 두어야 어느 화면에서 작업 중이든 똑같이 뜬다.
+        로그인 전에는 스스로 아무것도 그리지 않는다.
+      */}
+      <SessionExpiryDialog />
     </div>
   );
 }

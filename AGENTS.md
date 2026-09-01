@@ -85,6 +85,9 @@ pnpm dev
 
 ### 4.4 인증, 인가 및 관리자 모드
 - **세션 쿠키 인증**: `sam_sid` 세션 쿠키(HttpOnly + SameSite=Lax + Path=/api/v1) 방식을 취합니다. JWT는 사용하지 않습니다.
+- **세션 수명 (슬라이딩 없음)**: 로그인 후 **12시간 고정**이며(`SESSION_TTL_MS`, `packages/shared`), 요청을 보낸다고 만료가 미뤄지지 않습니다. 연장은 `POST /api/v1/auth/extend` 를 사용자가 명시적으로 호출할 때만 일어나고, 화면은 만료 10분 전(`SESSION_EXPIRY_WARNING_MS`)에 `SessionExpiryDialog` 로 물어봅니다.
+  - 예전에는 "마지막 조작으로부터 30분(슬라이딩) + 로그인 후 12시간(절대)" 두 겹이었습니다. 서버는 만료를 미뤘지만 **브라우저 쿠키의 만료 시각을 다시 내려보내지 않아** 실제로는 로그인 30분 뒤 무조건 끊겼습니다("작업 중에 로그인 화면으로 튕김"의 정체입니다).
+  - 그래서 **만료 시각을 바꾸는 곳은 반드시 쿠키를 다시 발급해야 합니다.** `AuthController` 의 `login` 과 `extend` 두 곳뿐이며, `AuthGuard` 는 만료를 건드리지 않습니다(`lastSeenAt` 만 갱신 — 접속자 목록용).
 - **인증 가드**: 백엔드는 전역으로 `AuthGuard`가 적용되어 있습니다. 비로그인 접근이 필요한 엔드포인트는 `@Public()` 데코레이터를 사용하십시오.
 - **비밀번호 해싱 (argon2id / bcrypt 두 포맷 혼재)**: 현재 해싱은 `bcryptjs`로 합니다. native 모듈인 `argon2`가 단일 exe(ncc + pkg)에 번들되지 않아 커밋 `017bca7`에서 교체했습니다. 다만 그 이전에 만들어진 계정의 해시는 DB에 `$argon2id$...` 그대로 남아 있어 **`passwordHash` 한 컬럼에 두 포맷이 섞여 있습니다**. `AuthService.verifyPassword()`가 해시 접두어로 알고리즘을 판별해 양쪽을 모두 검증하고, argon2 해시로 로그인에 성공하면 그 자리에서 bcrypt로 재해싱해 저장합니다(평문을 알 수 있는 시점이 그때뿐입니다). 각 계정이 한 번 로그인하면 자연히 bcrypt로 정리됩니다.
   - `auth.service.ts`의 `argon2`는 `require(변수)` 형태로 느슨하게 불러옵니다. 이것을 정적 `import`로 바꾸면 ncc가 native 모듈을 번들에 끌어들여 exe 빌드가 깨집니다 — **바꾸지 마십시오.**
@@ -106,6 +109,7 @@ pnpm dev
     "currentUpdatedAt": "2026-05-01T12:00:00.000Z"
   }
   ```
+- **일정을 고쳤다고 `projects.updated_at` 을 건드리지 마십시오.** 그 값은 위 동시성 검사의 기준이라, 남이 일정 하나만 고쳐도 내 프로젝트 이름 변경이 409로 튕깁니다. 목록의 "수정일"은 대신 `ProjectListItem.lastScheduleChangeAt` 이 담당하며, 이 값은 `node_history` 의 최신 시각을 읽어 채웁니다(`ProjectsService.lastScheduleChangeMap`). 삭제된 일정의 변경까지 잡히고 댓글은 잡히지 않는 것이 의도된 동작입니다. 화면에 하나로 합쳐 보여줄 때는 `projectLastModifiedAt()`(`packages/shared`)을 쓰십시오.
 
 ### 4.6 일정 트리 구조 및 집계 정책
 - **트리 깊이**: 최대 **10단계** (`depth` 0~9)까지만 허용합니다. 노드 생성 및 이동 시 항상 대상의 깊이를 계산하여 제한해야 합니다.

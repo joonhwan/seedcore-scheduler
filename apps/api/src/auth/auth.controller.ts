@@ -6,6 +6,7 @@ import {
   Get,
   Req,
   Res,
+  UnauthorizedException,
   UseGuards,
   UsePipes,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import {
   ChangePasswordDto,
   LoginDto,
   type MeResponse,
+  type SessionExtendResponse,
 } from '@sam/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
@@ -91,12 +93,41 @@ export class AuthController {
   @AllowPasswordChange()
   me(@Req() req: AuthenticatedRequest): MeResponse {
     if (!req.user) throw new Error('user missing — guard misconfigured');
+    if (!req.session) throw new Error('session missing — guard misconfigured');
     return {
       id: req.user.id,
       username: req.user.username,
       displayName: req.user.displayName,
       globalRole: req.user.globalRole,
       passwordMustChange: req.user.passwordMustChange,
+      sessionExpiresAt: req.session.expiresAt.toISOString(),
+      serverNow: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * 세션 연장 (연장 창의 "로그인 연장" 버튼).
+   *
+   * 쿠키를 반드시 다시 내려보내야 한다. 브라우저 쿠키의 만료 시각은 로그인 때 박힌 값
+   * 그대로이므로, DB 의 만료만 미루면 브라우저가 먼저 쿠키를 버려 연장이 무효가 된다
+   * (이것이 원래의 "작업 중에 로그인 화면으로 튕기던" 결함의 정체다).
+   */
+  @Post('extend')
+  @AllowPasswordChange()
+  @HttpCode(200)
+  async extend(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<SessionExtendResponse> {
+    if (!req.session) throw new Error('session missing — guard misconfigured');
+    const extended = await this.auth.extendSession(req.session.sid);
+    if (!extended) {
+      throw new UnauthorizedException({ error: 'SESSION_EXPIRED' });
+    }
+    res.cookie(SESSION_COOKIE_NAME, extended.sid, cookieOptions(extended.expiresAt));
+    return {
+      sessionExpiresAt: extended.expiresAt.toISOString(),
+      serverNow: new Date().toISOString(),
     };
   }
 

@@ -203,6 +203,17 @@ export class AuthService {
     };
   }
 
+  /**
+   * 세션 연장. 살아 있는 세션이면 갱신된 세션을, 이미 만료됐으면 null 을 돌려준다.
+   *
+   * 감사로그를 남기지 않는 이유: 연장은 12시간마다 사람이 한 번 누르는 조작이라 보안상
+   * 의미 있는 사건이 아니고, 남기면 LOGIN_SUCCESS 와 구분되지 않는 잡음만 쌓인다.
+   * 세션 테이블의 expiresAt/lastSeenAt 이 이미 흔적을 남긴다.
+   */
+  async extendSession(sid: string) {
+    return this.sessions.extend(sid);
+  }
+
   async logout(sid: string, actorId: string, ctx: LoginContext): Promise<void> {
     await this.sessions.destroy(sid);
     await this.audit.log({
