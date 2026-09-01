@@ -6,7 +6,7 @@ import type {
   UpdateNodeDto,
 } from '@sam/shared';
 import { api } from './api';
-import { projectKey } from './projects';
+import { projectKey, projectsKey } from './projects';
 
 export const nodesKey = (projectId: string) =>
   ['projects', projectId, 'nodes'] as const;
@@ -22,6 +22,14 @@ export function useNodes(projectId: string | undefined) {
 function invalidateProject(qc: ReturnType<typeof useQueryClient>, projectId: string) {
   qc.invalidateQueries({ queryKey: nodesKey(projectId) });
   qc.invalidateQueries({ queryKey: projectKey(projectId) });
+  // 프로젝트 목록도 함께 무효화한다. 일정 하나를 고치면 목록의 "수정일"과 기본 정렬
+  // 순서가 달라지기 때문이다(ProjectListItem.lastScheduleChangeAt).
+  //
+  // 위의 projectKey(= ['projects', id])로는 목록이 걸리지 않는다. 무효화는 주어진 키로
+  // 시작하는 쿼리를 찾는데, 목록 키는 ['projects'] 로 그보다 짧다. 이 한 줄이 없으면
+  // 이미 받아둔 목록이 캐시에 그대로 남아, 일정을 고쳐도 옛 수정일이 계속 보인다
+  // (창 포커스로는 다시 받지 않는다 — main.tsx 의 refetchOnWindowFocus: false).
+  qc.invalidateQueries({ queryKey: projectsKey });
 }
 
 export function useCreateNode(projectId: string) {
