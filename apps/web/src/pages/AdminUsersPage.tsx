@@ -128,31 +128,12 @@ function UserRow({
   isSelf: boolean;
   onTempPassword: (pw: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draftName, setDraftName] = useState(user.displayName);
   const update = useUpdateUser();
   const reset = useResetPassword();
   const unlock = useUnlockUser();
 
   const isLocked =
     user.lockedUntil !== null && new Date(user.lockedUntil).getTime() > Date.now();
-
-  async function onSaveName() {
-    const next = draftName.trim();
-    if (next.length === 0 || next === user.displayName) {
-      setEditing(false);
-      setDraftName(user.displayName);
-      return;
-    }
-    try {
-      await update.mutateAsync({ id: user.id, patch: { displayName: next } });
-      toast.success('표시 이름이 변경되었습니다.');
-      setEditing(false);
-    } catch (err) {
-      toast.error(apiErrorMessage(err));
-      setDraftName(user.displayName);
-    }
-  }
 
   async function onToggleActive() {
     const next = !user.isActive;
@@ -195,32 +176,13 @@ function UserRow({
     <li className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          {editing ? (
-            <input
-              type="text"
-              value={draftName}
-              onChange={(e) => setDraftName(e.target.value)}
-              onBlur={onSaveName}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onSaveName();
-                if (e.key === 'Escape') {
-                  setEditing(false);
-                  setDraftName(user.displayName);
-                }
-              }}
-              autoFocus
-              className="rounded border border-slate-300 bg-white px-2 py-0.5 text-sm dark:border-slate-700 dark:bg-slate-900"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="font-medium hover:underline"
-              title="클릭하여 표시 이름 편집"
-            >
-              {user.displayName}
-            </button>
-          )}
+          <Link
+            to={`/admin/users/${user.id}`}
+            className="font-medium hover:underline"
+            title="상세 보기"
+          >
+            {user.displayName}
+          </Link>
           <span className="text-xs text-slate-500">@{user.username}</span>
           {user.globalRole === 'ADMIN' && (
             <span className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
