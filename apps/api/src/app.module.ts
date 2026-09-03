@@ -13,6 +13,7 @@ import { UsersModule } from './users/users.module';
 import { ProjectsModule } from './projects/projects.module';
 import { MembersModule } from './members/members.module';
 import { GroupsModule } from './groups/groups.module';
+import { UserProjectsModule } from './user-projects/user-projects.module';
 import { NodesModule } from './nodes/nodes.module';
 import { BackupModule } from './backup/backup.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
@@ -55,6 +56,7 @@ function resolveStaticRoot(): string {
     ProjectsModule,
     MembersModule,
     GroupsModule,
+    UserProjectsModule,
     NodesModule,
     BackupModule,
     BootstrapModule,
