@@ -92,8 +92,9 @@ export default function GroupPickerDialog({
       <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
         <h2 className="text-base font-semibold">그룹으로 담기</h2>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          상위 그룹을 고르면 하위 그룹 인원까지 함께 담깁니다. 담긴 뒤에는 명단에서 사람마다
-          역할을 바꾸거나 뺄 수 있습니다.
+          상위 그룹을 고르면 하위 그룹까지 함께 선택됩니다. 필요 없는 하위 그룹은 그 체크만
+          풀면 되고, 그때 상위 그룹은 반쯤 체크된 상태로 바뀝니다. 담긴 뒤에는 명단에서
+          사람마다 역할을 바꾸거나 뺄 수 있습니다.
         </p>
 
         <div className="mt-3 max-h-72 overflow-auto rounded border border-slate-100 dark:border-slate-800">

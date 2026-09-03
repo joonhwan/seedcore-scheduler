@@ -16,6 +16,8 @@ import {
   useUpdateMemberRole,
 } from '../lib/members';
 import { useUsers } from '../lib/users';
+import { useGroupTree } from '../lib/groups';
+import { groupPathMapOf } from '../lib/groupBadge';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import GroupPickerDialog from '../components/GroupPickerDialog';
@@ -251,6 +253,14 @@ function AddMemberSection({
     });
   }, [users.data, search, existingIds]);
 
+  // 위쪽 현재 멤버 목록에는 서버가 채운 소속이 이미 붙는데, 이 후보 목록만 비어 있으면
+  // 한 화면 안에서 표시 규칙이 어긋난다. 그룹 조회는 ADMIN 전용이라 canUseGroups 로 막는다.
+  const tree = useGroupTree(canUseGroups);
+  const groupPaths = useMemo(
+    () => groupPathMapOf(tree.data, filtered.map((u) => u.id)),
+    [tree.data, filtered],
+  );
+
   async function onAdd(userId: string) {
     setError(null);
     const parsed = AddMemberDto.safeParse({ userId, role });
@@ -307,9 +317,12 @@ function AddMemberSection({
             key={u.id}
             className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
           >
-            <span>
-              {u.displayName}{' '}
-              <span className="text-xs text-slate-500">@{u.username}</span>
+            <span className="flex items-center gap-1.5">
+              <span>
+                {u.displayName}{' '}
+                <span className="text-xs text-slate-500">@{u.username}</span>
+              </span>
+              <UserGroupBadge path={groupPaths.get(u.id) ?? []} />
             </span>
             <button
               type="button"
