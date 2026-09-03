@@ -519,7 +519,15 @@ function GroupDetailPanel({
         {members.data?.map((m) => (
           <li key={m.userId} className="flex items-center gap-2 py-1.5 text-sm">
             <span className="flex-1">
-              {m.displayName}{' '}
+              {/* 이름에서 개별 사용자 화면으로 바로 갈 수 있게 한다. 그 화면에서 소속을
+                  바꾸거나 참여 프로젝트를 손볼 수 있으므로, 여기서 사람을 찾은 뒤 다시
+                  사용자 관리 목록에서 같은 사람을 찾는 걸음을 없앤다. */}
+              <Link
+                to={`/admin/users/${m.userId}`}
+                className="font-medium text-sky-700 hover:underline dark:text-sky-400"
+              >
+                {m.displayName}
+              </Link>{' '}
               <span className="text-xs text-slate-500">@{m.username}</span>
               {!m.isActive && (
                 <span className="ml-2 rounded border border-slate-400 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">

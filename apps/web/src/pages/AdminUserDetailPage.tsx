@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { groupPathNames, type ProjectRole, type UserListItem } from '@sam/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  groupPathNames,
+  type GroupProjectCoverage,
+  type ProjectRole,
+  type UserListItem,
+} from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
 import { useUsers, useUpdateUser } from '../lib/users';
-import { useGroupTree } from '../lib/groups';
+import { api } from '../lib/api';
+import { useGroupTree, groupsKey } from '../lib/groups';
+import { flattenGroupTree } from '../lib/groupTreeView';
 import { useProjects } from '../lib/projects';
 import {
   useAddUserProjects,
@@ -12,9 +20,12 @@ import {
   useUpdateUserProjectRole,
   useUserGroups,
   useUserProjects,
+  userGroupsKey,
 } from '../lib/userProjects';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
+import BusyOverlay from '../components/BusyOverlay';
+import GroupProjectSyncDialog, { type SyncSide } from '../components/GroupProjectSyncDialog';
 
 export default function AdminUserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -65,7 +76,7 @@ export default function AdminUserDetailPage() {
       {user && id && (
         <>
           <AccountSection user={user} />
-          <GroupSection userId={id} />
+          <GroupSection userId={id} displayName={user.displayName} />
           <ProjectSection userId={id} />
         </>
       )}
@@ -152,23 +163,116 @@ function AccountSection({ user }: { user: UserListItem }) {
   );
 }
 
-function GroupSection({ userId }: { userId: string }) {
+/**
+ * 사용자 한 명의 소속을 보여주고, 이 자리에서 바로 옮긴다.
+ *
+ * 예전에는 소속을 보여주기만 하고 "그룹 관리로 이동" 링크만 두어, 한 사람을 옮기려면 화면을
+ * 옮겨 그 사람이 든 그룹을 찾아내야 했다. 사람에서 출발하는 것이 자연스러운 조작이므로 여기에
+ * 선택 상자를 둔다.
+ *
+ * 옮긴 뒤에 뜨는 프로젝트 동기화 안내는 그룹 관리 화면의 것과 같은 대화상자다. **같은 이동인데
+ * 어디서 했느냐에 따라 뒤처리가 달라지면 안 되기 때문이다.**
+ */
+function GroupSection({ userId, displayName }: { userId: string; displayName: string }) {
   const myGroups = useUserGroups(userId);
   const tree = useGroupTree();
+  const qc = useQueryClient();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [sync, setSync] = useState<{
+    title: string;
+    addTo?: SyncSide;
+    removeFrom?: SyncSide;
+  } | null>(null);
 
   const paths = useMemo(() => {
     const all = tree.data?.groups ?? [];
     return (myGroups.data ?? []).map((g) => groupPathNames(all, g.id).join(' › '));
   }, [myGroups.data, tree.data?.groups]);
 
+  // 그룹 관리 화면의 계층 트리와 같은 순서로 늘어놓고, 깊이를 들여쓰기로 나타낸다.
+  const rows = useMemo(() => flattenGroupTree(tree.data?.groups ?? []), [tree.data?.groups]);
+
+  // 지금 소속. 1인 1소속 운영이므로 첫 번째를 기준으로 삼되, 여럿이면 아래에 안내를 띄운다.
+  const currentId = myGroups.data?.[0]?.id ?? '';
+  const selected = draft ?? currentId;
+  const changed = selected !== currentId;
+  const multi = (myGroups.data?.length ?? 0) > 1;
+
+  async function onMove() {
+    const from = myGroups.data ?? [];
+    const target = rows.find((r) => r.group.id === selected)?.group;
+    const label = target ? `"${target.name}" 으로 옮기` : '소속에서 빼';
+    const ok = window.confirm(`"${displayName}" 을(를) ${label}시겠습니까?`);
+    if (!ok) return;
+
+    setBusy(target ? '소속을 옮기는 중입니다...' : '소속을 해제하는 중입니다...');
+    try {
+      // 이전 소속의 집계는 **바꾸기 전에** 읽는다. 옮긴 뒤에 읽으면 이미 빠진 뒤의 값이라
+      // 이 사람이 그 프로젝트에 있었는지를 가릴 수 없다(그룹 관리 화면과 같은 이유).
+      let removeFrom: SyncSide | undefined;
+      const previous = from[0];
+      if (previous) {
+        const raw = await api.get<GroupProjectCoverage[]>(
+          `/admin/groups/${previous.id}/projects`,
+        );
+        // 이 사람이 실제로 참여 중인 프로젝트만 남긴다. 그러지 않으면 빼기 목록에 없는
+        // 프로젝트가 올라가 확인 시 404 NOT_A_MEMBER 로 막다른 길에 빠진다.
+        const coverage = raw.filter((c) => !c.missingUserIds.includes(userId));
+        if (coverage.length > 0) removeFrom = { groupName: previous.name, coverage };
+      }
+
+      if (target) {
+        // move: true 로 부르면 기존 소속에서 빼고 넣는 일이 요청 하나로 일어난다.
+        await api.post(`/admin/groups/${target.id}/members`, {
+          userIds: [userId],
+          move: true,
+        });
+      } else {
+        for (const g of from) {
+          await api.delete(`/admin/groups/${g.id}/members/${userId}`);
+        }
+      }
+
+      let addTo: SyncSide | undefined;
+      if (target) {
+        const rowsAfter = await api.get<GroupProjectCoverage[]>(
+          `/admin/groups/${target.id}/projects`,
+        );
+        if (rowsAfter.length > 0) addTo = { groupName: target.name, coverage: rowsAfter };
+      }
+
+      // 재조회가 끝나기를 기다린 뒤에 덮개를 내려, 덮개가 사라지는 순간 소속 표시가 이미
+      // 새 값으로 바뀌어 있게 한다.
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: groupsKey }),
+        qc.invalidateQueries({ queryKey: userGroupsKey(userId) }),
+      ]);
+      setDraft(null);
+      toast.success(target ? '소속이 변경되었습니다.' : '소속이 해제되었습니다.');
+
+      if (addTo || removeFrom) {
+        setSync({
+          title: target
+            ? `"${displayName}" 을(를) "${target.name}" 으로 옮겼습니다.`
+            : `"${displayName}" 의 소속을 해제했습니다.`,
+          ...(addTo ? { addTo } : {}),
+          ...(removeFrom ? { removeFrom } : {}),
+        });
+      }
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
       <h2 className="text-sm font-semibold">소속 그룹</h2>
       {myGroups.isLoading && <p className="mt-2 text-sm text-slate-500">로딩…</p>}
       {myGroups.data && myGroups.data.length === 0 && (
-        <p className="mt-2 text-sm text-slate-500">
-          소속 없음. 그룹 관리 화면에서 그룹에 넣으십시오.
-        </p>
+        <p className="mt-2 text-sm text-slate-500">소속 없음.</p>
       )}
       <ul className="mt-2 space-y-1">
         {paths.map((p) => (
@@ -177,12 +281,56 @@ function GroupSection({ userId }: { userId: string }) {
           </li>
         ))}
       </ul>
-      <Link
-        to="/admin/groups"
-        className="mt-3 inline-block rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold dark:border-slate-700"
-      >
-        그룹 관리로 이동
-      </Link>
+
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <select
+          value={selected}
+          onChange={(e) => setDraft(e.target.value)}
+          disabled={tree.isLoading || myGroups.isLoading}
+          className="flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+        >
+          <option value="">(소속 없음)</option>
+          {rows.map(({ group, depth }) => (
+            <option key={group.id} value={group.id}>
+              {'\u00a0'.repeat(depth * 4)}
+              {group.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={onMove}
+          disabled={!changed}
+          className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+        >
+          소속 변경
+        </button>
+      </div>
+      {multi && (
+        <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-400">
+          이 사용자는 그룹 두 곳 이상에 속해 있습니다. 소속을 바꾸면 위 목록의 첫 번째 그룹을
+          기준으로 옮깁니다. 나머지는 그룹 관리 화면에서 정리하십시오.
+        </p>
+      )}
+      <p className="mt-2 text-[11px] text-slate-500">
+        그룹 자체를 만들거나 지우려면{' '}
+        <Link to="/admin/groups" className="text-sky-700 hover:underline dark:text-sky-400">
+          그룹 관리
+        </Link>{' '}
+        화면을 쓰십시오.
+      </p>
+
+      {busy && <BusyOverlay label={busy} />}
+
+      {sync && (
+        <GroupProjectSyncDialog
+          title={sync.title}
+          userIds={[userId]}
+          addTo={sync.addTo}
+          removeFrom={sync.removeFrom}
+          onClose={() => setSync(null)}
+        />
+      )}
     </section>
   );
 }

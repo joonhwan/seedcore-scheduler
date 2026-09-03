@@ -68,7 +68,9 @@ export function useAddGroupMembers(groupId: string) {
     onSuccess: () => {
       invalidateAll(qc);
       qc.invalidateQueries({ queryKey: groupMembersKey(groupId) });
-      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      // 사용자 목록은 다시 부르지 않는다. UserItem 에는 그룹 정보가 없고, 사용자 관리 화면의
+      // 소속 배지는 useGroupTree(=groupsKey)에서 따로 만들기 때문이다. 예전에는 여기서
+      // 함께 무효화해 소속을 바꿀 때마다 쓸모없는 조회가 한 건씩 더 나갔다.
     },
   });
 }
@@ -91,7 +93,9 @@ export function useRemoveGroupMember(groupId: string) {
     onSuccess: () => {
       invalidateAll(qc);
       qc.invalidateQueries({ queryKey: groupMembersKey(groupId) });
-      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      // 사용자 목록은 다시 부르지 않는다. UserItem 에는 그룹 정보가 없고, 사용자 관리 화면의
+      // 소속 배지는 useGroupTree(=groupsKey)에서 따로 만들기 때문이다. 예전에는 여기서
+      // 함께 무효화해 소속을 바꿀 때마다 쓸모없는 조회가 한 건씩 더 나갔다.
     },
   });
 }
