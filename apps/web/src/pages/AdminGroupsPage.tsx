@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import {
   canReparentGroup,
@@ -15,6 +15,7 @@ import {
   useRemoveGroupMember,
   useUpdateGroup,
 } from '../lib/groups';
+import { useUsers } from '../lib/users';
 import { flattenGroupTree } from '../lib/groupTreeView';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
@@ -184,11 +185,23 @@ function GroupDetailPanel({
   const [parentId, setParentId] = useState<string | null>(group.parentId);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // 다른 관리자가 이 그룹을 고치면 group prop 이 새 값으로 바뀐다. 내가 아직 손대지 않은
+  // 필드는 그때 새 값으로 맞춰 둔다. 그러지 않으면 저장 버튼이 저절로 켜지고, 그대로 누르면
+  // 화면에 남은 옛 값이 상대의 변경을 조용히 덮어쓴다.
+  const [touched, setTouched] = useState(false);
+  useEffect(() => {
+    if (touched) return;
+    setName(group.name);
+    setDescription(group.description ?? '');
+    setParentId(group.parentId);
+  }, [group.name, group.description, group.parentId, touched]);
+
   const members = useGroupMembers(group.id);
   const update = useUpdateGroup();
   const remove = useDeleteGroup();
   const addMembers = useAddGroupMembers(group.id);
   const removeMember = useRemoveGroupMember(group.id);
+  const users = useUsers({ status: 'active' });
 
   /**
    * 상위 그룹 선택지에서 자기 자신과 자손을 미리 뺀다. 순환은 화면 단계에서 막히고, 서버 검사는
@@ -219,6 +232,7 @@ function GroupDetailPanel({
         },
       });
       toast.success('그룹 정보가 저장되었습니다.');
+      setTouched(false);
     } catch (err) {
       toast.error(apiErrorMessage(err));
     }
@@ -252,10 +266,13 @@ function GroupDetailPanel({
         toast.error(apiErrorMessage(err));
         return;
       }
+      const nameOf = new Map(
+        (users.data ?? []).map((u) => [u.id, u.displayName] as const),
+      );
       const names = conflicts
         .map((c) => {
           const g = allGroups.find((x) => x.id === c.groupId);
-          return `${c.userId}(${g?.name ?? '알 수 없는 그룹'})`;
+          return `${nameOf.get(c.userId) ?? c.userId}(${g?.name ?? '알 수 없는 그룹'})`;
         })
         .join(', ');
       const ok = window.confirm(
@@ -296,7 +313,10 @@ function GroupDetailPanel({
           className={inputCls}
           type="text"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value);
+            setTouched(true);
+          }}
           maxLength={64}
         />
       </label>
@@ -307,7 +327,10 @@ function GroupDetailPanel({
           className={inputCls}
           type="text"
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) => {
+            setDescription(e.target.value);
+            setTouched(true);
+          }}
           maxLength={500}
         />
       </label>
@@ -317,7 +340,10 @@ function GroupDetailPanel({
         <select
           className={inputCls}
           value={parentId ?? ''}
-          onChange={(e) => setParentId(e.target.value === '' ? null : e.target.value)}
+          onChange={(e) => {
+            setParentId(e.target.value === '' ? null : e.target.value);
+            setTouched(true);
+          }}
         >
           <option value="">(최상위)</option>
           {parentOptions.map((g) => (
