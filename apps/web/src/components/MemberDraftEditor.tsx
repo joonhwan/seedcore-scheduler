@@ -46,7 +46,18 @@ export default function MemberDraftEditor({
     );
   }, [users.data, inDraft, search]);
 
-  const allChecked = candidates.length > 0 && candidates.every((u) => checked.has(u.id));
+  /**
+   * 그룹으로 담겨 이미 명단에 들어간 사람이 checked 에 남아 있으면 "선택한 N명 담기" 의 숫자가
+   * 화면에 보이는 체크 수보다 커진다. 그 행은 후보 목록에서 사라져 사용자가 체크를 풀 수도 없다.
+   * 그래서 읽는 시점에 걸러 둔다.
+   */
+  const effectiveChecked = useMemo(
+    () => new Set([...checked].filter((id) => !inDraft.has(id))),
+    [checked, inDraft],
+  );
+
+  const allChecked =
+    candidates.length > 0 && candidates.every((u) => effectiveChecked.has(u.id));
 
   function setRole(userId: string, role: ProjectRole | null) {
     onChange(drafts.map((d) => (d.userId === userId ? { ...d, role } : d)));
@@ -73,7 +84,7 @@ export default function MemberDraftEditor({
 
   function addChecked() {
     const incoming: MemberDraft[] = (users.data ?? [])
-      .filter((u) => checked.has(u.id))
+      .filter((u) => effectiveChecked.has(u.id))
       .map((u) => ({
         userId: u.id,
         displayName: u.displayName,
@@ -152,7 +163,7 @@ export default function MemberDraftEditor({
                 <label className="flex cursor-pointer items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800">
                   <input
                     type="checkbox"
-                    checked={checked.has(u.id)}
+                    checked={effectiveChecked.has(u.id)}
                     onChange={() => toggleCandidate(u.id)}
                   />
                   <span className="text-sm">
@@ -168,11 +179,11 @@ export default function MemberDraftEditor({
         <div className="mt-2 flex justify-end">
           <button
             type="button"
-            disabled={checked.size === 0}
+            disabled={effectiveChecked.size === 0}
             onClick={addChecked}
             className="rounded border border-slate-300 px-3 py-1 text-xs font-semibold disabled:opacity-50 dark:border-slate-700"
           >
-            선택한 {checked.size}명 담기
+            선택한 {effectiveChecked.size}명 담기
           </button>
         </div>
       </div>
