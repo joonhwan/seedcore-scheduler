@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   groupPathNames,
   type GroupProjectCoverage,
+  type UserGroupItem,
   type ProjectRole,
   type UserListItem,
 } from '@sam/shared';
@@ -18,7 +19,6 @@ import {
   useAddUserProjects,
   useRemoveUserProject,
   useUpdateUserProjectRole,
-  useUserGroups,
   useUserProjects,
   userGroupsKey,
 } from '../lib/userProjects';
@@ -174,7 +174,6 @@ function AccountSection({ user }: { user: UserListItem }) {
  * 어디서 했느냐에 따라 뒤처리가 달라지면 안 되기 때문이다.**
  */
 function GroupSection({ userId, displayName }: { userId: string; displayName: string }) {
-  const myGroups = useUserGroups(userId);
   const tree = useGroupTree();
   const qc = useQueryClient();
   const [draft, setDraft] = useState<string | null>(null);
@@ -185,22 +184,45 @@ function GroupSection({ userId, displayName }: { userId: string; displayName: st
     removeFrom?: SyncSide;
   } | null>(null);
 
+  /**
+   * 이 사용자의 소속을 **그룹 조회 응답 하나에서** 뽑는다.
+   *
+   * 예전에는 사용자별 소속(GET /admin/users/:id/groups)과 그룹 목록을 따로 받았다. 그러면
+   * 앞의 것이 먼저 도착했을 때 이름을 만들 재료가 없어 빈 줄이 그려지고, 선택 상자에도
+   * 후보가 없어 "(소속 없음)" 이 잠깐 비쳤다가 뒤늦게 제 값으로 바뀌었다. 그룹 조회는
+   * 애초에 그룹과 소속을 한 응답에 담아 주므로(둘을 따로 부르면 값이 어긋난다는 이유로
+   * 그렇게 설계했다) 여기서도 그 하나만 쓰면 어긋나는 순간 자체가 없다. 사용자 관리
+   * 목록의 배지가 이미 같은 조회를 데워 놓기 때문에, 목록에서 들어오면 곧바로 보인다.
+   *
+   * 정렬은 배지와 같은 규칙(말단 이름 가나다순)을 쓴다. 그래야 목록에 뜬 그룹과 이 화면이
+   * 고르는 "지금 소속" 이 같은 그룹을 가리킨다.
+   */
+  const myGroups = useMemo<UserGroupItem[]>(() => {
+    const all = tree.data?.groups ?? [];
+    const byId = new Map(all.map((g) => [g.id, g]));
+    return (tree.data?.memberships ?? [])
+      .filter((m) => m.userId === userId)
+      .map((m) => byId.get(m.groupId))
+      .filter((g): g is UserGroupItem => g !== undefined)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  }, [tree.data, userId]);
+
   const paths = useMemo(() => {
     const all = tree.data?.groups ?? [];
-    return (myGroups.data ?? []).map((g) => groupPathNames(all, g.id).join(' › '));
-  }, [myGroups.data, tree.data?.groups]);
+    return myGroups.map((g) => groupPathNames(all, g.id).join(' › '));
+  }, [myGroups, tree.data?.groups]);
 
   // 그룹 관리 화면의 계층 트리와 같은 순서로 늘어놓고, 깊이를 들여쓰기로 나타낸다.
   const rows = useMemo(() => flattenGroupTree(tree.data?.groups ?? []), [tree.data?.groups]);
 
   // 지금 소속. 1인 1소속 운영이므로 첫 번째를 기준으로 삼되, 여럿이면 아래에 안내를 띄운다.
-  const currentId = myGroups.data?.[0]?.id ?? '';
+  const currentId = myGroups[0]?.id ?? '';
   const selected = draft ?? currentId;
   const changed = selected !== currentId;
-  const multi = (myGroups.data?.length ?? 0) > 1;
+  const multi = myGroups.length > 1;
 
   async function onMove() {
-    const from = myGroups.data ?? [];
+    const from = myGroups;
     const target = rows.find((r) => r.group.id === selected)?.group;
     const label = target ? `"${target.name}" 으로 옮기` : '소속에서 빼';
     const ok = window.confirm(`"${displayName}" 을(를) ${label}시겠습니까?`);
@@ -270,8 +292,8 @@ function GroupSection({ userId, displayName }: { userId: string; displayName: st
   return (
     <section className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
       <h2 className="text-sm font-semibold">소속 그룹</h2>
-      {myGroups.isLoading && <p className="mt-2 text-sm text-slate-500">로딩…</p>}
-      {myGroups.data && myGroups.data.length === 0 && (
+      {tree.isLoading && <p className="mt-2 text-sm text-slate-500">로딩…</p>}
+      {tree.data && myGroups.length === 0 && (
         <p className="mt-2 text-sm text-slate-500">소속 없음.</p>
       )}
       <ul className="mt-2 space-y-1">
@@ -286,7 +308,7 @@ function GroupSection({ userId, displayName }: { userId: string; displayName: st
         <select
           value={selected}
           onChange={(e) => setDraft(e.target.value)}
-          disabled={tree.isLoading || myGroups.isLoading}
+          disabled={tree.isLoading}
           className="flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
         >
           <option value="">(소속 없음)</option>
