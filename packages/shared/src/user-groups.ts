@@ -70,6 +70,19 @@ export function expandGroupMembers(
   const targets = collectDescendantGroupIds(groups, selectedGroupIds);
   if (targets.size === 0) return [];
 
+  return membersInGroupSet(memberships, targets);
+}
+
+/**
+ * 주어진 그룹 집합에 속한 사용자 id 를 중복 없이, memberships 에 들어 있던 순서로 돌려준다.
+ *
+ * expandGroupMembers 와 directMembersOf 가 이 순서 보장을 함께 하므로 한 곳에 둔다.
+ * 두 함수의 차이는 targets 를 어떻게 만드는지 하나뿐이다.
+ */
+function membersInGroupSet(
+  memberships: GroupMembership[],
+  targets: ReadonlySet<string>,
+): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const m of memberships) {
@@ -242,14 +255,5 @@ export function directMembersOf(
   groupIds: readonly string[],
 ): string[] {
   if (groupIds.length === 0) return [];
-  const targets = new Set(groupIds);
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const m of memberships) {
-    if (!targets.has(m.groupId)) continue;
-    if (seen.has(m.userId)) continue;
-    seen.add(m.userId);
-    out.push(m.userId);
-  }
-  return out;
+  return membersInGroupSet(memberships, new Set(groupIds));
 }
