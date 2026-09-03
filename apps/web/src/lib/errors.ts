@@ -1,4 +1,4 @@
-import { MAX_TREE_DEPTH } from '@sam/shared';
+import { MAX_GROUP_DEPTH, MAX_TREE_DEPTH } from '@sam/shared';
 import { ApiError } from './api';
 
 const KNOWN: Record<string, string> = {
@@ -27,6 +27,13 @@ const KNOWN: Record<string, string> = {
   MANAGER_REQUIRED: '매니저를 최소 1명 지정해야 합니다.',
   INVALID_MANAGER_IDS: '지정한 매니저 중 존재하지 않거나 비활성화된 사용자가 있습니다.',
   INVALID_MEMBER_IDS: '지정한 멤버 중 존재하지 않거나 비활성화된 사용자가 있습니다.',
+  GROUP_NOT_FOUND: '그룹을 찾을 수 없습니다.',
+  GROUP_NOT_EMPTY:
+    '소속 인원이나 하위 그룹이 남아 있어 삭제할 수 없습니다. 먼저 인원과 하위 그룹을 옮기거나 지우십시오.',
+  GROUP_NAME_DUPLICATE: '같은 상위 그룹 아래에 같은 이름의 그룹이 이미 있습니다.',
+  GROUP_CYCLE: '자기 자신이나 자기 하위 그룹을 상위 그룹으로 지정할 수 없습니다.',
+  GROUP_DEPTH_EXCEEDED: `그룹 계층은 최대 ${MAX_GROUP_DEPTH}단계까지만 만들 수 있습니다.`,
+  GROUP_MEMBER_ALREADY_ASSIGNED: '이미 다른 그룹에 속한 사용자가 포함되어 있습니다.',
   NO_DATED_ITEMS:
     '원본 프로젝트에 날짜가 지정된 일정이 없어 일정을 옮길 수 없습니다. 원본 일정 유지로 복제하십시오.',
 };

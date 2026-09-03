@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ProjectDelaySummaryDto } from './expected-progress';
 export * from './expected-progress';
 export * from './user-groups';
+export * from './member-drafts';
 
 export const GlobalRole = z.enum(['ADMIN', 'USER']);
 
@@ -171,6 +172,11 @@ export const AuditAction = z.enum([
   'MEMBER_ADD',
   'MEMBER_REMOVE',
   'MEMBER_ROLE_UPDATE',
+  'GROUP_CREATE',
+  'GROUP_UPDATE',
+  'GROUP_DELETE',
+  'GROUP_MEMBER_ADD',
+  'GROUP_MEMBER_REMOVE',
   'NODE_CREATE',
   'NODE_UPDATE',
   'NODE_MOVE',
@@ -191,6 +197,8 @@ export const CreateProjectDto = z.object({
   name: z.string().min(1).max(128),
   description: z.string().max(2000).optional(),
   managerUserIds: z.array(z.string().min(1)).min(1, '최소 1명의 MANAGER 가 필요합니다'),
+  // CloneProjectDto 와 같은 형태. 기본값이 빈 배열이라 기존 호출은 그대로 동작한다.
+  memberUserIds: z.array(z.string().min(1)).default([]),
 });
 export type CreateProjectDto = z.infer<typeof CreateProjectDto>;
 
@@ -326,6 +334,126 @@ export const ProjectMemberItem = z.object({
   addedAt: z.string(),
 });
 export type ProjectMemberItem = z.infer<typeof ProjectMemberItem>;
+
+// ─── 사용자 그룹 DTO ───────────────────────────────────────────────────────
+export const CreateUserGroupDto = z.object({
+  name: z.string().min(1).max(64),
+  parentId: z.string().min(1).nullable().default(null),
+  description: z.string().max(500).nullable().default(null),
+});
+export type CreateUserGroupDto = z.infer<typeof CreateUserGroupDto>;
+
+export const UpdateUserGroupDto = z
+  .object({
+    name: z.string().min(1).max(64).optional(),
+    parentId: z.string().min(1).nullable().optional(),
+    description: z.string().max(500).nullable().optional(),
+  })
+  .refine((v) => v.name !== undefined || v.parentId !== undefined || v.description !== undefined, {
+    message: '변경 항목이 없습니다',
+  });
+export type UpdateUserGroupDto = z.infer<typeof UpdateUserGroupDto>;
+
+export const UserGroupItem = z.object({
+  id: z.string(),
+  name: z.string(),
+  parentId: z.string().nullable(),
+  description: z.string().nullable(),
+  /** 이 그룹에 직접 속한 인원 수. */
+  directMemberCount: z.number().int(),
+  /** 자손 그룹까지 포함한 인원 수. 화면이 크게 보여 주는 숫자다. */
+  totalMemberCount: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type UserGroupItem = z.infer<typeof UserGroupItem>;
+
+/**
+ * 그룹 목록 조회의 응답. 그룹과 소속을 한 번에 내려보낸다.
+ *
+ * 둘을 따로 부르면 그 사이에 소속이 바뀌었을 때 화면의 미리보기 인원수가 실제와 어긋난다.
+ * 150명 규모라 소속 행이 많아야 수백 개이므로 한 번에 보내도 무해하다.
+ */
+export const UserGroupTree = z.object({
+  groups: z.array(UserGroupItem),
+  memberships: z.array(z.object({ groupId: z.string(), userId: z.string() })),
+});
+export type UserGroupTree = z.infer<typeof UserGroupTree>;
+
+export const GroupMemberItem = z.object({
+  userId: z.string(),
+  username: z.string(),
+  displayName: z.string(),
+  isActive: z.boolean(),
+  addedAt: z.string(),
+});
+export type GroupMemberItem = z.infer<typeof GroupMemberItem>;
+
+export const AddGroupMembersDto = z.object({
+  userIds: z.array(z.string().min(1)).min(1, '한 명 이상을 골라야 합니다'),
+  /**
+   * true 면 다른 그룹에 이미 속한 사람을 그 그룹에서 빼고 옮긴다.
+   * false(기본) 인데 그런 사람이 섞여 있으면 서버가 GROUP_MEMBER_ALREADY_ASSIGNED 로 거부한다.
+   */
+  move: z.boolean().default(false),
+});
+export type AddGroupMembersDto = z.infer<typeof AddGroupMembersDto>;
+
+/**
+ * 그룹 인원의 프로젝트 참여 현황 집계 한 줄.
+ *
+ * 이 값은 "이 프로젝트를 이 그룹으로 채웠다"는 기록이 아니라, 지금 겹치는 인원을 보고 역으로
+ * 추론한 것이다. 그래서 참여 비율을 함께 담아 화면이 비율 높은 순으로 정렬할 수 있게 한다.
+ */
+export const GroupProjectCoverage = z.object({
+  projectId: z.string(),
+  name: z.string(),
+  status: ProjectStatus,
+  /** 그룹(자손 포함) 인원 수. */
+  groupMemberCount: z.number().int(),
+  /** 그중 이 프로젝트에 참여 중인 인원 수. */
+  participatingCount: z.number().int(),
+  /** 그룹 인원 중 이 프로젝트에 없는 사람들. */
+  missingUserIds: z.array(z.string()),
+});
+export type GroupProjectCoverage = z.infer<typeof GroupProjectCoverage>;
+
+// ─── 사용자 기준 권한 DTO ──────────────────────────────────────────────────
+export const UserProjectItem = z.object({
+  projectId: z.string(),
+  name: z.string(),
+  status: ProjectStatus,
+  role: ProjectRole,
+  addedAt: z.string(),
+});
+export type UserProjectItem = z.infer<typeof UserProjectItem>;
+
+export const AddUserProjectsDto = z.object({
+  projectIds: z.array(z.string().min(1)).min(1, '한 개 이상을 골라야 합니다'),
+  role: ProjectRole,
+});
+export type AddUserProjectsDto = z.infer<typeof AddUserProjectsDto>;
+
+export const UpdateUserProjectRoleDto = z.object({
+  role: ProjectRole,
+});
+export type UpdateUserProjectRoleDto = z.infer<typeof UpdateUserProjectRoleDto>;
+
+// ─── 멤버 일괄 추가 DTO ────────────────────────────────────────────────────
+export const BulkAddMembersDto = z.object({
+  members: z
+    .array(z.object({ userId: z.string().min(1), role: ProjectRole }))
+    .min(1, '한 명 이상을 골라야 합니다'),
+});
+export type BulkAddMembersDto = z.infer<typeof BulkAddMembersDto>;
+
+export const BulkAddMembersResult = z.object({
+  added: z.number().int(),
+  skipped: z.number().int(),
+  /** 이미 멤버라서 건너뛴 사람들. */
+  skippedUserIds: z.array(z.string()),
+});
+export type BulkAddMembersResult = z.infer<typeof BulkAddMembersResult>;
 
 // ─── 일정 노드 DTO ─────────────────────────────────────────────────────────
 export const Progress = z.number().int().min(0).max(100);
