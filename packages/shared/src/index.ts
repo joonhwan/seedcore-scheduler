@@ -332,6 +332,10 @@ export const ProjectMemberItem = z.object({
   displayName: z.string(),
   role: ProjectRole,
   addedAt: z.string(),
+  /** 말단 소속 그룹 이름. 소속이 없으면 null. 목록의 배지에 쓴다. */
+  groupName: z.string().nullable(),
+  /** 최상위부터의 경로. 마우스오버 표시에 쓴다. 소속이 없으면 빈 배열. */
+  groupPath: z.array(z.string()),
 });
 export type ProjectMemberItem = z.infer<typeof ProjectMemberItem>;
 

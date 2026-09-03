@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { groupPathOfUser } from '@sam/shared';
 import type {
   AddMemberDto,
   BulkAddMembersDto,
@@ -48,12 +49,15 @@ export class MembersService {
       orderBy: [{ role: 'asc' }, { addedAt: 'asc' }],
     });
 
+    const groupInfo = await this.groupPathMap(members.map((m) => m.user.id));
+
     return members.map((m) => ({
       userId: m.user.id,
       username: m.user.username,
       displayName: m.user.displayName,
       role: m.role === 'MANAGER' ? 'MANAGER' : 'MEMBER',
       addedAt: m.addedAt.toISOString(),
+      ...(groupInfo.get(m.user.id) ?? { groupName: null, groupPath: [] }),
     }));
   }
 
@@ -116,12 +120,15 @@ export class MembersService {
       });
     }
 
+    const groupInfo = await this.groupPathMap([targetUser.id]);
+
     return {
       userId: targetUser.id,
       username: targetUser.username,
       displayName: targetUser.displayName,
       role: body.role,
       addedAt: created.addedAt.toISOString(),
+      ...(groupInfo.get(targetUser.id) ?? { groupName: null, groupPath: [] }),
     };
   }
 
@@ -296,12 +303,14 @@ export class MembersService {
     }
 
     if (target.role === body.role) {
+      const groupInfo = await this.groupPathMap([target.user.id]);
       return {
         userId: target.user.id,
         username: target.user.username,
         displayName: target.user.displayName,
         role: target.role === 'MANAGER' ? 'MANAGER' : 'MEMBER',
         addedAt: target.addedAt.toISOString(),
+        ...(groupInfo.get(target.user.id) ?? { groupName: null, groupPath: [] }),
       };
     }
 
@@ -341,16 +350,59 @@ export class MembersService {
       });
     }
 
+    const groupInfo = await this.groupPathMap([target.user.id]);
+
     return {
       userId: target.user.id,
       username: target.user.username,
       displayName: target.user.displayName,
       role: updated.role === 'MANAGER' ? 'MANAGER' : 'MEMBER',
       addedAt: updated.addedAt.toISOString(),
+      ...(groupInfo.get(target.user.id) ?? { groupName: null, groupPath: [] }),
     };
   }
 
   // ─── 내부 가드 ────────────────────────────────────────────────────────────
+
+  /**
+   * 주어진 사용자들의 소속 경로를 한꺼번에 읽어 맵으로 돌려준다.
+   *
+   * 화면(사용자 관리·명단 편집기)이 쓰는 것과 **같은 groupPathOfUser 함수**로 만든다.
+   * 그래야 서버가 내려준 경로와 화면이 계산한 경로가 어긋나지 않는다.
+   *
+   * 그룹은 수십 개, 멤버는 프로젝트당 수십 명 규모라 질의 둘을 더하는 부담이 없다.
+   *
+   * 경로의 마지막 원소(groupName)를 꺼내는 계산까지 여기서 한 번에 처리한다 —
+   * list · add · updateRole 세 곳이 같은 계산을 각자 복사하지 않도록 하기 위해서다.
+   */
+  private async groupPathMap(
+    userIds: string[],
+  ): Promise<Map<string, { groupName: string | null; groupPath: string[] }>> {
+    const out = new Map<string, { groupName: string | null; groupPath: string[] }>();
+    if (userIds.length === 0) return out;
+
+    const [groups, memberRows] = await Promise.all([
+      this.prisma.userGroup.findMany({
+        select: { id: true, parentId: true, name: true },
+      }),
+      this.prisma.userGroupMember.findMany({
+        where: { userId: { in: userIds } },
+        select: { groupId: true, userId: true },
+      }),
+    ]);
+    const memberships = memberRows.map((m) => ({
+      groupId: m.groupId,
+      userId: m.userId,
+    }));
+    for (const userId of userIds) {
+      const groupPath = groupPathOfUser(groups, memberships, userId);
+      out.set(userId, {
+        groupPath,
+        groupName: groupPath.length > 0 ? groupPath[groupPath.length - 1]! : null,
+      });
+    }
+    return out;
+  }
 
   private async assertProjectExists(projectId: string): Promise<void> {
     const exists = await this.prisma.project.findUnique({
