@@ -265,8 +265,15 @@ export class ProjectsService {
       name: created.name,
       description: created.description,
       status: 'ACTIVE',
-      myRole: uniqueIds.includes(ctx.actorId) ? 'MANAGER' : null,
-      memberCount: uniqueIds.length,
+      // 만든 사람이 스스로를 MEMBER 로 담았을 수도 있으므로 두 목록을 모두 본다.
+      myRole: uniqueIds.includes(ctx.actorId)
+        ? 'MANAGER'
+        : memberIds.includes(ctx.actorId)
+          ? 'MEMBER'
+          : null,
+      // memberIds 는 이미 MANAGER 와 겹치는 사람을 걸러낸 뒤이므로 두 길이를 더해도
+      // 중복 집계가 아니다.
+      memberCount: uniqueIds.length + memberIds.length,
       createdAt: created.createdAt.toISOString(),
       updatedAt: created.updatedAt.toISOString(),
       // 방금 만든 프로젝트라 일정이 하나도 없다.

@@ -143,6 +143,41 @@ describe('ProjectsService.create', () => {
     );
   });
 
+  it('MANAGER 둘과 MEMBER 셋으로 만들면 memberCount 가 5다 (겹치는 사람은 한 번만)', async () => {
+    const { service } = buildService();
+    const result = await service.create(
+      {
+        name: 'proj',
+        managerUserIds: ['m1', 'm2'],
+        // m1 은 MANAGER 에도 있으므로 memberIds 에서 걸러져 한 번만 세여야 한다.
+        memberUserIds: ['m1', 'u1', 'u2', 'u3'],
+      },
+      CTX,
+    );
+    expect(result.memberCount).toBe(5);
+  });
+
+  it('만든 사람이 memberUserIds 에만 있으면 myRole 이 MEMBER 다', async () => {
+    const { service } = buildService();
+    const asMember = await service.create(
+      { name: 'proj', managerUserIds: ['other'], memberUserIds: ['admin-1'] },
+      CTX,
+    );
+    expect(asMember.myRole).toBe('MEMBER');
+
+    const asManager = await service.create(
+      { name: 'proj', managerUserIds: ['admin-1'], memberUserIds: [] },
+      CTX,
+    );
+    expect(asManager.myRole).toBe('MANAGER');
+
+    const asNeither = await service.create(
+      { name: 'proj', managerUserIds: ['other'], memberUserIds: [] },
+      CTX,
+    );
+    expect(asNeither.myRole).toBeNull();
+  });
+
   it('managerUserIds 가 비면 MANAGER_REQUIRED', async () => {
     const { service } = buildService();
     await expect(
