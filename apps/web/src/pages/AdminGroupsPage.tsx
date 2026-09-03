@@ -6,6 +6,7 @@ import {
   type GroupProjectCoverage,
   type UserGroupItem,
 } from '@sam/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
 import { api } from '../lib/api';
@@ -18,6 +19,7 @@ import {
   useGroupTree,
   useRemoveGroupMember,
   useUpdateGroup,
+  groupsKey,
 } from '../lib/groups';
 import { useUsers } from '../lib/users';
 import { flattenGroupTree } from '../lib/groupTreeView';
@@ -25,6 +27,7 @@ import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import UserPickerDialog from '../components/UserPickerDialog';
 import GroupProjectSyncDialog, { type SyncSide } from '../components/GroupProjectSyncDialog';
+import BusyOverlay from '../components/BusyOverlay';
 
 export default function AdminGroupsPage() {
   const me = useMe();
@@ -218,6 +221,16 @@ function GroupDetailPanel({
   const addMembers = useAddGroupMembers(group.id);
   const removeMember = useRemoveGroupMember(group.id);
   const users = useUsers({ status: 'active' });
+  const qc = useQueryClient();
+  /**
+   * 화면 전체를 덮는 대기 표시의 문구. null 이면 덮개를 그리지 않는다.
+   *
+   * 개별 뮤테이션의 isPending 을 쓰지 않는 이유가 있다. 이 화면의 소속 추가·해제는 요청 하나로
+   * 끝나지 않고 **집계 조회 → 변경 요청 → 목록 재조회**를 잇달아 수행하는데, isPending 은 그중
+   * 가운데 한 구간만 덮는다. 앞뒤 구간이 표시 없이 비면 사용자에게는 화면이 멈춘 것으로 보인다.
+   * 그래서 조작 전체를 감싸는 상태를 따로 둔다.
+   */
+  const [busy, setBusy] = useState<string | null>(null);
 
   /**
    * 상위 그룹 선택지에서 자기 자신과 자손을 미리 뺀다. 순환은 화면 단계에서 막히고, 서버 검사는
@@ -275,14 +288,25 @@ function GroupDetailPanel({
       await addMembers.mutateAsync({ userIds, move: false });
       toast.success(`${userIds.length}명이 추가되었습니다.`);
       setPickerOpen(false);
-      // 넣은 직후: 새 소속이 참여 중인 프로젝트에 함께 넣을지 묻는다.
-      const rows = await api.get<GroupProjectCoverage[]>(`/admin/groups/${group.id}/projects`);
-      if (rows.length > 0) {
-        setSync({
-          title: `${userIds.length}명을 "${group.name}" 에 넣었습니다.`,
-          userIds,
-          addTo: { groupName: group.name, coverage: rows },
-        });
+      // 대화상자가 닫힌 뒤에도 집계 조회가 한 번 더 남아 있다. 그 구간을 비워 두면 화면이
+      // 잠잠하다가 동기화 대화상자가 갑자기 튀어나온 것처럼 보인다.
+      setBusy('참여 중인 프로젝트를 확인하는 중입니다...');
+      try {
+        // 집계 조회와 목록 재조회를 함께 기다린다. 재조회까지 끝난 뒤에 덮개를 내려야
+        // 덮개가 사라지는 순간 소속 인원 목록이 이미 갱신되어 있다.
+        const [rows] = await Promise.all([
+          api.get<GroupProjectCoverage[]>(`/admin/groups/${group.id}/projects`),
+          qc.invalidateQueries({ queryKey: groupsKey }),
+        ]);
+        if (rows.length > 0) {
+          setSync({
+            title: `${userIds.length}명을 "${group.name}" 에 넣었습니다.`,
+            userIds,
+            addTo: { groupName: group.name, coverage: rows },
+          });
+        }
+      } finally {
+        setBusy(null);
       }
       return;
     } catch (err) {
@@ -304,6 +328,9 @@ function GroupDetailPanel({
         `선택하신 ${userIds.length}명 중 ${conflicts.length}명은 이미 다른 그룹에 속해 있습니다.\n${names}\n\n기존 소속에서 빼고 "${group.name}" 으로 옮기시겠습니까?`,
       );
       if (!ok) return;
+      // 덮개는 확인 창에 답한 **뒤에** 올린다. window.confirm 은 메인 스레드를 막으므로,
+      // 묻기 전에 올리면 "처리 중" 문구가 질문 뒤에 남아 서로 어긋나 보인다.
+      setBusy('소속을 옮기는 중입니다...');
       try {
         // 옮기기 전에 이전 그룹의 집계를 읽는다. 옮긴(move: true) 뒤에 읽으면 이미 이 그룹
         // 소속에서 빠진 뒤의 집계가 나와, missingUserIds 로 "실제로 참여 중인 프로젝트"를
@@ -337,9 +364,10 @@ function GroupDetailPanel({
         setPickerOpen(false);
 
         // 넣은 직후: 새 소속이 참여 중인 프로젝트에 함께 넣을지 묻는다.
-        const rows = await api.get<GroupProjectCoverage[]>(
-          `/admin/groups/${group.id}/projects`,
-        );
+        const [rows] = await Promise.all([
+          api.get<GroupProjectCoverage[]>(`/admin/groups/${group.id}/projects`),
+          qc.invalidateQueries({ queryKey: groupsKey }),
+        ]);
 
         if (rows.length > 0 || removeRows.length > 0) {
           setSync({
@@ -355,6 +383,8 @@ function GroupDetailPanel({
         }
       } catch (retryErr) {
         toast.error(apiErrorMessage(retryErr));
+      } finally {
+        setBusy(null);
       }
     }
   }
@@ -362,6 +392,9 @@ function GroupDetailPanel({
   async function onRemoveMember(userId: string, displayName: string) {
     const ok = window.confirm(`"${displayName}" 을(를) 이 그룹에서 빼시겠습니까?`);
     if (!ok) return;
+    // 여기서부터 서버를 세 번 다녀온다(집계 조회 → 해제 → 목록 재조회). 그동안 표시가 없으면
+    // 뺀 사람의 행이 그대로 남아 있어 눌러도 아무 일이 없는 것처럼 보인다.
+    setBusy('소속을 해제하는 중입니다...');
     try {
       // 빼기 전에 집계를 읽는다. 뺀 뒤에 읽으면(예전 버그) 이미 이 사람이 빠진 "남은 인원"
       // 기준의 집계가 나와, 방금 뺀 사람이 그 프로젝트에 있었는지와 무관해진다. 그러면
@@ -374,6 +407,9 @@ function GroupDetailPanel({
 
       await removeMember.mutateAsync(userId);
       toast.success('소속이 해제되었습니다.');
+      // 재조회가 끝나기를 기다린 뒤에 덮개를 내린다. 기다리지 않으면 덮개가 사라진 화면에
+      // 방금 뺀 사람이 잠시 그대로 남아 있어, 해제가 안 된 것처럼 보인다.
+      await qc.invalidateQueries({ queryKey: groupsKey });
       if (coverage.length > 0) {
         setSync({
           title: `"${displayName}" 을(를) "${group.name}" 에서 뺐습니다.`,
@@ -383,6 +419,8 @@ function GroupDetailPanel({
       }
     } catch (err) {
       toast.error(apiErrorMessage(err));
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -464,9 +502,18 @@ function GroupDetailPanel({
         </button>
       </div>
 
-      <h3 className="mt-5 border-t border-slate-100 pt-3 text-sm font-semibold dark:border-slate-800">
-        소속 인원 {members.data?.length ?? 0}명
-      </h3>
+      <div className="mt-5 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+        <h3 className="text-sm font-semibold">소속 인원 {members.data?.length ?? 0}명</h3>
+        {/* 인원을 넣는 버튼은 이 목록의 조작이므로 목록 제목 옆에 둔다. 예전에는 아래쪽
+            "참여 중인 프로젝트" 목록 뒤에 있어서 프로젝트에 인원을 넣는 것처럼 읽혔다. */}
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="rounded border border-slate-300 px-2 py-0.5 text-xs font-semibold dark:border-slate-700"
+        >
+          + 인원 추가
+        </button>
+      </div>
       {members.isLoading && <p className="mt-2 text-sm text-slate-500">로딩…</p>}
       <ul className="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
         {members.data?.map((m) => (
@@ -514,14 +561,6 @@ function GroupDetailPanel({
         ))}
       </ul>
 
-      <button
-        type="button"
-        onClick={() => setPickerOpen(true)}
-        className="mt-3 rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold dark:border-slate-700"
-      >
-        + 인원 추가
-      </button>
-
       {pickerOpen && (
         <UserPickerDialog
           title={`"${group.name}" 에 인원 추가`}
@@ -533,6 +572,8 @@ function GroupDetailPanel({
           onConfirm={onAddMembers}
         />
       )}
+
+      {busy && <BusyOverlay label={busy} />}
 
       {sync && (
         <GroupProjectSyncDialog
