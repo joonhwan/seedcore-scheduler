@@ -86,7 +86,14 @@ export class UserProjectsService {
     input: AddUserProjectsDto,
     ctx: UserProjectActorContext,
   ): Promise<AddUserProjectsResult> {
-    await this.assertUserExists(userId);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true },
+    });
+    if (!user) throw new NotFoundException({ error: 'USER_NOT_FOUND' });
+    // MembersService.add 와 같은 규칙을 지킨다. 같은 테이블에 두 규칙이 생기면 안 된다.
+    if (!user.isActive) throw new BadRequestException({ error: 'USER_INACTIVE' });
+
     const projectIds = Array.from(new Set(input.projectIds));
 
     const found = await this.prisma.project.findMany({
@@ -145,6 +152,12 @@ export class UserProjectsService {
       where: { projectId_userId: { projectId, userId } },
     });
     if (!target) throw new NotFoundException({ error: 'NOT_A_MEMBER' });
+
+    // MembersService.updateRole 과 같은 규칙: 역할이 그대로면 쓰지도 기록하지도 않는다.
+    if (target.role === input.role) {
+      const list = await this.listProjects(userId);
+      return list.find((p) => p.projectId === projectId)!;
+    }
 
     if (target.role === 'MANAGER' && input.role === 'MEMBER') {
       await this.assertNotLastManager(projectId, userId);

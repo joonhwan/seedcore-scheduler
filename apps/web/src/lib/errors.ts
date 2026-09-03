@@ -19,6 +19,7 @@ const KNOWN: Record<string, string> = {
   NAME_CONFLICT: '같은 이름이 이미 존재합니다.',
   USERNAME_TAKEN: '이미 사용 중인 username 입니다.',
   USER_NOT_FOUND: '사용자를 찾을 수 없습니다.',
+  USER_INACTIVE: '비활성 상태인 사용자는 프로젝트에 참여시킬 수 없습니다.',
   PASSWORD_POLICY_VIOLATION: '비밀번호 정책을 충족하지 않습니다.',
   LAST_ACTIVE_ADMIN: '활성 ADMIN 이 자기 자신뿐이라 비활성화할 수 없습니다.',
   CSRF_ORIGIN_MISMATCH: '요청 출처 검증 실패. 새로고침 후 다시 시도하세요.',

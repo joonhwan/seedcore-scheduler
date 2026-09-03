@@ -13,14 +13,24 @@ interface PmRow {
   addedAt: Date;
 }
 
-function buildService(seed: { members?: PmRow[]; projectIds?: string[] } = {}) {
+function buildService(
+  seed: { members?: PmRow[]; projectIds?: string[]; inactiveUserIds?: string[] } = {},
+) {
   const members = [...(seed.members ?? [])];
   const projectIds = seed.projectIds ?? ['p1', 'p2'];
+  const inactiveUserIds = new Set(seed.inactiveUserIds ?? []);
 
   const prismaObject = {
     user: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
-        where.id === 'missing' ? null : { id: where.id, username: where.id, displayName: where.id },
+        where.id === 'missing'
+          ? null
+          : {
+              id: where.id,
+              username: where.id,
+              displayName: where.id,
+              isActive: !inactiveUserIds.has(where.id),
+            },
       ),
     },
     project: {
@@ -104,7 +114,7 @@ function buildService(seed: { members?: PmRow[]; projectIds?: string[] } = {}) {
 
   const prisma = prismaObject as unknown as PrismaService;
   const audit = { log: vi.fn(async () => {}) } as unknown as AuditService;
-  return { service: new UserProjectsService(prisma, audit), audit, members };
+  return { service: new UserProjectsService(prisma, audit), audit, members, prismaObject };
 }
 
 const CTX = { actorId: 'admin-1', adminMode: false };
@@ -135,6 +145,13 @@ describe('UserProjectsService.addProjects', () => {
     await expect(
       service.addProjects('missing', { projectIds: ['p1'], role: 'MEMBER' }, CTX),
     ).rejects.toMatchObject({ response: { error: 'USER_NOT_FOUND' } });
+  });
+
+  it('비활성 사용자는 거부한다', async () => {
+    const { service } = buildService({ inactiveUserIds: ['u1'] });
+    await expect(
+      service.addProjects('u1', { projectIds: ['p1'], role: 'MEMBER' }, CTX),
+    ).rejects.toMatchObject({ response: { error: 'USER_INACTIVE' } });
   });
 
   it('사람마다 MEMBER_ADD 를 남긴다', async () => {
@@ -238,5 +255,15 @@ describe('UserProjectsService.updateRole', () => {
     });
     const updated = await service.updateRole('u1', 'p1', { role: 'MANAGER' }, CTX);
     expect(updated.role).toBe('MANAGER');
+  });
+
+  it('요청한 역할이 현재 역할과 같으면 쓰지도 기록하지도 않는다', async () => {
+    const { service, audit, prismaObject } = buildService({
+      members: [{ projectId: 'p1', userId: 'u1', role: 'MEMBER', addedById: 'a', addedAt: T0 }],
+    });
+    const updated = await service.updateRole('u1', 'p1', { role: 'MEMBER' }, CTX);
+    expect(updated.role).toBe('MEMBER');
+    expect(prismaObject.projectMember.update).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
   });
 });
