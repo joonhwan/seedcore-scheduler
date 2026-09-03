@@ -1,8 +1,13 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { GroupProjectCoverage } from '@sam/shared';
 import { api } from '../lib/api';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
+import { membersKey } from '../lib/members';
+import { projectKey } from '../lib/projects';
+import { userProjectsKey } from '../lib/userProjects';
+import { groupsKey } from '../lib/groups';
 
 export interface SyncSide {
   groupName: string;
@@ -35,6 +40,12 @@ export default function GroupProjectSyncDialog({
   const [toAdd, setToAdd] = useState<Set<string>>(new Set());
   const [toRemove, setToRemove] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
+
+  // 부분 실패 뒤 다시 누를 때 이미 반영된 것을 또 보내지 않기 위한 기록.
+  // 빼기는 이미 뺀 짝에 404 NOT_A_MEMBER 가 나서 진짜 원인을 가리므로 특히 중요하다.
+  const doneAdd = useRef<Set<string>>(new Set());
+  const donePair = useRef<Set<string>>(new Set());
 
   function toggle(
     set: Set<string>,
@@ -54,26 +65,48 @@ export default function GroupProjectSyncDialog({
     try {
       // 넣기는 프로젝트마다 일괄 추가 API 한 번이면 된다.
       for (const projectId of toAdd) {
+        if (doneAdd.current.has(projectId)) continue;
         const result = await api.post<{ added: number }>(
           `/projects/${projectId}/members/bulk`,
           { members: userIds.map((userId) => ({ userId, role: 'MEMBER' })) },
         );
         added += result.added;
+        doneAdd.current.add(projectId);
       }
       // 빼기는 사용자 기준 축을 쓰므로 사람마다 한 번씩 부른다.
       // 대상이 몇 명·몇 건 규모라 요청 수가 문제 되지 않는다.
       for (const projectId of toRemove) {
         for (const userId of userIds) {
+          const pairKey = `${projectId}:${userId}`;
+          if (donePair.current.has(pairKey)) continue;
           await api.delete<void>(`/admin/users/${userId}/projects/${projectId}`);
           removed += 1;
+          donePair.current.add(pairKey);
         }
       }
       toast.success(`프로젝트 참여 ${added}건 추가, ${removed}건 해제되었습니다.`);
       onClose();
     } catch (err) {
-      toast.error(apiErrorMessage(err));
+      // 여기까지 성공한 것은 이미 서버에 반영되었다. 그 사실을 알리지 않으면 관리자가
+      // 아무 일도 없었다고 오해한다.
+      toast.error(
+        `프로젝트 참여 ${added}건 추가, ${removed}건 해제까지 반영된 뒤 실패했습니다. ${apiErrorMessage(err)}`,
+      );
     } finally {
       setBusy(false);
+      // 부분 실패에서도 일부는 이미 서버에 반영되었으므로 성공 여부와 무관하게 갱신한다.
+      for (const projectId of new Set([...toAdd, ...toRemove])) {
+        qc.invalidateQueries({ queryKey: membersKey(projectId) });
+        qc.invalidateQueries({ queryKey: projectKey(projectId) });
+      }
+      for (const userId of userIds) {
+        qc.invalidateQueries({ queryKey: userProjectsKey(userId) });
+      }
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      // groupProjectsKey(groupId) 는 ['admin','groups', groupId, 'projects'] 형태라
+      // groupsKey(['admin','groups']) 무효화가 접두어 일치로 그 아래를 모두 덮는다.
+      // 이 대화상자는 어느 그룹에서 열렸는지 모르므로(옮긴 경우 addTo·removeFrom 두 그룹) 이 편이 맞다.
+      qc.invalidateQueries({ queryKey: groupsKey });
     }
   }
 
