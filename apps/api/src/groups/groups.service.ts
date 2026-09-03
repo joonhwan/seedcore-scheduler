@@ -111,6 +111,8 @@ export class GroupsService {
       payload: { name: created.name, parentId: created.parentId },
     });
 
+    // 갓 만든 그룹은 소속 인원도 하위 그룹도 있을 수 없으므로 0, 0 이 곧 사실이다.
+    // (update() 는 기존 그룹을 고치는 것이라 실제로 세어야 한다 — 아래 update() 참고.)
     return this.toItem(created, 0, 0);
   }
 
@@ -168,7 +170,20 @@ export class GroupsService {
       },
     });
 
-    return this.toItem(updated, 0, 0);
+    // update() 는 기존 그룹을 고치는 것이라 create() 와 달리 0, 0 이 사실이 아닐 수 있다.
+    // tree() 가 쓰는 것과 같은 방식(expandGroupMembers)으로 세어 화면 숫자와 어긋나지 않게 한다.
+    // id 의 상위가 바뀌어도 id 아래의 부분 트리 자체는 그대로이므로 누계 인원수에는 영향이 없다.
+    const memberRows = await this.prisma.userGroupMember.findMany({
+      select: { groupId: true, userId: true },
+    });
+    const memberships = memberRows.map((m) => ({
+      groupId: m.groupId,
+      userId: m.userId,
+    }));
+    const directMemberCount = memberships.filter((m) => m.groupId === id).length;
+    const totalMemberCount = expandGroupMembers(nodes, memberships, [id]).length;
+
+    return this.toItem(updated, directMemberCount, totalMemberCount);
   }
 
   /**

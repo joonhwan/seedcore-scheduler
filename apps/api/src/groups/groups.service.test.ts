@@ -189,6 +189,21 @@ describe('GroupsService.update', () => {
     const updated = await service.update('mech', { name: '기구설계팀' }, CTX);
     expect(updated.name).toBe('기구설계팀');
   });
+
+  it('소속 인원이 있는 그룹을 수정해도 실제 인원수를 그대로 돌려준다', async () => {
+    // 과거 결함: update() 가 항상 0, 0 을 돌려주어 tree() 가 보여주는 숫자와 어긋났다.
+    const { service } = buildService({
+      groups: [...SAMPLE],
+      members: [
+        { groupId: 'center', userId: 'head', addedById: 'admin-1', addedAt: T0 },
+        // 자손(mech) 소속도 center 의 누계에 잡혀야 한다.
+        { groupId: 'mech', userId: 'm1', addedById: 'admin-1', addedAt: T0 },
+      ],
+    });
+    const updated = await service.update('center', { name: '운영기술본부' }, CTX);
+    expect(updated.directMemberCount).toBe(1);
+    expect(updated.totalMemberCount).toBe(2);
+  });
 });
 
 describe('GroupsService.remove', () => {
