@@ -83,7 +83,10 @@ function AccountSection({ user }: { user: UserListItem }) {
       setTouched(false);
     } catch (err) {
       toast.error(apiErrorMessage(err));
+      // 입력값을 서버 값으로 되돌렸으므로 편집 표시도 함께 내린다. 이것이 없으면 한 번
+      // 실패한 뒤로 이 필드가 외부 변경을 영구히 따라가지 않는다.
       setDraftName(user.displayName);
+      setTouched(false);
     }
   }
 
@@ -177,10 +180,18 @@ function ProjectSection({ userId }: { userId: string }) {
   const updateRole = useUpdateUserProjectRole(userId);
   const removeProject = useRemoveUserProject(userId);
 
+  // 확인 창을 취소하면 상태가 바뀌지 않아 리렌더가 일어나지 않는다. 그러면 셀렉트에는 방금
+  // 고른(거부된) 값이 그대로 남아 서버 상태와 어긋난다. 이 값을 올려 셀렉트를 다시 마운트해
+  // value 로 되돌린다.
+  const [cancelToken, setCancelToken] = useState(0);
+
   async function onRoleChange(projectId: string, name: string, role: ProjectRole) {
     const verb = role === 'MANAGER' ? 'MANAGER(매니저)로 승격' : 'MEMBER(일반 멤버)로 변경';
     const ok = window.confirm(`"${name}" 에서의 역할을 ${verb}하시겠습니까?`);
-    if (!ok) return;
+    if (!ok) {
+      setCancelToken((n) => n + 1);
+      return;
+    }
     try {
       await updateRole.mutateAsync({ projectId, role });
       toast.success('역할이 변경되었습니다.');
@@ -235,6 +246,7 @@ function ProjectSection({ userId }: { userId: string }) {
               )}
             </Link>
             <select
+              key={`${p.projectId}:${p.role}:${cancelToken}`}
               value={p.role}
               onChange={(e) => onRoleChange(p.projectId, p.name, e.target.value as ProjectRole)}
               disabled={updateRole.isPending}
