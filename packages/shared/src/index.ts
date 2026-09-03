@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ProjectDelaySummaryDto } from './expected-progress';
 export * from './expected-progress';
+export * from './user-groups';
 
 export const GlobalRole = z.enum(['ADMIN', 'USER']);
 
