@@ -7,7 +7,7 @@ import {
   remapDatePair,
   toEpochDay,
   type CloneDateMode,
-  type ProjectRole,
+  type MemberDraft,
 } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
@@ -17,16 +17,7 @@ import { useNodes } from '../lib/nodes';
 import { useUsers } from '../lib/users';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
-
-/** 승계 대상 한 명. role 이 null 이면 새 프로젝트에서 제외한다. */
-interface MemberDraft {
-  userId: string;
-  displayName: string;
-  username: string;
-  role: ProjectRole | null;
-  /** 활성 사용자 목록(users.data)에 없는 사용자. 서버가 복제를 거부하므로 제외를 강제한다. */
-  inactive: boolean;
-}
+import MemberDraftEditor from '../components/MemberDraftEditor';
 
 export default function ProjectClonePage() {
   const { id: sourceId } = useParams<{ id: string }>();
@@ -47,7 +38,6 @@ export default function ProjectClonePage() {
   const [newEndDate, setNewEndDate] = useState('');
   const [drafts, setDrafts] = useState<MemberDraft[]>([]);
   const [draftsSeeded, setDraftsSeeded] = useState(false);
-  const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   // 원본 이름·설명을 한 번만 프리필한다. 이후 사용자가 고친 값을 덮지 않는다.
@@ -110,20 +100,6 @@ export default function ProjectClonePage() {
 
   const managerCount = drafts.filter((d) => d.role === 'MANAGER').length;
 
-  // 원본 멤버가 아닌 사용자만 추가 후보로 보여준다.
-  const addCandidates = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q || !users.data) return [];
-    const taken = new Set(drafts.map((d) => d.userId));
-    return users.data
-      .filter((u) => !taken.has(u.id))
-      .filter(
-        (u) =>
-          u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q),
-      )
-      .slice(0, 10);
-  }, [users.data, drafts, search]);
-
   if (me.isLoading) return <div className="p-6 text-sm text-slate-500">로딩…</div>;
   if (me.data?.globalRole !== 'ADMIN' || !adminMode) {
     return (
@@ -134,25 +110,6 @@ export default function ProjectClonePage() {
         </p>
       </main>
     );
-  }
-
-  function setRole(userId: string, role: ProjectRole | null) {
-    setDrafts((prev) => prev.map((d) => (d.userId === userId ? { ...d, role } : d)));
-  }
-
-  function addUser(u: { id: string; displayName: string; username: string }) {
-    setDrafts((prev) => [
-      ...prev,
-      {
-        userId: u.id,
-        displayName: u.displayName,
-        username: u.username,
-        role: 'MEMBER',
-        // 검색 후보는 useUsers({ status: 'active' }) 목록에서만 뽑으므로 항상 활성 사용자다.
-        inactive: false,
-      },
-    ]);
-    setSearch('');
   }
 
   async function onSubmit(e: FormEvent) {
@@ -341,85 +298,14 @@ export default function ProjectClonePage() {
           )}
         </fieldset>
 
-        <fieldset className="rounded border border-slate-200 p-3 dark:border-slate-700">
-          <legend className="px-1 text-sm font-semibold">멤버 승계 *</legend>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            원본 멤버를 그대로 물려받습니다. 역할을 바꾸거나 제외할 수 있습니다. MANAGER 는
-            최소 1명이 필요합니다. (현재 MANAGER {managerCount}명)
-          </p>
-
-          {sourceMembers.isLoading && (
-            <p className="mt-2 text-sm text-slate-500">원본 멤버 로딩…</p>
-          )}
-
-          <ul className="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
-            {drafts.map((d) => (
-              <li key={d.userId} className="flex flex-wrap items-center gap-3 py-2">
-                <span className="flex-1 text-sm">
-                  {d.displayName}{' '}
-                  <span className="text-xs text-slate-500">@{d.username}</span>
-                  {d.inactive && (
-                    <span className="block text-xs text-amber-600 dark:text-amber-400">
-                      비활성 사용자 — 복제 대상에서 제외됩니다
-                    </span>
-                  )}
-                </span>
-                <div className="flex gap-3 text-xs">
-                  {(['MANAGER', 'MEMBER'] as const).map((role) => (
-                    <label
-                      key={role}
-                      className={`flex items-center gap-1 ${d.inactive ? 'opacity-50' : ''}`}
-                    >
-                      <input
-                        type="radio"
-                        name={`role-${d.userId}`}
-                        checked={d.role === role}
-                        disabled={d.inactive}
-                        onChange={() => setRole(d.userId, role)}
-                      />
-                      {role}
-                    </label>
-                  ))}
-                  <label className="flex items-center gap-1 text-slate-500">
-                    <input
-                      type="radio"
-                      name={`role-${d.userId}`}
-                      checked={d.role === null}
-                      onChange={() => setRole(d.userId, null)}
-                    />
-                    제외
-                  </label>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-3">
-            <input
-              type="search"
-              placeholder="사용자 검색해서 추가"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
-            />
-            {addCandidates.length > 0 && (
-              <ul className="mt-1 divide-y divide-slate-100 rounded border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
-                {addCandidates.map((u) => (
-                  <li key={u.id}>
-                    <button
-                      type="button"
-                      onClick={() => addUser(u)}
-                      className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-                    >
-                      + {u.displayName}{' '}
-                      <span className="text-xs text-slate-500">@{u.username}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </fieldset>
+        <MemberDraftEditor
+          drafts={drafts}
+          onChange={setDrafts}
+          showInactiveWarning
+        />
+        {sourceMembers.isLoading && (
+          <p className="text-sm text-slate-500">원본 멤버 로딩…</p>
+        )}
 
         {error && (
           <div className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
