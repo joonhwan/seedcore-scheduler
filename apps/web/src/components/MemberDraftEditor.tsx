@@ -6,8 +6,11 @@ import {
   type ProjectRole,
 } from '@sam/shared';
 import { useUsers } from '../lib/users';
+import { useGroupTree } from '../lib/groups';
+import { groupPathMapOf } from '../lib/groupBadge';
 import { apiErrorMessage } from '../lib/errors';
 import GroupPickerDialog from './GroupPickerDialog';
+import UserGroupBadge from './UserGroupBadge';
 
 /**
  * 프로젝트 참여자 명단 편집기. 생성·복제·멤버 관리 세 화면이 함께 쓴다.
@@ -31,6 +34,15 @@ export default function MemberDraftEditor({
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [groupOpen, setGroupOpen] = useState(false);
   const users = useUsers({ status: 'active' });
+  const tree = useGroupTree();
+  const groupPaths = useMemo(
+    () =>
+      groupPathMapOf(tree.data, [
+        ...drafts.map((d) => d.userId),
+        ...(users.data ?? []).map((u) => u.id),
+      ]),
+    [tree.data, drafts, users.data],
+  );
 
   const counts = countDraftRoles(drafts);
   const inDraft = useMemo(() => new Set(drafts.map((d) => d.userId)), [drafts]);
@@ -168,7 +180,8 @@ export default function MemberDraftEditor({
                   />
                   <span className="text-sm">
                     {u.displayName}{' '}
-                    <span className="text-xs text-slate-500">@{u.username}</span>
+                    <span className="text-xs text-slate-500">@{u.username}</span>{' '}
+                    <UserGroupBadge path={groupPaths.get(u.id) ?? []} />
                   </span>
                 </label>
               </li>
@@ -192,7 +205,8 @@ export default function MemberDraftEditor({
         {drafts.map((d) => (
           <li key={d.userId} className="flex flex-wrap items-center gap-3 py-2">
             <span className="flex-1 text-sm">
-              {d.displayName} <span className="text-xs text-slate-500">@{d.username}</span>
+              {d.displayName} <span className="text-xs text-slate-500">@{d.username}</span>{' '}
+              <UserGroupBadge path={groupPaths.get(d.userId) ?? []} />
               {showInactiveWarning && d.inactive && (
                 <span className="block text-xs text-amber-600 dark:text-amber-400">
                   비활성 사용자 — 복제 대상에서 제외됩니다

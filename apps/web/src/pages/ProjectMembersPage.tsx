@@ -19,6 +19,7 @@ import { useUsers } from '../lib/users';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import GroupPickerDialog from '../components/GroupPickerDialog';
+import UserGroupBadge from '../components/UserGroupBadge';
 
 export default function ProjectMembersPage() {
   const { id } = useParams<{ id: string }>();
@@ -137,6 +138,7 @@ function MemberRow({
       <div className="flex items-center gap-2">
         <span className="font-medium">{member.displayName}</span>{' '}
         <span className="text-xs text-slate-500">@{member.username}</span>
+        <UserGroupBadge path={member.groupPath} />
         {isSelf && (
           <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800 dark:bg-sky-950 dark:text-sky-300">
             나

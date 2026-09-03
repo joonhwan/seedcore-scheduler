@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import type { UserListItem } from '@sam/shared';
 import { useMe } from '../lib/auth';
@@ -9,10 +9,13 @@ import {
   useUsers,
   type UserListStatus,
 } from '../lib/users';
+import { useGroupTree } from '../lib/groups';
+import { groupPathMapOf } from '../lib/groupBadge';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import UserCreateDialog from '../components/UserCreateDialog';
 import TempPasswordDialog from '../components/TempPasswordDialog';
+import UserGroupBadge from '../components/UserGroupBadge';
 
 export default function AdminUsersPage() {
   const me = useMe();
@@ -24,6 +27,15 @@ export default function AdminUsersPage() {
   );
 
   const users = useUsers({ query, status });
+  const tree = useGroupTree();
+  const groupPaths = useMemo(
+    () =>
+      groupPathMapOf(
+        tree.data,
+        (users.data ?? []).map((u) => u.id),
+      ),
+    [tree.data, users.data],
+  );
 
   if (me.isLoading) {
     return <div className="p-6 text-sm text-slate-500">로딩…</div>;
@@ -90,6 +102,7 @@ export default function AdminUsersPage() {
                 key={u.id}
                 user={u}
                 isSelf={u.id === me.data!.id}
+                groupPath={groupPaths.get(u.id) ?? []}
                 onTempPassword={(pw) =>
                   setTempPw({ displayName: u.displayName, password: pw })
                 }
@@ -122,10 +135,12 @@ export default function AdminUsersPage() {
 function UserRow({
   user,
   isSelf,
+  groupPath,
   onTempPassword,
 }: {
   user: UserListItem;
   isSelf: boolean;
+  groupPath: string[];
   onTempPassword: (pw: string) => void;
 }) {
   const update = useUpdateUser();
@@ -184,6 +199,7 @@ function UserRow({
             {user.displayName}
           </Link>
           <span className="text-xs text-slate-500">@{user.username}</span>
+          <UserGroupBadge path={groupPath} />
           {user.globalRole === 'ADMIN' && (
             <span className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
               ADMIN
