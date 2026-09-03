@@ -10,7 +10,13 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AddMemberDto, UpdateMemberRoleDto, type ProjectMemberItem } from '@sam/shared';
+import {
+  AddMemberDto,
+  BulkAddMembersDto,
+  UpdateMemberRoleDto,
+  type BulkAddMembersResult,
+  type ProjectMemberItem,
+} from '@sam/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { OriginGuard } from '../common/origin.guard';
 import {
@@ -46,6 +52,21 @@ export class MembersController {
     @Req() req: AuthenticatedRequest,
   ): Promise<ProjectMemberItem> {
     return this.members.add(projectId, body, {
+      actorId: req.user!.id,
+      globalRole: req.user!.globalRole,
+      adminMode: req.adminMode === true,
+      ip: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
+  }
+
+  @Post('bulk')
+  addBulk(
+    @Param('projectId') projectId: string,
+    @Body(new ZodValidationPipe(BulkAddMembersDto)) body: BulkAddMembersDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<BulkAddMembersResult> {
+    return this.members.addBulk(projectId, body, {
       actorId: req.user!.id,
       globalRole: req.user!.globalRole,
       adminMode: req.adminMode === true,

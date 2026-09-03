@@ -5,7 +5,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { AddMemberDto, ProjectMemberItem, UpdateMemberRoleDto } from '@sam/shared';
+import type {
+  AddMemberDto,
+  BulkAddMembersDto,
+  BulkAddMembersResult,
+  ProjectMemberItem,
+  UpdateMemberRoleDto,
+} from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { assertProjectReadAccess } from '../common/project-access';
@@ -116,6 +122,90 @@ export class MembersService {
       displayName: targetUser.displayName,
       role: body.role,
       addedAt: created.addedAt.toISOString(),
+    };
+  }
+
+  /**
+   * 여러 명을 한꺼번에 넣는다.
+   *
+   * 개별 추가 API 를 여러 번 부르면 중간에 하나가 실패했을 때 절반만 들어간 상태로 남으므로
+   * 트랜잭션 하나로 처리한다. 이미 멤버인 사람은 오류로 만들지 않고 건너뛴다 — 그룹으로 담은
+   * 명단에는 이미 들어 있는 사람이 섞이는 것이 정상이기 때문이다.
+   */
+  async addBulk(
+    projectId: string,
+    body: BulkAddMembersDto,
+    ctx: ActorContext,
+  ): Promise<BulkAddMembersResult> {
+    await this.assertProjectExists(projectId);
+    await this.assertWriteAccess(projectId, ctx);
+
+    // 같은 사람이 두 번 실려 오면 뒤엣것을 버린다.
+    const wanted = new Map<string, 'MANAGER' | 'MEMBER'>();
+    for (const m of body.members) {
+      if (!wanted.has(m.userId)) wanted.set(m.userId, m.role);
+    }
+    const userIds = [...wanted.keys()];
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds }, isActive: true },
+      select: { id: true },
+    });
+    if (users.length !== userIds.length) {
+      const ok = new Set(users.map((u) => u.id));
+      throw new BadRequestException({
+        error: 'INVALID_MEMBER_IDS',
+        missing: userIds.filter((id) => !ok.has(id)),
+      });
+    }
+
+    const existing = await this.prisma.projectMember.findMany({
+      where: { projectId, userId: { in: userIds } },
+      select: { userId: true },
+    });
+    const already = new Set(existing.map((m) => m.userId));
+    const toAdd = userIds.filter((id) => !already.has(id));
+
+    if (toAdd.length > 0) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.projectMember.createMany({
+          data: toAdd.map((userId) => ({
+            projectId,
+            userId,
+            role: wanted.get(userId)!,
+            addedById: ctx.actorId,
+          })),
+        });
+      });
+    }
+
+    for (const userId of toAdd) {
+      await this.audit.log({
+        actorId: ctx.actorId,
+        action: 'MEMBER_ADD',
+        targetType: 'project_member',
+        targetId: `${projectId}:${userId}`,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        payload: { role: wanted.get(userId) },
+      });
+    }
+    if (ctx.adminMode && toAdd.length > 0) {
+      await this.audit.log({
+        actorId: ctx.actorId,
+        action: 'ADMIN_OVERRIDE_EDIT',
+        targetType: 'project',
+        targetId: projectId,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        payload: { sub: 'MEMBER_ADD_BULK', count: toAdd.length },
+      });
+    }
+
+    return {
+      added: toAdd.length,
+      skipped: already.size,
+      skippedUserIds: [...already],
     };
   }
 

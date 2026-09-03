@@ -182,6 +182,26 @@ export class ProjectsService {
       });
     }
 
+    // MANAGER 로도 지정된 사람은 MEMBER 목록에서 뺀다. MANAGER 가 이긴다 — 화면의 명단
+    // 편집기가 사람마다 역할을 하나만 고르게 하므로 겹치는 것은 호출 쪽 실수다.
+    const managerSet = new Set(uniqueIds);
+    const memberIds = Array.from(new Set(input.memberUserIds)).filter(
+      (id) => !managerSet.has(id),
+    );
+    if (memberIds.length > 0) {
+      const foundMembers = await this.prisma.user.findMany({
+        where: { id: { in: memberIds }, isActive: true },
+        select: { id: true },
+      });
+      if (foundMembers.length !== memberIds.length) {
+        const ok = new Set(foundMembers.map((u) => u.id));
+        throw new BadRequestException({
+          error: 'INVALID_MEMBER_IDS',
+          missing: memberIds.filter((id) => !ok.has(id)),
+        });
+      }
+    }
+
     const projectId = randomUUID();
     const now = new Date();
     const created = await this.prisma.$transaction(async (tx) => {
@@ -195,13 +215,22 @@ export class ProjectsService {
         },
       });
       await tx.projectMember.createMany({
-        data: uniqueIds.map((userId) => ({
-          projectId: proj.id,
-          userId,
-          role: 'MANAGER',
-          addedById: ctx.actorId,
-          addedAt: now,
-        })),
+        data: [
+          ...uniqueIds.map((userId) => ({
+            projectId: proj.id,
+            userId,
+            role: 'MANAGER',
+            addedById: ctx.actorId,
+            addedAt: now,
+          })),
+          ...memberIds.map((userId) => ({
+            projectId: proj.id,
+            userId,
+            role: 'MEMBER',
+            addedById: ctx.actorId,
+            addedAt: now,
+          })),
+        ],
       });
       return proj;
     });
@@ -216,6 +245,7 @@ export class ProjectsService {
       payload: {
         name: created.name,
         managerUserIds: uniqueIds,
+        memberUserIds: memberIds,
       },
     });
     if (ctx.adminMode) {
