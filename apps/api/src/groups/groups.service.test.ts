@@ -17,6 +17,10 @@ interface MemberRow {
   addedById: string;
   addedAt: Date;
 }
+interface UserRow {
+  id: string;
+  isActive: boolean;
+}
 
 const T0 = new Date('2026-09-01T00:00:00.000Z');
 
@@ -29,9 +33,14 @@ function group(id: string, parentId: string | null, name = id): GroupRow {
  * 실제 DB 를 띄우는 통합 시험은 이 저장소에 없으므로(auth.service.test.ts 와 같은 방식),
  * 여기서는 "거부해야 할 때 거부하는가"만 본다.
  */
-function buildService(seed: { groups?: GroupRow[]; members?: MemberRow[] } = {}) {
+function buildService(
+  seed: { groups?: GroupRow[]; members?: MemberRow[]; users?: UserRow[] } = {},
+) {
   const groups = [...(seed.groups ?? [])];
   const members = [...(seed.members ?? [])];
+  // seed.users 를 주지 않으면 기존 동작(요청받은 id 를 무조건 활성 사용자로 합성)을
+  // 그대로 유지해, users 를 몰라도 되는 기존 시험들을 깨지 않는다.
+  const users = seed.users;
 
   const prismaObject = {
     userGroup: {
@@ -77,15 +86,25 @@ function buildService(seed: { groups?: GroupRow[]; members?: MemberRow[] } = {})
         async (args?: {
           where?: { userId?: { in: string[] }; groupId?: string };
           include?: { user?: unknown };
+          orderBy?: { addedAt?: 'asc' | 'desc' };
         }) => {
           const where = args?.where;
-          const filtered = !where
+          let filtered = !where
             ? members
             : members.filter(
                 (m) =>
                   (where.groupId === undefined || m.groupId === where.groupId) &&
                   (where.userId === undefined || where.userId.in.includes(m.userId)),
               );
+          // listMembers() 는 orderBy: { addedAt: 'asc' } 로 가입 시각순 정렬을 요구한다.
+          // 대역이 orderBy 를 무시하면 정렬 절이 사라지거나 거꾸로 되어도 시험이
+          // 조용히 통과하므로, 여기서 실제로 정렬해야 한다.
+          if (args?.orderBy?.addedAt) {
+            const dir = args.orderBy.addedAt === 'desc' ? -1 : 1;
+            filtered = [...filtered].sort(
+              (a, b) => dir * (a.addedAt.getTime() - b.addedAt.getTime()),
+            );
+          }
           // listMembers() 는 include: { user } 로 유저 정보를 함께 요청한다.
           // 대역에도 같은 모양으로 합성해 붙여야 서비스 코드가 그대로 동작한다.
           if (args?.include?.user) {
@@ -156,13 +175,37 @@ function buildService(seed: { groups?: GroupRow[]; members?: MemberRow[] } = {})
       ),
     },
     user: {
-      findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
-        where.id.in.map((id) => ({
-          id,
-          username: id,
-          displayName: `이름-${id}`,
-          isActive: true,
-        })),
+      findMany: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { id: { in: string[] }; isActive?: boolean };
+        }) => {
+          // seed.users 를 주지 않은 시험은 요청받은 id 를 무조건 활성 사용자로 합성하던
+          // 기존 동작을 유지한다(USER_NOT_FOUND 분기를 보지 않는 기존 시험들이 이걸 쓴다).
+          if (users === undefined) {
+            return where.id.in.map((id) => ({
+              id,
+              username: id,
+              displayName: `이름-${id}`,
+              isActive: true,
+            }));
+          }
+          // seed.users 를 주면 실제로 isActive 를 반영하고, 씨앗에 없는 id 는 돌려주지
+          // 않는다 — 그래야 USER_NOT_FOUND(비활성·미존재) 분기를 시험으로 검증할 수 있다.
+          return where.id.in
+            .map((id) => users.find((u) => u.id === id))
+            .filter(
+              (u): u is UserRow =>
+                u !== undefined && (where.isActive === undefined || u.isActive === where.isActive),
+            )
+            .map((u) => ({
+              id: u.id,
+              username: u.id,
+              displayName: `이름-${u.id}`,
+              isActive: u.isActive,
+            }));
+        },
       ),
     },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaObject)),
@@ -399,6 +442,51 @@ describe('GroupsService.addMembers', () => {
     await expect(
       service.addMembers('nope', { userIds: ['u1'], move: false }, CTX),
     ).rejects.toMatchObject({ response: { error: 'GROUP_NOT_FOUND' } });
+  });
+
+  it('비활성 사용자가 섞이면 USER_NOT_FOUND', async () => {
+    const { service } = buildService({
+      groups: [group('a', null)],
+      users: [
+        { id: 'u1', isActive: true },
+        { id: 'u2', isActive: false },
+      ],
+    });
+    await expect(
+      service.addMembers('a', { userIds: ['u1', 'u2'], move: false }, CTX),
+    ).rejects.toMatchObject({
+      response: { error: 'USER_NOT_FOUND', missing: ['u2'] },
+    });
+  });
+
+  it('존재하지 않는 사용자 id 가 섞이면 USER_NOT_FOUND', async () => {
+    const { service } = buildService({
+      groups: [group('a', null)],
+      users: [{ id: 'u1', isActive: true }],
+    });
+    await expect(
+      service.addMembers('a', { userIds: ['u1', 'ghost'], move: false }, CTX),
+    ).rejects.toMatchObject({
+      response: { error: 'USER_NOT_FOUND', missing: ['ghost'] },
+    });
+  });
+});
+
+describe('GroupsService.listMembers', () => {
+  it('가입 시각이 이른 사람부터 돌려준다', async () => {
+    const early = new Date('2026-09-01T00:00:00.000Z');
+    const late = new Date('2026-09-02T00:00:00.000Z');
+    const { service } = buildService({
+      groups: [group('a', null)],
+      // 일부러 늦게 가입한 사람을 먼저 넣어 둔다. 대역이 orderBy 를 무시하면
+      // 결과가 삽입 순서(late, early) 그대로 나와 시험이 실패한다.
+      members: [
+        { groupId: 'a', userId: 'u-late', addedById: 'admin-1', addedAt: late },
+        { groupId: 'a', userId: 'u-early', addedById: 'admin-1', addedAt: early },
+      ],
+    });
+    const result = await service.listMembers('a');
+    expect(result.map((m) => m.userId)).toEqual(['u-early', 'u-late']);
   });
 });
 
