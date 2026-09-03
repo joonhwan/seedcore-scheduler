@@ -3,14 +3,17 @@ import { Link, Navigate } from 'react-router-dom';
 import {
   canReparentGroup,
   collectDescendantGroupIds,
+  type GroupProjectCoverage,
   type UserGroupItem,
 } from '@sam/shared';
 import { useMe } from '../lib/auth';
+import { api } from '../lib/api';
 import {
   useAddGroupMembers,
   useCreateGroup,
   useDeleteGroup,
   useGroupMembers,
+  useGroupProjects,
   useGroupTree,
   useRemoveGroupMember,
   useUpdateGroup,
@@ -20,6 +23,7 @@ import { flattenGroupTree } from '../lib/groupTreeView';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import UserPickerDialog from '../components/UserPickerDialog';
+import GroupProjectSyncDialog, { type SyncSide } from '../components/GroupProjectSyncDialog';
 
 export default function AdminGroupsPage() {
   const me = useMe();
@@ -197,6 +201,13 @@ function GroupDetailPanel({
   }, [group.name, group.description, group.parentId, touched]);
 
   const members = useGroupMembers(group.id);
+  const coverage = useGroupProjects(group.id);
+  const [sync, setSync] = useState<{
+    title: string;
+    userIds: string[];
+    addTo?: SyncSide;
+    removeFrom?: SyncSide;
+  } | null>(null);
   const update = useUpdateGroup();
   const remove = useDeleteGroup();
   const addMembers = useAddGroupMembers(group.id);
@@ -259,6 +270,15 @@ function GroupDetailPanel({
       await addMembers.mutateAsync({ userIds, move: false });
       toast.success(`${userIds.length}명이 추가되었습니다.`);
       setPickerOpen(false);
+      // 넣은 직후: 새 소속이 참여 중인 프로젝트에 함께 넣을지 묻는다.
+      const rows = await api.get<GroupProjectCoverage[]>(`/admin/groups/${group.id}/projects`);
+      if (rows.length > 0) {
+        setSync({
+          title: `${userIds.length}명을 "${group.name}" 에 넣었습니다.`,
+          userIds,
+          addTo: { groupName: group.name, coverage: rows },
+        });
+      }
       return;
     } catch (err) {
       const conflicts = conflictsOf(err);
@@ -283,6 +303,35 @@ function GroupDetailPanel({
         await addMembers.mutateAsync({ userIds, move: true });
         toast.success(`${userIds.length}명이 추가되었습니다.`);
         setPickerOpen(false);
+
+        // 넣은 직후: 새 소속이 참여 중인 프로젝트에 함께 넣을지 묻는다.
+        const rows = await api.get<GroupProjectCoverage[]>(
+          `/admin/groups/${group.id}/projects`,
+        );
+        // 옮긴 경우이므로 이전 소속의 집계도 받아 빼기 목록을 함께 채운다. 이전 그룹이
+        // 여럿이면 첫 번째만 다룬다 — 1인 1소속 운영에서 여럿이 섞이는 경우는 드물고,
+        // 남은 것은 그룹 관리 화면의 상시 패널로 언제든 확인할 수 있기 때문이다.
+        const previousGroupId = conflicts[0]?.groupId;
+        const previousGroup = allGroups.find((g) => g.id === previousGroupId);
+        const removeRows =
+          previousGroupId !== undefined
+            ? await api.get<GroupProjectCoverage[]>(
+                `/admin/groups/${previousGroupId}/projects`,
+              )
+            : [];
+
+        if (rows.length > 0 || removeRows.length > 0) {
+          setSync({
+            title: `${userIds.length}명을 "${group.name}" 으로 옮겼습니다.`,
+            userIds,
+            ...(rows.length > 0
+              ? { addTo: { groupName: group.name, coverage: rows } }
+              : {}),
+            ...(removeRows.length > 0 && previousGroup !== undefined
+              ? { removeFrom: { groupName: previousGroup.name, coverage: removeRows } }
+              : {}),
+          });
+        }
       } catch (retryErr) {
         toast.error(apiErrorMessage(retryErr));
       }
@@ -295,6 +344,14 @@ function GroupDetailPanel({
     try {
       await removeMember.mutateAsync(userId);
       toast.success('소속이 해제되었습니다.');
+      const rows = await api.get<GroupProjectCoverage[]>(`/admin/groups/${group.id}/projects`);
+      if (rows.length > 0) {
+        setSync({
+          title: `"${displayName}" 을(를) "${group.name}" 에서 뺐습니다.`,
+          userIds: [userId],
+          removeFrom: { groupName: group.name, coverage: rows },
+        });
+      }
     } catch (err) {
       toast.error(apiErrorMessage(err));
     }
@@ -403,6 +460,26 @@ function GroupDetailPanel({
         )}
       </ul>
 
+      <h3 className="mt-5 border-t border-slate-100 pt-3 text-sm font-semibold dark:border-slate-800">
+        참여 중인 프로젝트
+      </h3>
+      {coverage.isLoading && <p className="mt-2 text-sm text-slate-500">로딩…</p>}
+      {coverage.data && coverage.data.length === 0 && (
+        <p className="mt-2 text-sm text-slate-500">
+          이 그룹 인원이 참여 중인 프로젝트가 없습니다.
+        </p>
+      )}
+      <ul className="mt-2 space-y-1">
+        {coverage.data?.map((c) => (
+          <li key={c.projectId} className="text-sm">
+            {c.name}
+            <span className="ml-2 text-xs text-slate-500">
+              {c.groupMemberCount}명 중 {c.participatingCount}명 참여
+            </span>
+          </li>
+        ))}
+      </ul>
+
       <button
         type="button"
         onClick={() => setPickerOpen(true)}
@@ -420,6 +497,16 @@ function GroupDetailPanel({
           busy={addMembers.isPending}
           onCancel={() => setPickerOpen(false)}
           onConfirm={onAddMembers}
+        />
+      )}
+
+      {sync && (
+        <GroupProjectSyncDialog
+          title={sync.title}
+          userIds={sync.userIds}
+          addTo={sync.addTo}
+          removeFrom={sync.removeFrom}
+          onClose={() => setSync(null)}
         />
       )}
     </section>

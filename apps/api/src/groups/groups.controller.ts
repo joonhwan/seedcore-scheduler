@@ -16,6 +16,7 @@ import {
   CreateUserGroupDto,
   UpdateUserGroupDto,
   type GroupMemberItem,
+  type GroupProjectCoverage,
   type UserGroupItem,
   type UserGroupTree,
 } from '@sam/shared';
@@ -70,6 +71,11 @@ export class GroupsController {
       ip: getClientIp(req),
       userAgent: getUserAgent(req),
     });
+  }
+
+  @Get(':id/projects')
+  projectCoverage(@Param('id') id: string): Promise<GroupProjectCoverage[]> {
+    return this.groups.projectCoverage(id);
   }
 
   @Get(':id/members')

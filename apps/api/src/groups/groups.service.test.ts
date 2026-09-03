@@ -34,13 +34,19 @@ function group(id: string, parentId: string | null, name = id): GroupRow {
  * 여기서는 "거부해야 할 때 거부하는가"만 본다.
  */
 function buildService(
-  seed: { groups?: GroupRow[]; members?: MemberRow[]; users?: UserRow[] } = {},
+  seed: {
+    groups?: GroupRow[];
+    members?: MemberRow[];
+    users?: UserRow[];
+    pms?: Array<{ projectId: string; userId: string }>;
+  } = {},
 ) {
   const groups = [...(seed.groups ?? [])];
   const members = [...(seed.members ?? [])];
   // seed.users 를 주지 않으면 기존 동작(요청받은 id 를 무조건 활성 사용자로 합성)을
   // 그대로 유지해, users 를 몰라도 되는 기존 시험들을 깨지 않는다.
   const users = seed.users;
+  const pms = seed.pms ?? [];
 
   const prismaObject = {
     userGroup: {
@@ -206,6 +212,16 @@ function buildService(
               isActive: u.isActive,
             }));
         },
+      ),
+    },
+    projectMember: {
+      findMany: vi.fn(async ({ where }: { where: { userId: { in: string[] } } }) =>
+        pms
+          .filter((m) => where.userId.in.includes(m.userId))
+          .map((m) => ({
+            ...m,
+            project: { id: m.projectId, name: m.projectId, status: 'ACTIVE' },
+          })),
       ),
     },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaObject)),
@@ -508,5 +524,61 @@ describe('GroupsService.removeMember', () => {
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'GROUP_MEMBER_REMOVE' }),
     );
+  });
+});
+
+describe('GroupsService.projectCoverage', () => {
+  const GROUPS = [group('center', null), group('mech', 'center')];
+  const MEMBERS = [
+    { groupId: 'center', userId: 'head', addedById: 'a', addedAt: T0 },
+    { groupId: 'mech', userId: 'm1', addedById: 'a', addedAt: T0 },
+    { groupId: 'mech', userId: 'm2', addedById: 'a', addedAt: T0 },
+  ];
+
+  it('자손 인원까지 포함해 집계하고 빠진 사람을 알려 준다', async () => {
+    const { service } = buildService({
+      groups: GROUPS,
+      members: MEMBERS,
+      pms: [
+        { projectId: 'p1', userId: 'head' },
+        { projectId: 'p1', userId: 'm1' },
+      ],
+    });
+    const rows = await service.projectCoverage('center');
+    expect(rows).toEqual([
+      expect.objectContaining({
+        projectId: 'p1',
+        groupMemberCount: 3,
+        participatingCount: 2,
+        missingUserIds: ['m2'],
+      }),
+    ]);
+  });
+
+  it('참여 비율이 높은 순으로 늘어놓는다', async () => {
+    const { service } = buildService({
+      groups: GROUPS,
+      members: MEMBERS,
+      pms: [
+        { projectId: 'low', userId: 'head' },
+        { projectId: 'high', userId: 'head' },
+        { projectId: 'high', userId: 'm1' },
+        { projectId: 'high', userId: 'm2' },
+      ],
+    });
+    const rows = await service.projectCoverage('center');
+    expect(rows.map((r) => r.projectId)).toEqual(['high', 'low']);
+  });
+
+  it('그룹에 인원이 없으면 빈 배열', async () => {
+    const { service } = buildService({ groups: GROUPS });
+    expect(await service.projectCoverage('center')).toEqual([]);
+  });
+
+  it('없는 그룹이면 GROUP_NOT_FOUND', async () => {
+    const { service } = buildService();
+    await expect(service.projectCoverage('nope')).rejects.toMatchObject({
+      response: { error: 'GROUP_NOT_FOUND' },
+    });
   });
 });

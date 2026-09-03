@@ -14,6 +14,7 @@ import {
   type CreateUserGroupDto,
   type GroupMemberItem,
   type GroupNode,
+  type GroupProjectCoverage,
   type UpdateUserGroupDto,
   type UserGroupItem,
   type UserGroupTree,
@@ -360,6 +361,74 @@ export class GroupsService {
       userAgent: ctx.userAgent,
       payload: {},
     });
+  }
+
+  /**
+   * 이 그룹(자손 포함) 인원이 참여 중인 프로젝트를 집계한다.
+   *
+   * **이 값은 "이 프로젝트를 이 그룹으로 채웠다"는 기록이 아니다.** 지금 겹치는 인원을 보고 역으로
+   * 추론하는 것이라, 그룹과 무관하게 개별로 들어간 사람이 우연히 많은 프로젝트도 목록에 뜬다.
+   * 그래서 참여 비율을 함께 담고 비율이 높은 순으로 늘어놓아 관리자가 판단할 수 있게 한다.
+   *
+   * project_members 에 @@index([userId]) 가 이미 있어 150명 규모에서는 즉시 응답한다.
+   */
+  async projectCoverage(groupId: string): Promise<GroupProjectCoverage[]> {
+    await this.assertGroupExists(groupId);
+
+    const [rows, memberRows] = await Promise.all([
+      this.prisma.userGroup.findMany(),
+      this.prisma.userGroupMember.findMany({
+        select: { groupId: true, userId: true },
+      }),
+    ]);
+    const nodes: GroupNode[] = rows.map((g) => ({ id: g.id, parentId: g.parentId }));
+    const memberships = memberRows.map((m) => ({
+      groupId: m.groupId,
+      userId: m.userId,
+    }));
+
+    // 화면의 미리보기와 같은 함수로 펼친다.
+    const userIds = expandGroupMembers(nodes, memberships, [groupId]);
+    if (userIds.length === 0) return [];
+
+    const pms = await this.prisma.projectMember.findMany({
+      where: { userId: { in: userIds } },
+      include: { project: { select: { id: true, name: true, status: true } } },
+    });
+
+    const byProject = new Map<
+      string,
+      { name: string; status: string; users: Set<string> }
+    >();
+    for (const pm of pms) {
+      const entry = byProject.get(pm.project.id);
+      if (entry) entry.users.add(pm.userId);
+      else
+        byProject.set(pm.project.id, {
+          name: pm.project.name,
+          status: pm.project.status,
+          users: new Set([pm.userId]),
+        });
+    }
+
+    const out: GroupProjectCoverage[] = [...byProject.entries()].map(
+      ([projectId, entry]) => ({
+        projectId,
+        name: entry.name,
+        status: entry.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+        groupMemberCount: userIds.length,
+        participatingCount: entry.users.size,
+        missingUserIds: userIds.filter((id) => !entry.users.has(id)),
+      }),
+    );
+
+    out.sort((a, b) => {
+      const ra = a.participatingCount / a.groupMemberCount;
+      const rb = b.participatingCount / b.groupMemberCount;
+      if (rb !== ra) return rb - ra;
+      return a.name.localeCompare(b.name, 'ko');
+    });
+    return out;
   }
 
   // ─── 내부 ─────────────────────────────────────────────────────────────────

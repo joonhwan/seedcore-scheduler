@@ -8,10 +8,17 @@ import {
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
 import { useProject } from '../lib/projects';
-import { useAddMember, useMembers, useRemoveMember, useUpdateMemberRole } from '../lib/members';
+import {
+  useAddMember,
+  useAddMembersBulk,
+  useMembers,
+  useRemoveMember,
+  useUpdateMemberRole,
+} from '../lib/members';
 import { useUsers } from '../lib/users';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
+import GroupPickerDialog from '../components/GroupPickerDialog';
 
 export default function ProjectMembersPage() {
   const { id } = useParams<{ id: string }>();
@@ -196,9 +203,38 @@ function AddMemberSection({
   const [search, setSearch] = useState('');
   const [role, setRole] = useState<ProjectRole>('MEMBER');
   const [error, setError] = useState<string | null>(null);
+  const [groupOpen, setGroupOpen] = useState(false);
 
   const users = useUsers({ status: 'active' });
   const add = useAddMember(projectId);
+  const addBulk = useAddMembersBulk(projectId);
+  const me = useMe();
+  const { on: adminMode } = useAdminMode();
+  // 그룹 조회 API 가 @AdminOnly 라 일반 MANAGER 는 목록을 받을 수 없다. 그룹 읽기를
+  // 모든 사용자에게 여는 것은 별개의 결정이므로 이번 범위에서 하지 않는다.
+  const canUseGroups = me.data?.globalRole === 'ADMIN' && adminMode;
+
+  async function onPickFromGroups(userIds: string[]) {
+    const fresh = userIds.filter((id) => !existingIds.has(id));
+    if (fresh.length === 0) {
+      toast.success('고른 인원이 모두 이미 멤버입니다.');
+      setGroupOpen(false);
+      return;
+    }
+    try {
+      const result = await addBulk.mutateAsync({
+        members: fresh.map((userId) => ({ userId, role: 'MEMBER' as const })),
+      });
+      toast.success(
+        result.skipped > 0
+          ? `${result.added}명 추가, ${result.skipped}명은 이미 멤버라 건너뛰었습니다.`
+          : `${result.added}명이 추가되었습니다.`,
+      );
+      setGroupOpen(false);
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    }
+  }
 
   const filtered = useMemo(() => {
     if (!users.data) return [];
@@ -287,6 +323,22 @@ function AddMemberSection({
           <li className="p-3 text-sm text-slate-500">추가 가능한 사용자가 없습니다.</li>
         )}
       </ul>
+
+      {canUseGroups && (
+        <button
+          type="button"
+          onClick={() => setGroupOpen(true)}
+          className="mt-3 rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold dark:border-slate-700"
+        >
+          그룹으로 담기
+        </button>
+      )}
+      {groupOpen && (
+        <GroupPickerDialog
+          onCancel={() => setGroupOpen(false)}
+          onPick={onPickFromGroups}
+        />
+      )}
     </section>
   );
 }

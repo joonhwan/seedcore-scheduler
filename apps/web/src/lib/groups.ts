@@ -3,6 +3,7 @@ import type {
   AddGroupMembersDto,
   CreateUserGroupDto,
   GroupMemberItem,
+  GroupProjectCoverage,
   UpdateUserGroupDto,
   UserGroupItem,
   UserGroupTree,
@@ -69,6 +70,17 @@ export function useAddGroupMembers(groupId: string) {
       qc.invalidateQueries({ queryKey: groupMembersKey(groupId) });
       qc.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
+  });
+}
+
+export const groupProjectsKey = (groupId: string) =>
+  ['admin', 'groups', groupId, 'projects'] as const;
+
+export function useGroupProjects(groupId: string | undefined) {
+  return useQuery<GroupProjectCoverage[]>({
+    queryKey: groupId ? groupProjectsKey(groupId) : ['admin', 'groups', '__none__', 'projects'],
+    queryFn: () => api.get<GroupProjectCoverage[]>(`/admin/groups/${groupId}/projects`),
+    enabled: !!groupId,
   });
 }
 
