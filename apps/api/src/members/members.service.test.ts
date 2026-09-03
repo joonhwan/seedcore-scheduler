@@ -448,6 +448,22 @@ describe('MembersService 소속 그룹 채우기', () => {
     expect(result.groupPath).toEqual(['운영기술센터', '기구완성팀']);
   });
 
+  it('updateRole() 이 실제로 역할을 바꾸는 정상 경로에도 소속이 채워진다', async () => {
+    const { service } = buildService({
+      // mgr-1 이 이미 MANAGER 로 있으므로 u1 을 MANAGER 로 올려도(MEMBER -> MANAGER)
+      // LAST_MANAGER 검사에 걸리지 않는다.
+      members: [MANAGER_MEMBER, U1_MEMBER],
+      groups: GROUPS,
+      groupMembers: [{ groupId: 'g-sub', userId: 'u1' }],
+    });
+    // U1_MEMBER 는 MEMBER, 요청은 MANAGER — 역할이 실제로 바뀌므로 조기 반환이 아니라
+    // prisma.projectMember.update() 를 거치는 최종 반환 경로를 탄다.
+    const result = await service.updateRole('p1', 'u1', { role: 'MANAGER' }, MANAGER_CTX);
+    expect(result.role).toBe('MANAGER');
+    expect(result.groupName).toBe('기구완성팀');
+    expect(result.groupPath).toEqual(['운영기술센터', '기구완성팀']);
+  });
+
   it('두 그룹에 걸친 소속이면 말단 이름의 가나다순 첫 번째를 고른다', async () => {
     const groups: GroupRow[] = [...GROUPS, { id: 'g-other', parentId: null, name: '가나다팀' }];
     const { service } = buildService({
