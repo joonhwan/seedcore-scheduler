@@ -10,7 +10,9 @@ import {
   canReparentGroup,
   expandGroupMembers,
   groupDepthOf,
+  type AddGroupMembersDto,
   type CreateUserGroupDto,
+  type GroupMemberItem,
   type GroupNode,
   type UpdateUserGroupDto,
   type UserGroupItem,
@@ -220,7 +222,155 @@ export class GroupsService {
     });
   }
 
+  async listMembers(groupId: string): Promise<GroupMemberItem[]> {
+    await this.assertGroupExists(groupId);
+    const rows = await this.prisma.userGroupMember.findMany({
+      where: { groupId },
+      include: {
+        user: {
+          select: { id: true, username: true, displayName: true, isActive: true },
+        },
+      },
+      orderBy: { addedAt: 'asc' },
+    });
+    return rows.map((m) => ({
+      userId: m.user.id,
+      username: m.user.username,
+      displayName: m.user.displayName,
+      isActive: m.user.isActive,
+      addedAt: m.addedAt.toISOString(),
+    }));
+  }
+
+  /**
+   * 여러 명을 한꺼번에 넣는다.
+   *
+   * move 가 false(기본)인데 다른 그룹에 이미 속한 사람이 섞여 있으면 거부하고, 응답에 그
+   * 사람들과 현재 소속을 담는다. 화면이 "옮기시겠습니까?" 확인 창을 띄우려면 그 정보가
+   * 필요하기 때문이다. 승인하면 move: true 로 다시 부른다.
+   */
+  async addMembers(
+    groupId: string,
+    input: AddGroupMembersDto,
+    ctx: GroupActorContext,
+  ): Promise<GroupMemberItem[]> {
+    await this.assertGroupExists(groupId);
+    const userIds = Array.from(new Set(input.userIds));
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds }, isActive: true },
+      select: { id: true },
+    });
+    if (users.length !== userIds.length) {
+      const found = new Set(users.map((u) => u.id));
+      throw new BadRequestException({
+        error: 'USER_NOT_FOUND',
+        missing: userIds.filter((id) => !found.has(id)),
+      });
+    }
+
+    const existing = await this.prisma.userGroupMember.findMany({
+      where: { userId: { in: userIds } },
+      select: { groupId: true, userId: true },
+    });
+    const elsewhere = existing.filter((m) => m.groupId !== groupId);
+    if (elsewhere.length > 0 && !input.move) {
+      throw new ConflictException({
+        error: 'GROUP_MEMBER_ALREADY_ASSIGNED',
+        conflicts: elsewhere,
+      });
+    }
+
+    const alreadyHere = new Set(
+      existing.filter((m) => m.groupId === groupId).map((m) => m.userId),
+    );
+    const toAdd = userIds.filter((id) => !alreadyHere.has(id));
+    const movedFrom = new Map(elsewhere.map((m) => [m.userId, m.groupId]));
+
+    // 한 트랜잭션으로 묶는다. 빼기만 되고 넣기가 실패하면 소속이 사라진 채로 남는다.
+    await this.prisma.$transaction(async (tx) => {
+      if (elsewhere.length > 0) {
+        await tx.userGroupMember.deleteMany({
+          where: {
+            OR: elsewhere.map((m) => ({ groupId: m.groupId, userId: m.userId })),
+          },
+        });
+      }
+      if (toAdd.length > 0) {
+        await tx.userGroupMember.createMany({
+          data: toAdd.map((userId) => ({
+            groupId,
+            userId,
+            addedById: ctx.actorId,
+          })),
+        });
+      }
+    });
+
+    // 이동은 REMOVE 와 ADD 두 건으로 남기고, 각 기록의 상세에 상대 그룹을 적어
+    // 이동이었음을 알아볼 수 있게 한다. 별도의 GROUP_MEMBER_MOVE 는 만들지 않는다.
+    for (const m of elsewhere) {
+      await this.audit.log({
+        actorId: ctx.actorId,
+        action: 'GROUP_MEMBER_REMOVE',
+        targetType: 'user_group_member',
+        targetId: `${m.groupId}:${m.userId}`,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        payload: { movedTo: groupId },
+      });
+    }
+    for (const userId of toAdd) {
+      const from = movedFrom.get(userId);
+      await this.audit.log({
+        actorId: ctx.actorId,
+        action: 'GROUP_MEMBER_ADD',
+        targetType: 'user_group_member',
+        targetId: `${groupId}:${userId}`,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        payload: from !== undefined ? { movedFrom: from } : {},
+      });
+    }
+
+    return this.listMembers(groupId);
+  }
+
+  async removeMember(
+    groupId: string,
+    userId: string,
+    ctx: GroupActorContext,
+  ): Promise<void> {
+    await this.assertGroupExists(groupId);
+    const row = await this.prisma.userGroupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (!row) throw new NotFoundException({ error: 'GROUP_MEMBER_NOT_FOUND' });
+
+    await this.prisma.userGroupMember.delete({
+      where: { groupId_userId: { groupId, userId } },
+    });
+
+    await this.audit.log({
+      actorId: ctx.actorId,
+      action: 'GROUP_MEMBER_REMOVE',
+      targetType: 'user_group_member',
+      targetId: `${groupId}:${userId}`,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      payload: {},
+    });
+  }
+
   // ─── 내부 ─────────────────────────────────────────────────────────────────
+
+  private async assertGroupExists(groupId: string): Promise<void> {
+    const exists = await this.prisma.userGroup.findUnique({
+      where: { id: groupId },
+      select: { id: true },
+    });
+    if (!exists) throw new NotFoundException({ error: 'GROUP_NOT_FOUND' });
+  }
 
   /**
    * 같은 상위 아래에 같은 이름이 있는지 본다.

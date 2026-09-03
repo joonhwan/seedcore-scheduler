@@ -34,6 +34,7 @@ const KNOWN: Record<string, string> = {
   GROUP_CYCLE: '자기 자신이나 자기 하위 그룹을 상위 그룹으로 지정할 수 없습니다.',
   GROUP_DEPTH_EXCEEDED: `그룹 계층은 최대 ${MAX_GROUP_DEPTH}단계까지만 만들 수 있습니다.`,
   GROUP_MEMBER_ALREADY_ASSIGNED: '이미 다른 그룹에 속한 사용자가 포함되어 있습니다.',
+  GROUP_MEMBER_NOT_FOUND: '해당 사용자는 이 그룹의 소속이 아닙니다.',
   NO_DATED_ITEMS:
     '원본 프로젝트에 날짜가 지정된 일정이 없어 일정을 옮길 수 없습니다. 원본 일정 유지로 복제하십시오.',
 };

@@ -12,8 +12,10 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import {
+  AddGroupMembersDto,
   CreateUserGroupDto,
   UpdateUserGroupDto,
+  type GroupMemberItem,
   type UserGroupItem,
   type UserGroupTree,
 } from '@sam/shared';
@@ -64,6 +66,38 @@ export class GroupsController {
   @HttpCode(204)
   async remove(@Param('id') id: string, @Req() req: AuthenticatedRequest): Promise<void> {
     await this.groups.remove(id, {
+      actorId: req.user!.id,
+      ip: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
+  }
+
+  @Get(':id/members')
+  listMembers(@Param('id') id: string): Promise<GroupMemberItem[]> {
+    return this.groups.listMembers(id);
+  }
+
+  @Post(':id/members')
+  addMembers(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(AddGroupMembersDto)) body: AddGroupMembersDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<GroupMemberItem[]> {
+    return this.groups.addMembers(id, body, {
+      actorId: req.user!.id,
+      ip: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
+  }
+
+  @Delete(':id/members/:userId')
+  @HttpCode(204)
+  async removeMember(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<void> {
+    await this.groups.removeMember(id, userId, {
       actorId: req.user!.id,
       ip: getClientIp(req),
       userAgent: getUserAgent(req),

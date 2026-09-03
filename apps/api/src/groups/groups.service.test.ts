@@ -33,7 +33,7 @@ function buildService(seed: { groups?: GroupRow[]; members?: MemberRow[] } = {})
   const groups = [...(seed.groups ?? [])];
   const members = [...(seed.members ?? [])];
 
-  const prisma = {
+  const prismaObject = {
     userGroup: {
       findMany: vi.fn(async () => groups),
       findUnique: vi.fn(
@@ -73,13 +73,101 @@ function buildService(seed: { groups?: GroupRow[]; members?: MemberRow[] } = {})
       }),
     },
     userGroupMember: {
-      findMany: vi.fn(async () => members),
-      count: vi.fn(
-        async ({ where }: { where: { groupId: string } }) =>
-          members.filter((m) => m.groupId === where.groupId).length,
+      findMany: vi.fn(
+        async (args?: {
+          where?: { userId?: { in: string[] }; groupId?: string };
+          include?: { user?: unknown };
+        }) => {
+          const where = args?.where;
+          const filtered = !where
+            ? members
+            : members.filter(
+                (m) =>
+                  (where.groupId === undefined || m.groupId === where.groupId) &&
+                  (where.userId === undefined || where.userId.in.includes(m.userId)),
+              );
+          // listMembers() 는 include: { user } 로 유저 정보를 함께 요청한다.
+          // 대역에도 같은 모양으로 합성해 붙여야 서비스 코드가 그대로 동작한다.
+          if (args?.include?.user) {
+            return filtered.map((m) => ({
+              ...m,
+              user: {
+                id: m.userId,
+                username: m.userId,
+                displayName: `이름-${m.userId}`,
+                isActive: true,
+              },
+            }));
+          }
+          return filtered;
+        },
+      ),
+      count: vi.fn(async ({ where }: { where: { groupId: string } }) =>
+        members.filter((m) => m.groupId === where.groupId).length,
+      ),
+      findUnique: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { groupId_userId: { groupId: string; userId: string } };
+        }) =>
+          members.find(
+            (m) =>
+              m.groupId === where.groupId_userId.groupId &&
+              m.userId === where.groupId_userId.userId,
+          ) ?? null,
+      ),
+      createMany: vi.fn(async ({ data }: { data: MemberRow[] }) => {
+        for (const row of data) members.push({ ...row, addedAt: T0 });
+        return { count: data.length };
+      }),
+      deleteMany: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { OR: Array<{ groupId: string; userId: string }> };
+        }) => {
+          let count = 0;
+          for (const key of where.OR) {
+            const i = members.findIndex(
+              (m) => m.groupId === key.groupId && m.userId === key.userId,
+            );
+            if (i >= 0) {
+              members.splice(i, 1);
+              count += 1;
+            }
+          }
+          return { count };
+        },
+      ),
+      delete: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { groupId_userId: { groupId: string; userId: string } };
+        }) => {
+          const i = members.findIndex(
+            (m) =>
+              m.groupId === where.groupId_userId.groupId &&
+              m.userId === where.groupId_userId.userId,
+          );
+          return members.splice(i, 1)[0]!;
+        },
       ),
     },
-  } as unknown as PrismaService;
+    user: {
+      findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in.map((id) => ({
+          id,
+          username: id,
+          displayName: `이름-${id}`,
+          isActive: true,
+        })),
+      ),
+    },
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaObject)),
+  };
+  const prisma = prismaObject as unknown as PrismaService;
 
   const audit = { log: vi.fn(async () => {}) } as unknown as AuditService;
   return { service: new GroupsService(prisma, audit), audit, groups, members };
@@ -249,5 +337,88 @@ describe('GroupsService.tree', () => {
     const center = groups.find((g) => g.id === 'center')!;
     expect(center.directMemberCount).toBe(1);
     expect(center.totalMemberCount).toBe(2);
+  });
+});
+
+describe('GroupsService.addMembers', () => {
+  it('move 없이 다른 그룹 소속자를 넣으면 거부하고 충돌 목록을 담는다', async () => {
+    const { service } = buildService({
+      groups: [group('a', null), group('b', null)],
+      members: [{ groupId: 'b', userId: 'u1', addedById: 'admin-1', addedAt: T0 }],
+    });
+    await expect(
+      service.addMembers('a', { userIds: ['u1'], move: false }, CTX),
+    ).rejects.toMatchObject({
+      response: {
+        error: 'GROUP_MEMBER_ALREADY_ASSIGNED',
+        conflicts: [{ groupId: 'b', userId: 'u1' }],
+      },
+    });
+  });
+
+  it('move: true 면 기존 소속에서 빼고 옮긴다', async () => {
+    const { service, members } = buildService({
+      groups: [group('a', null), group('b', null)],
+      members: [{ groupId: 'b', userId: 'u1', addedById: 'admin-1', addedAt: T0 }],
+    });
+    await service.addMembers('a', { userIds: ['u1'], move: true }, CTX);
+    expect(members).toEqual([expect.objectContaining({ groupId: 'a', userId: 'u1' })]);
+  });
+
+  it('옮긴 경우 REMOVE 와 ADD 를 모두 남기고 상대 그룹을 상세에 적는다', async () => {
+    const { service, audit } = buildService({
+      groups: [group('a', null), group('b', null)],
+      members: [{ groupId: 'b', userId: 'u1', addedById: 'admin-1', addedAt: T0 }],
+    });
+    await service.addMembers('a', { userIds: ['u1'], move: true }, CTX);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'GROUP_MEMBER_REMOVE',
+        payload: expect.objectContaining({ movedTo: 'a' }),
+      }),
+    );
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'GROUP_MEMBER_ADD',
+        payload: expect.objectContaining({ movedFrom: 'b' }),
+      }),
+    );
+  });
+
+  it('이미 이 그룹 소속인 사람은 조용히 건너뛴다', async () => {
+    const { service, members } = buildService({
+      groups: [group('a', null)],
+      members: [{ groupId: 'a', userId: 'u1', addedById: 'admin-1', addedAt: T0 }],
+    });
+    await service.addMembers('a', { userIds: ['u1', 'u2'], move: false }, CTX);
+    expect(members).toHaveLength(2);
+  });
+
+  it('없는 그룹이면 GROUP_NOT_FOUND', async () => {
+    const { service } = buildService();
+    await expect(
+      service.addMembers('nope', { userIds: ['u1'], move: false }, CTX),
+    ).rejects.toMatchObject({ response: { error: 'GROUP_NOT_FOUND' } });
+  });
+});
+
+describe('GroupsService.removeMember', () => {
+  it('소속이 아니면 404', async () => {
+    const { service } = buildService({ groups: [group('a', null)] });
+    await expect(service.removeMember('a', 'u1', CTX)).rejects.toMatchObject({
+      response: { error: 'GROUP_MEMBER_NOT_FOUND' },
+    });
+  });
+
+  it('빼고 GROUP_MEMBER_REMOVE 를 남긴다', async () => {
+    const { service, audit, members } = buildService({
+      groups: [group('a', null)],
+      members: [{ groupId: 'a', userId: 'u1', addedById: 'admin-1', addedAt: T0 }],
+    });
+    await service.removeMember('a', 'u1', CTX);
+    expect(members).toHaveLength(0);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'GROUP_MEMBER_REMOVE' }),
+    );
   });
 });
