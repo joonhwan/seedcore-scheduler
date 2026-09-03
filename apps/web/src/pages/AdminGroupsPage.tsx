@@ -7,6 +7,7 @@ import {
   type UserGroupItem,
 } from '@sam/shared';
 import { useMe } from '../lib/auth';
+import { useAdminMode } from '../lib/adminMode';
 import { api } from '../lib/api';
 import {
   useAddGroupMembers,
@@ -27,6 +28,7 @@ import GroupProjectSyncDialog, { type SyncSide } from '../components/GroupProjec
 
 export default function AdminGroupsPage() {
   const me = useMe();
+  const { on: adminMode } = useAdminMode();
   const tree = useGroupTree();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -40,7 +42,10 @@ export default function AdminGroupsPage() {
 
   if (me.isLoading) return <div className="p-6 text-sm text-slate-500">로딩…</div>;
   if (!me.data) return <Navigate to="/login" replace />;
-  if (me.data.globalRole !== 'ADMIN') {
+  // 관리자 모드도 함께 요구한다. 이 화면의 인원 이동은 members.bulk·user-projects 라우트를
+  // 부르는데, 관리자 모드가 꺼진 채로도 라우트 자체는 통과하므로(ADMIN 이므로) 모드를 안 켜면
+  // ADMIN_OVERRIDE_EDIT 감사로그가 빠진다 (AGENTS.md §4.4).
+  if (me.data.globalRole !== 'ADMIN' || !adminMode) {
     return (
       <main className="mx-auto max-w-2xl p-6">
         <p className="text-sm text-rose-600">ADMIN 권한이 필요합니다.</p>
@@ -300,6 +305,33 @@ function GroupDetailPanel({
       );
       if (!ok) return;
       try {
+        // 옮기기 전에 이전 그룹의 집계를 읽는다. 옮긴(move: true) 뒤에 읽으면 이미 이 그룹
+        // 소속에서 빠진 뒤의 집계가 나와, missingUserIds 로 "실제로 참여 중인 프로젝트"를
+        // 가릴 수 없다 (이 화면에서 GET 이 안전하다고 안심하면 안 되는 지점 — 옮기기는
+        // move: true 요청 한 번에서 빼기·넣기가 함께 일어나므로 그 요청 전에 읽어야 한다).
+        //
+        // 이전 그룹이 여럿이면 첫 번째만 다룬다 — 1인 1소속 운영에서 여럿이 섞이는 경우는
+        // 드물고, 남은 것은 그룹 관리 화면의 상시 패널로 언제든 확인할 수 있기 때문이다.
+        const previousGroupId = conflicts[0]?.groupId;
+        const previousGroup = allGroups.find((g) => g.id === previousGroupId);
+        // 실제로 이 이전 그룹에서 넘어가는 사람만 추린다. userIds 전체가 아니라 이들 기준으로
+        // 걸러야 한다 — userIds 에는 이전 그룹과 무관한(원래 무소속이던) 사람도 섞여 있다.
+        const movingUserIds = conflicts
+          .filter((c) => c.groupId === previousGroupId)
+          .map((c) => c.userId);
+        const removeRowsRaw =
+          previousGroupId !== undefined
+            ? await api.get<GroupProjectCoverage[]>(
+                `/admin/groups/${previousGroupId}/projects`,
+              )
+            : [];
+        // missingUserIds 에 이 이전 그룹 인원 중 넘어가는 사람이 전혀 없는(=아무도 참여하지
+        // 않는) 프로젝트는 뺀다. 그래야 대화상자의 "빼기" 목록이 실제로 뺄 사람이 있는
+        // 프로젝트만 담아, DELETE 가 404 NOT_A_MEMBER 로 막다른 길에 빠지는 것을 줄인다.
+        const removeRows = removeRowsRaw.filter((c) =>
+          movingUserIds.some((uid) => !c.missingUserIds.includes(uid)),
+        );
+
         await addMembers.mutateAsync({ userIds, move: true });
         toast.success(`${userIds.length}명이 추가되었습니다.`);
         setPickerOpen(false);
@@ -308,17 +340,6 @@ function GroupDetailPanel({
         const rows = await api.get<GroupProjectCoverage[]>(
           `/admin/groups/${group.id}/projects`,
         );
-        // 옮긴 경우이므로 이전 소속의 집계도 받아 빼기 목록을 함께 채운다. 이전 그룹이
-        // 여럿이면 첫 번째만 다룬다 — 1인 1소속 운영에서 여럿이 섞이는 경우는 드물고,
-        // 남은 것은 그룹 관리 화면의 상시 패널로 언제든 확인할 수 있기 때문이다.
-        const previousGroupId = conflicts[0]?.groupId;
-        const previousGroup = allGroups.find((g) => g.id === previousGroupId);
-        const removeRows =
-          previousGroupId !== undefined
-            ? await api.get<GroupProjectCoverage[]>(
-                `/admin/groups/${previousGroupId}/projects`,
-              )
-            : [];
 
         if (rows.length > 0 || removeRows.length > 0) {
           setSync({
@@ -342,14 +363,22 @@ function GroupDetailPanel({
     const ok = window.confirm(`"${displayName}" 을(를) 이 그룹에서 빼시겠습니까?`);
     if (!ok) return;
     try {
+      // 빼기 전에 집계를 읽는다. 뺀 뒤에 읽으면(예전 버그) 이미 이 사람이 빠진 "남은 인원"
+      // 기준의 집계가 나와, 방금 뺀 사람이 그 프로젝트에 있었는지와 무관해진다. 그러면
+      // 대화상자가 그 사람이 없는 프로젝트까지 체크 목록에 올려, 확인 시 DELETE 가
+      // 404 NOT_A_MEMBER 로 막다른 길에 빠진다.
+      const rows = await api.get<GroupProjectCoverage[]>(`/admin/groups/${group.id}/projects`);
+      // missingUserIds 에 이 사람이 없는(=참여 중인) 프로젝트만 남긴다. 이것이 "그 사람이
+      // 실제로 참여 중인 프로젝트"다.
+      const coverage = rows.filter((c) => !c.missingUserIds.includes(userId));
+
       await removeMember.mutateAsync(userId);
       toast.success('소속이 해제되었습니다.');
-      const rows = await api.get<GroupProjectCoverage[]>(`/admin/groups/${group.id}/projects`);
-      if (rows.length > 0) {
+      if (coverage.length > 0) {
         setSync({
           title: `"${displayName}" 을(를) "${group.name}" 에서 뺐습니다.`,
           userIds: [userId],
-          removeFrom: { groupName: group.name, coverage: rows },
+          removeFrom: { groupName: group.name, coverage },
         });
       }
     } catch (err) {
@@ -445,6 +474,11 @@ function GroupDetailPanel({
             <span className="flex-1">
               {m.displayName}{' '}
               <span className="text-xs text-slate-500">@{m.username}</span>
+              {!m.isActive && (
+                <span className="ml-2 rounded border border-slate-400 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  비활성
+                </span>
+              )}
             </span>
             <button
               type="button"

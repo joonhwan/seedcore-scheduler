@@ -460,7 +460,7 @@ describe('GroupsService.addMembers', () => {
     ).rejects.toMatchObject({ response: { error: 'GROUP_NOT_FOUND' } });
   });
 
-  it('비활성 사용자가 섞이면 USER_NOT_FOUND', async () => {
+  it('비활성 사용자가 섞이면 USER_INACTIVE (USER_NOT_FOUND 로 오해하게 하지 않는다)', async () => {
     const { service } = buildService({
       groups: [group('a', null)],
       users: [
@@ -471,7 +471,19 @@ describe('GroupsService.addMembers', () => {
     await expect(
       service.addMembers('a', { userIds: ['u1', 'u2'], move: false }, CTX),
     ).rejects.toMatchObject({
-      response: { error: 'USER_NOT_FOUND', missing: ['u2'] },
+      response: { error: 'USER_INACTIVE', inactive: ['u2'] },
+    });
+  });
+
+  it('존재하지 않는 사용자만 있으면 USER_NOT_FOUND', async () => {
+    const { service } = buildService({
+      groups: [group('a', null)],
+      users: [{ id: 'u1', isActive: true }],
+    });
+    await expect(
+      service.addMembers('a', { userIds: ['ghost'], move: false }, CTX),
+    ).rejects.toMatchObject({
+      response: { error: 'USER_NOT_FOUND', missing: ['ghost'] },
     });
   });
 

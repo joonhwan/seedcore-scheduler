@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { expandGroupMembers } from '@sam/shared';
 import { useGroupTree } from '../lib/groups';
+import { useUsers } from '../lib/users';
 import { flattenGroupTree } from '../lib/groupTreeView';
 import { apiErrorMessage } from '../lib/errors';
 
@@ -10,6 +11,11 @@ import { apiErrorMessage } from '../lib/errors';
  * 담기 전에 "선택한 그룹 인원 N명" 을 미리 보여 주는데, 그 숫자는 서버의 일괄 추가가 쓰는 것과
  * **같은 expandGroupMembers 함수**로 계산한다. 다른 방법으로 세면 화면에 보여 준 숫자와 실제로
  * 들어가는 인원이 어긋난다.
+ *
+ * expandGroupMembers 는 소속 전원(비활성 포함)을 돌려주는데, 이 명단을 실제로 담는
+ * MemberDraftEditor.addFromGroups 는 useUsers({ status: 'active' }) 로 찾은 사람만 담고
+ * 나머지는 조용히 버린다. 그러면 여기 보여 준 숫자보다 실제로 담기는 인원이 적어지므로,
+ * **활성 사용자와의 교집합을 미리 내서** 미리보기 숫자와 onPick 값이 정의상 같아지게 한다.
  */
 export default function GroupPickerDialog({
   onCancel,
@@ -19,6 +25,7 @@ export default function GroupPickerDialog({
   onPick: (userIds: string[]) => void;
 }) {
   const tree = useGroupTree();
+  const users = useUsers({ status: 'active' });
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
   const rows = useMemo(
@@ -26,11 +33,23 @@ export default function GroupPickerDialog({
     [tree.data?.groups],
   );
 
-  const userIds = useMemo(() => {
+  const expanded = useMemo(() => {
     if (!tree.data) return [];
     const nodes = tree.data.groups.map((g) => ({ id: g.id, parentId: g.parentId }));
     return expandGroupMembers(nodes, tree.data.memberships, [...picked]);
   }, [tree.data, picked]);
+
+  const activeIds = useMemo(
+    () => new Set((users.data ?? []).map((u) => u.id)),
+    [users.data],
+  );
+
+  const userIds = useMemo(
+    () => expanded.filter((id) => activeIds.has(id)),
+    [expanded, activeIds],
+  );
+
+  const inactiveCount = expanded.length - userIds.length;
 
   function toggle(groupId: string) {
     setPicked((prev) => {
@@ -87,6 +106,11 @@ export default function GroupPickerDialog({
         <p className="mt-3 rounded bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
           선택한 그룹 인원 {userIds.length}명
         </p>
+        {inactiveCount > 0 && (
+          <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            비활성 사용자 {inactiveCount}명은 제외됩니다.
+          </p>
+        )}
 
         <div className="mt-4 flex items-center justify-end gap-2">
           <button

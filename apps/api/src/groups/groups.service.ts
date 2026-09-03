@@ -258,16 +258,21 @@ export class GroupsService {
     await this.assertGroupExists(groupId);
     const userIds = Array.from(new Set(input.userIds));
 
+    // 활성 여부는 나중에 따로 본다. 여기서 isActive: true 를 조건에 넣으면 "존재하지만
+    // 비활성"인 사람도 findMany 결과에서 빠져 "존재하지 않음"과 구분할 수 없게 된다.
+    // members.service.ts 의 add() 와 같은 관례다.
     const users = await this.prisma.user.findMany({
-      where: { id: { in: userIds }, isActive: true },
-      select: { id: true },
+      where: { id: { in: userIds } },
+      select: { id: true, isActive: true },
     });
-    if (users.length !== userIds.length) {
-      const found = new Set(users.map((u) => u.id));
-      throw new BadRequestException({
-        error: 'USER_NOT_FOUND',
-        missing: userIds.filter((id) => !found.has(id)),
-      });
+    const foundById = new Map(users.map((u) => [u.id, u.isActive]));
+    const missing = userIds.filter((id) => !foundById.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException({ error: 'USER_NOT_FOUND', missing });
+    }
+    const inactive = userIds.filter((id) => foundById.get(id) === false);
+    if (inactive.length > 0) {
+      throw new BadRequestException({ error: 'USER_INACTIVE', inactive });
     }
 
     const existing = await this.prisma.userGroupMember.findMany({

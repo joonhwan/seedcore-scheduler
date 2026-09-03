@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { GroupProjectCoverage } from '@sam/shared';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { membersKey } from '../lib/members';
@@ -79,8 +79,22 @@ export default function GroupProjectSyncDialog({
         for (const userId of userIds) {
           const pairKey = `${projectId}:${userId}`;
           if (donePair.current.has(pairKey)) continue;
-          await api.delete<void>(`/admin/users/${userId}/projects/${projectId}`);
-          removed += 1;
+          try {
+            await api.delete<void>(`/admin/users/${userId}/projects/${projectId}`);
+            removed += 1;
+          } catch (removeErr) {
+            // AdminGroupsPage 가 이제 missingUserIds 로 미리 거르지만, 그 집계를 읽은
+            // 뒤 다른 관리자가 먼저 이 사람을 이 프로젝트에서 뺐을 수 있다. 그 경우
+            // 서버는 404 NOT_A_MEMBER 를 돌려주는데, 이걸 그대로 던지면 반복문 전체가
+            // 멈추고 donePair 에도 남지 않아 재시도해도 같은 짝에서 또 막힌다.
+            // NOT_A_MEMBER 는 "이미 원하는 상태(그 프로젝트에 없음)"이므로 조용히
+            // 넘어가고 짝을 기록한다. 다른 오류는 지금처럼 밖으로 던진다.
+            if (removeErr instanceof ApiError && removeErr.code === 'NOT_A_MEMBER') {
+              donePair.current.add(pairKey);
+              continue;
+            }
+            throw removeErr;
+          }
           donePair.current.add(pairKey);
         }
       }

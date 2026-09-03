@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { groupPathNames, type ProjectRole, type UserListItem } from '@sam/shared';
 import { useMe } from '../lib/auth';
+import { useAdminMode } from '../lib/adminMode';
 import { useUsers, useUpdateUser } from '../lib/users';
 import { useGroupTree } from '../lib/groups';
 import { useProjects } from '../lib/projects';
@@ -18,18 +19,30 @@ import { toast } from '../lib/toast';
 export default function AdminUserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const me = useMe();
+  const { on: adminMode } = useAdminMode();
   // 사용자 단건 조회 API 가 없으므로 목록에서 골라 쓴다. 150명 규모라 부담이 없다.
   const users = useUsers({ status: 'all' });
   const user = users.data?.find((u) => u.id === id) ?? null;
 
   if (me.isLoading) return <div className="p-6 text-sm text-slate-500">로딩…</div>;
   if (!me.data) return <Navigate to="/login" replace />;
-  if (me.data.globalRole !== 'ADMIN') {
+  // 관리자 모드도 함께 요구한다. 모드가 꺼지면 GET /projects 가 본인이 멤버인 프로젝트만
+  // 돌려주어 "+ 프로젝트 일괄 추가" 대화상자가 반쪽이 되고(AGENTS.md §3), 수정도
+  // ADMIN_OVERRIDE_EDIT 감사로그 없이 통과한다(AGENTS.md §4.4).
+  //
+  // 다만 이 화면은 관리자 모드 없이 열리는 사용자 관리 목록(/admin/users)에서 이름을 눌러
+  // 들어오는 경로가 있어, 그 두 화면(ProjectNewPage·ProjectClonePage)의 짧은 문구보다
+  // 친절하게 — 관리자 모드를 켜야 한다는 사실과 켜는 방법까지 — 안내한다.
+  if (me.data.globalRole !== 'ADMIN' || !adminMode) {
     return (
       <main className="mx-auto max-w-2xl p-6">
-        <p className="text-sm text-rose-600">ADMIN 권한이 필요합니다.</p>
-        <Link to="/" className="mt-3 inline-block text-sm text-sky-600 underline">
-          ← 프로젝트 목록
+        <h1 className="text-lg font-semibold">관리자 모드가 필요합니다</h1>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+          이 화면은 ADMIN 사용자가 관리자 모드를 켠 상태에서만 열 수 있습니다. 화면 상단
+          헤더의 관리자 모드 표시를 눌러 켜신 뒤 다시 시도하십시오.
+        </p>
+        <Link to="/admin/users" className="mt-3 inline-block text-sm text-sky-600 underline">
+          ← 사용자 관리
         </Link>
       </main>
     );
