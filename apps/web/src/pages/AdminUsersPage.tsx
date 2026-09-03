@@ -26,7 +26,10 @@ export default function AdminUsersPage() {
     null,
   );
 
-  const users = useUsers({ query, status });
+  // 검색어를 서버로 넘기지 않고 화면에서 거른다. 서버는 username·displayName 만 보고
+  // 걸러내므로 그룹 이름을 넣으면 0명이 돌아와, 화면에서 그룹으로 보탤 여지가 없어진다.
+  // 소속은 이미 배지 때문에 받아 두는 값이라 여기서 함께 보면 된다(150명 규모, AGENTS.md 1장).
+  const users = useUsers({ status });
   const tree = useGroupTree();
   const groupPaths = useMemo(
     () =>
@@ -36,6 +39,28 @@ export default function AdminUsersPage() {
       ),
     [tree.data, users.data],
   );
+
+  /**
+   * username·표시 이름·소속 그룹 이름 중 하나라도 걸리면 남긴다.
+   *
+   * 그룹은 **경로의 모든 마디**를 본다. 그래서 "응용기술그룹" 으로 찾으면 그 아래 개발팀·
+   * 생산팀 사람까지 함께 나온다. 배지에 마우스를 올렸을 때 보이는 경로가 그 사람의 소속을
+   * 말해 주므로, 상위 조직 이름으로 찾았을 때 소속 인원이 빠지면 오히려 어긋난다.
+   *
+   * 그룹 조회가 아직 도착하지 않았으면 소속은 빈 배열이라 이름 두 가지로만 걸린다. 배지가
+   * 그때 안 보이는 것과 같은 성질이고, 그룹을 못 받았다고 목록이 비면 안 되기 때문이다.
+   */
+  const filtered = useMemo(() => {
+    const all = users.data ?? [];
+    const q = query.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter(
+      (u) =>
+        u.username.toLowerCase().includes(q) ||
+        u.displayName.toLowerCase().includes(q) ||
+        (groupPaths.get(u.id) ?? []).some((name) => name.toLowerCase().includes(q)),
+    );
+  }, [users.data, groupPaths, query]);
 
   if (me.isLoading) {
     return <div className="p-6 text-sm text-slate-500">로딩…</div>;
@@ -70,7 +95,7 @@ export default function AdminUsersPage() {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="username / 이름 검색"
+          placeholder="username / 이름 / 그룹 검색"
           className="flex-1 rounded border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
         />
         <label className="flex items-center gap-2 text-sm">
@@ -92,12 +117,12 @@ export default function AdminUsersPage() {
         {users.isError && (
           <p className="p-4 text-sm text-rose-600">{apiErrorMessage(users.error)}</p>
         )}
-        {users.data && users.data.length === 0 && (
+        {users.data && filtered.length === 0 && (
           <p className="p-4 text-sm text-slate-500">조건에 맞는 사용자가 없습니다.</p>
         )}
-        {users.data && users.data.length > 0 && (
+        {filtered.length > 0 && (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {users.data.map((u) => (
+            {filtered.map((u) => (
               <UserRow
                 key={u.id}
                 user={u}
