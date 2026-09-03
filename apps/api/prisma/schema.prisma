@@ -25,6 +25,10 @@ model User {
   lastLoginAt        DateTime? @map("last_login_at")
   failedLoginCount   Int       @default(0) @map("failed_login_count")
   lockedUntil        DateTime? @map("locked_until")
+  // 퇴사 처리 시각. 비어 있으면 재직. 3차 작업(확정명세 ⑥)에서 쓰지만 마이그레이션을 한 번의
+  // 배포로 묶기 위해 2차에서 함께 넣는다. 기본값을 주거나 NOT NULL 로 바꾸면 Prisma 가 users
+  // 테이블을 재생성하는 경로를 택하므로 절대 바꾸지 말 것 (설계 문서 §11).
+  retiredAt          DateTime? @map("retired_at")
 
   createdProjects    Project[]       @relation("ProjectCreatedBy")
   projectMemberships ProjectMember[] @relation("MembershipUser")
@@ -35,6 +39,8 @@ model User {
   history            NodeHistory[]
   auditLogs          AuditLog[]
   sessions           Session[]
+  groupMemberships   UserGroupMember[] @relation("GroupMemberUser")
+  groupMembersAdded  UserGroupMember[] @relation("GroupMemberAddedBy")
 
   @@map("users")
 }
@@ -177,5 +183,42 @@ model AutocompleteTerm {
 
   @@unique([title, kind])
   @@map("autocomplete_terms")
+}
+
+// 사용자 그룹(부서). parent_id 하나로 조직 계층을 표현한다.
+// @@unique([parentId, name]) 은 최상위끼리는 걸리지 않는다 — SQL 표준상 NULL 끼리는 같다고 보지
+// 않기 때문이다. 최상위 이름 중복은 GroupsService 가 애플리케이션에서 검사한다.
+model UserGroup {
+  id          String   @id
+  name        String
+  parentId    String?  @map("parent_id")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  parent   UserGroup?        @relation("GroupTree", fields: [parentId], references: [id])
+  children UserGroup[]       @relation("GroupTree")
+  members  UserGroupMember[]
+
+  @@unique([parentId, name])
+  @@map("user_groups")
+}
+
+// 그룹 소속. 운영은 1인 1소속이지만 구조는 여러 소속을 허용해 둔다 (확정명세 ㉰).
+// 그룹 쪽 onDelete 가 Cascade 인 것은 안전망일 뿐이다 — 인원이 남아 있으면 서버가 그룹 삭제
+// 자체를 거부하므로 실제로 발동하지 않는다.
+model UserGroupMember {
+  groupId   String   @map("group_id")
+  userId    String   @map("user_id")
+  addedById String   @map("added_by")
+  addedAt   DateTime @default(now()) @map("added_at")
+
+  group   UserGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user    User      @relation("GroupMemberUser", fields: [userId], references: [id])
+  addedBy User      @relation("GroupMemberAddedBy", fields: [addedById], references: [id])
+
+  @@id([groupId, userId])
+  @@index([userId])
+  @@map("user_group_members")
 }
 
