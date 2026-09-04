@@ -164,6 +164,23 @@ pnpm -F @sam/api prisma:migrate:dev
 
 - **데이터베이스 변경 시 사용자 알림**: 향후 Prisma 스키마(`schema.prisma`), 데이터베이스 테이블 구조, 또는 마이그레이션 파일 추가/변경 등 **DB 관련 변경사항이 발생할 경우**, 작업을 마친 후 사용자에게 구체적인 DB 변경 내용과 파이프라인 반영 여부를 반드시 상세하게 설명하고 공유해야 합니다.
 
+- **스키마를 바꾼 브랜치를 `master` 에 머지하기 전에 fly.io 볼륨 스냅샷을 뜹니다.** `master` 에 push 하면
+  `deploy.yml` 이 돌고, `Dockerfile.fly` 의 기동 스크립트가 컨테이너를 띄울 때마다
+  `pnpm prisma:migrate:deploy` 를 먼저 부릅니다. 즉 **머지되는 순간 fly.io 볼륨의 DB 에 마이그레이션이
+  자동으로 적용됩니다.** 고객 서버 경로와 달리 이 경로에는 `sp-migrate.exe` 가 뜨는 적용 직전 사본이
+  없으므로, 머지 전에 손으로 한 번 떠 둡니다.
+
+  ```bash
+  fly volumes list -a seedcore-scheduler          # 볼륨 id 확인
+  fly volumes snapshots create <volume id>        # 적용 직전 사본
+  ```
+
+  깜빡했더라도 되돌릴 사본이 두 겹 있습니다. fly.io 가 **자동으로 뜨는 일일 스냅샷**(기본 5일 보관,
+  `fly volumes snapshots list <volume id>` 로 확인)과, 앱이 매일 04:00(KST)에 볼륨 안
+  `/var/seedcore-scheduler/backup/daily/<YYYYMMDD>/app.db.gz` 로 남기는 **자체 백업**(30일 보관)입니다.
+  뒤의 것은 인증 없이 `GET /api/v1/health/backup` 으로 최신 시각을 확인할 수 있고,
+  `fly ssh sftp get <경로> -a seedcore-scheduler` 로 내려받습니다.
+
 ---
 
  에이전트는 작업을 시작하기 전 본 문서를 완독하고 준수하여, 본 프로젝트 고유의 보안 아키텍처와 트리 구조 무결성을 훼손하지 않도록 주의해 주십시오.
