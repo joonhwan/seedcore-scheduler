@@ -18,6 +18,7 @@ import {
   useRetireUser,
   useUnretireUser,
   useDeleteUser,
+  userActivityKey,
 } from '../lib/users';
 import { api } from '../lib/api';
 import { useGroupTree, groupsKey } from '../lib/groups';
@@ -290,9 +291,14 @@ function GroupSection({ userId, displayName }: { userId: string; displayName: st
 
       // 재조회가 끝나기를 기다린 뒤에 덮개를 내려, 덮개가 사라지는 순간 소속 표시가 이미
       // 새 값으로 바뀌어 있게 한다.
+      //
+      // userActivityKey(userId) 도 함께 무효화한다. 그룹 소속 수(clearable.groupMemberships)가
+      // 활동 집계에 들어가는데, ['admin','users',userId,'groups'] 무효화는 접두어가 달라
+      // ['admin','users',userId,'activity'] 까지 덮지 않는다.
       await Promise.all([
         qc.invalidateQueries({ queryKey: groupsKey }),
         qc.invalidateQueries({ queryKey: userGroupsKey(userId) }),
+        qc.invalidateQueries({ queryKey: userActivityKey(userId) }),
       ]);
       setDraft(null);
       toast.success(target ? '소속이 변경되었습니다.' : '소속이 해제되었습니다.');

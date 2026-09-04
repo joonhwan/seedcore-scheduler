@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AddUserProjectsDto, ProjectRole, UserGroupItem, UserProjectItem } from '@sam/shared';
 import { api } from './api';
+import { userActivityKey } from './users';
 
 export const userProjectsKey = (userId: string) => ['admin', 'users', userId, 'projects'] as const;
 export const userGroupsKey = (userId: string) => ['admin', 'users', userId, 'groups'] as const;
@@ -30,6 +31,9 @@ export function useUserGroups(userId: string | undefined) {
 function invalidateUser(qc: ReturnType<typeof useQueryClient>, userId: string) {
   qc.invalidateQueries({ queryKey: userProjectsKey(userId) });
   qc.invalidateQueries({ queryKey: ['projects'] });
+  // 참여 프로젝트 수가 활동 집계(clearable.projectMemberships)에 들어가므로 함께 무효화한다.
+  // ['admin','users',userId,'projects'] 무효화는 접두어가 달라 activity 키까지 덮지 않는다.
+  qc.invalidateQueries({ queryKey: userActivityKey(userId) });
 }
 
 export function useAddUserProjects(userId: string) {

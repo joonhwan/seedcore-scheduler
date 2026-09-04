@@ -6,6 +6,7 @@ import { toast } from '../lib/toast';
 import { membersKey } from '../lib/members';
 import { projectKey } from '../lib/projects';
 import { userProjectsKey } from '../lib/userProjects';
+import { userActivityKey } from '../lib/users';
 import { groupsKey } from '../lib/groups';
 import { syncUserIds, type AddSide, type RemoveSide } from '../lib/groupSync';
 
@@ -169,6 +170,9 @@ export default function GroupProjectSyncDialog({
       }
       for (const userId of syncUserIds([addTo, removeFrom])) {
         qc.invalidateQueries({ queryKey: userProjectsKey(userId) });
+        // 참여 프로젝트 수가 활동 집계(clearable.projectMemberships)에 들어가므로 함께
+        // 무효화한다. userProjectsKey 무효화는 접두어가 달라 activity 키까지 덮지 않는다.
+        qc.invalidateQueries({ queryKey: userActivityKey(userId) });
       }
       qc.invalidateQueries({ queryKey: ['projects'] });
       // groupProjectsKey(groupId) 는 ['admin','groups', groupId, 'projects'] 형태라

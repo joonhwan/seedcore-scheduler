@@ -42,8 +42,12 @@ export const userActivityKey = (id: string) => ['admin', 'users', id, 'activity'
 /**
  * 계정 하나의 활동 집계. 삭제 버튼을 띄울지 판단하는 근거다.
  *
- * 프로젝트 참여나 그룹 소속을 이 화면에서 빼면 집계가 달라지므로, 그 조작들이
- * ['admin', 'users'] 를 무효화할 때 이 쿼리도 함께 다시 읽힌다.
+ * 프로젝트 참여나 그룹 소속을 이 화면에서 빼면 집계가 달라진다. TanStack Query 의 무효화는
+ * 접두어 매칭이라 `['admin','users',id,'projects']`·`['admin','users',id,'groups']` 를
+ * 무효화해도 이 쿼리 키(`['admin','users',id,'activity']`)는 마지막 조각이 달라 덮이지
+ * 않는다. 그래서 그 조작들(`lib/userProjects.ts` 의 `invalidateUser()`,
+ * `AdminUserDetailPage` 의 소속 이동, `GroupProjectSyncDialog` 의 프로젝트 참여 동기화)이
+ * 각자 `userActivityKey(id)` 를 함께 무효화한다.
  */
 export function useUserActivity(id: string) {
   return useQuery<UserActivitySummary>({

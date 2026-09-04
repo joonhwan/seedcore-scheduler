@@ -24,7 +24,7 @@ export default function UserDeleteConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900">
+      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
         <h2 className="text-base font-semibold text-rose-700 dark:text-rose-300">
           계정을 영구히 삭제합니다
         </h2>
