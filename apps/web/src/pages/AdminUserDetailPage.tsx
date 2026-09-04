@@ -99,7 +99,7 @@ export default function AdminUserDetailPage() {
           <AccountSection user={user} />
           <GroupSection userId={id} displayName={user.displayName} />
           <ProjectSection userId={id} />
-          <AccountCleanupSection user={user} />
+          <AccountCleanupSection user={user} isSelf={user.id === me.data.id} />
         </>
       )}
     </main>
@@ -149,6 +149,11 @@ function AccountSection({ user }: { user: UserListItem }) {
         {!user.isActive && (
           <span className="rounded border border-slate-400 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
             비활성
+          </span>
+        )}
+        {user.retiredAt !== null && (
+          <span className="rounded border border-purple-300 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:border-purple-700 dark:bg-purple-950 dark:text-purple-200">
+            퇴사
           </span>
         )}
       </h1>
@@ -497,7 +502,13 @@ function ProjectSection({ userId }: { userId: string }) {
  * 남아 있어 지울 수 없는지 적는다. 집계를 "정리하면 없어지는 것"과 "지울 수 없는 것"으로 나눈
  * 덕분에, 앞의 것만 남은 계정에는 위 섹션에서 빼면 지울 수 있다고 안내할 수 있다.
  */
-function AccountCleanupSection({ user }: { user: UserListItem }) {
+function AccountCleanupSection({
+  user,
+  isSelf,
+}: {
+  user: UserListItem;
+  isSelf: boolean;
+}) {
   const navigate = useNavigate();
   const activity = useUserActivity(user.id);
   const retire = useRetireUser();
@@ -581,7 +592,8 @@ function AccountCleanupSection({ user }: { user: UserListItem }) {
           <button
             type="button"
             onClick={onRetire}
-            disabled={busy}
+            disabled={busy || isSelf}
+            title={isSelf ? '자기 자신은 퇴사 처리할 수 없습니다.' : undefined}
             className="rounded border border-amber-300 px-3 py-1.5 text-sm font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-950"
           >
             퇴사 처리
@@ -592,7 +604,8 @@ function AccountCleanupSection({ user }: { user: UserListItem }) {
           <button
             type="button"
             onClick={() => setDeleteOpen(true)}
-            disabled={busy}
+            disabled={busy || isSelf}
+            title={isSelf ? '자기 자신은 삭제할 수 없습니다.' : undefined}
             className="rounded border border-rose-300 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950"
           >
             계정 삭제

@@ -98,6 +98,10 @@ function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
       ),
       delete: vi.fn(async ({ where }: { where: { id: string } }) => {
         const i = users.findIndex((u) => u.id === where.id);
+        // 실제 Prisma 는 대상이 없으면 P2025 를 던진다. -1 을 그대로 splice 에 넘기면
+        // 마지막 사람을 대신 지우고 그것을 돌려주는 채로 조용히 통과해, 없는 대상을
+        // 지우려 한 회귀를 잡아 주지 못한다.
+        if (i === -1) throw new Error('P2025: Record to delete does not exist.');
         deleted.push(where.id);
         return users.splice(i, 1)[0]!;
       }),
@@ -214,6 +218,42 @@ describe('UsersService.activity()', () => {
 });
 
 const CTX = { actorId: 'admin1', ip: '127.0.0.1', userAgent: 'test' };
+
+describe('UsersService.update()', () => {
+  it('퇴사자를 { isActive: true } 로 되돌리려 하면 ALREADY_RETIRED 로 거부하고 행을 바꾸지 않는다', async () => {
+    const { service, users } = buildService({
+      users: [userRow({ id: 'u1', isActive: false, retiredAt: T0 })],
+    });
+
+    await expect(
+      service.update('u1', { isActive: true }, CTX),
+    ).rejects.toMatchObject({ response: { error: 'ALREADY_RETIRED' } });
+
+    const row = users.find((u) => u.id === 'u1')!;
+    expect(row.isActive).toBe(false);
+    expect(row.retiredAt).not.toBeNull();
+  });
+
+  it('재직 중인 사용자에게 { isActive: true } 는 예전처럼 통과한다', async () => {
+    const { service } = buildService({
+      users: [userRow({ id: 'u1', isActive: false })],
+    });
+
+    const result = await service.update('u1', { isActive: true }, CTX);
+
+    expect(result.isActive).toBe(true);
+  });
+
+  it('퇴사자에게 { displayName } 만 보내는 것은 통과한다', async () => {
+    const { service } = buildService({
+      users: [userRow({ id: 'u1', isActive: false, retiredAt: T0 })],
+    });
+
+    const result = await service.update('u1', { displayName: '새이름' }, CTX);
+
+    expect(result.displayName).toBe('새이름');
+  });
+});
 
 describe('UsersService.retire()', () => {
   it('retired_at 과 is_active 를 함께 바꾸고 세션을 끊는다', async () => {

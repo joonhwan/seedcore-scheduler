@@ -107,6 +107,18 @@ export class UsersService {
     const target = await this.prisma.user.findUnique({ where: { id } });
     if (!target) throw new NotFoundException({ error: 'USER_NOT_FOUND' });
 
+    // 퇴사자를 이 API 로 활성화하는 것을 막는다. `retired_at` 이 채워졌으면 `is_active` 는
+    // 반드시 false 라는 불변식(설계 문서 §3)이 있는데, 이 경로는 target.retiredAt 을 보지
+    // 않고 isActive 를 그대로 써서 그 불변식을 깰 수 있었다. 화면이 퇴사자 행에서 토글을
+    // 감추는 것은 서버 쪽 보증이 아니다 — 예전에 읽어 둔 화면(그 사이 다른 관리자가 퇴사시킨
+    // 경우)이나 직접 API 호출로 그대로 도달한다. 그 결과가 나쁜 쪽으로 비대칭이다: 계정은
+    // 로그인과 후보 목록에 되돌아오는데, 목록 기본 화면은 여전히 퇴사자를 감춰 존재조차
+    // 드러나지 않고, 퇴사 배지가 붙은 행은 토글이 감춰져 되돌릴 수도 없다. 상태를 되돌리는
+    // 길은 복직(unretire) 하나로 모으고, 여기서는 거부한다.
+    if (target.retiredAt !== null && patch.isActive === true) {
+      throw new BadRequestException({ error: 'ALREADY_RETIRED' });
+    }
+
     // 단일 ADMIN 비활성화 방지 — 활성 ADMIN 이 자기 자신밖에 없으면 거부.
     if (
       patch.isActive === false &&
@@ -305,6 +317,10 @@ export class UsersService {
     }
 
     // 단일 ADMIN 보호 — update() 의 비활성화 금지와 같은 규칙이다.
+    // 실제로는 열리지 않는 이중 안전장치다: 행위자는 항상 활성 ADMIN 이고(@AdminOnly + 세션
+    // 검증), id === ctx.actorId 는 바로 위에서 이미 막으므로 otherActiveAdmins 는 행위자
+    // 자신 때문에 최소 1이다. update() 에는 자기 자신 검사가 없어 그쪽 분기는 실제로
+    // 필요하므로, 같은 규칙을 여기서도 지우지 않고 방어적으로 남겨 둔다.
     if (target.globalRole === 'ADMIN' && target.isActive) {
       const otherActiveAdmins = await this.prisma.user.count({
         where: { globalRole: 'ADMIN', isActive: true, id: { not: id } },
