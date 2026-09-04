@@ -81,9 +81,13 @@ function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
       ),
       update: vi.fn(
         async ({ where, data }: { where: { id: string }; data: Partial<UserRow> }) => {
-          const row = users.find((u) => u.id === where.id)!;
-          Object.assign(row, data);
-          return row;
+          const i = users.findIndex((u) => u.id === where.id);
+          // 실제 Prisma 는 findUnique 가 돌려준 객체를 건드리지 않고 새 행을 돌려준다.
+          // 대역이 제자리에서 바꾸면 서비스 안에서 target 과 updated 가 같은 객체가 되어,
+          // 운영에서는 멀쩡한 코드가 시험에서만 실패한다.
+          const next = { ...users[i]!, ...data };
+          users[i] = next;
+          return next;
         },
       ),
       delete: vi.fn(async ({ where }: { where: { id: string } }) => {

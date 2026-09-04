@@ -311,7 +311,7 @@ export class UsersService {
       }
     }
 
-    // 업데이트 직전에 남겨 둔다 — 업데이트 뒤에 target.isActive 를 읽으면 이미 바뀐 값이다.
+    // 감사로그에 남길 값이므로 바뀌기 전에 잡아 둔다.
     const wasActive = target.isActive;
 
     const updated = await this.prisma.user.update({
