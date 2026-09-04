@@ -25,7 +25,15 @@ import {
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import BusyOverlay from '../components/BusyOverlay';
-import GroupProjectSyncDialog, { type SyncSide } from '../components/GroupProjectSyncDialog';
+import GroupProjectSyncDialog from '../components/GroupProjectSyncDialog';
+import {
+  annotateBlockedTargets,
+  buildAddSide,
+  buildRemoveSide,
+  type AddSide,
+  type RemoveSide,
+  type SyncUser,
+} from '../lib/groupSync';
 
 export default function AdminUserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -180,8 +188,8 @@ function GroupSection({ userId, displayName }: { userId: string; displayName: st
   const [busy, setBusy] = useState<string | null>(null);
   const [sync, setSync] = useState<{
     title: string;
-    addTo?: SyncSide;
-    removeFrom?: SyncSide;
+    addTo?: AddSide;
+    removeFrom?: RemoveSide;
   } | null>(null);
 
   /**
@@ -232,17 +240,23 @@ function GroupSection({ userId, displayName }: { userId: string; displayName: st
     try {
       // 이전 소속의 집계는 **바꾸기 전에** 읽는다. 옮긴 뒤에 읽으면 이미 빠진 뒤의 값이라
       // 이 사람이 그 프로젝트에 있었는지를 가릴 수 없다(그룹 관리 화면과 같은 이유).
-      let removeFrom: SyncSide | undefined;
-      const previous = from[0];
-      if (previous) {
-        const raw = await api.get<GroupProjectCoverage[]>(
-          `/admin/groups/${previous.id}/projects`,
-        );
-        // 이 사람이 실제로 참여 중인 프로젝트만 남긴다. 그러지 않으면 빼기 목록에 없는
-        // 프로젝트가 올라가 확인 시 404 NOT_A_MEMBER 로 막다른 길에 빠진다.
-        const coverage = raw.filter((c) => !c.missingUserIds.includes(userId));
-        if (coverage.length > 0) removeFrom = { groupName: previous.name, coverage };
-      }
+      //
+      // 소속이 여럿이면 **모두** 읽는다. 옮기기(move: true)는 서버가 대상 그룹 밖의 소속을
+      // 전부 지우고, 해제도 아래에서 소속 전부를 지운다. 그래서 첫 번째 그룹만 보면 나머지
+      // 그룹으로 얽혔던 프로젝트 참여가 아무 안내 없이 남는다.
+      const subject: SyncUser = { id: userId, displayName };
+      const parts = await Promise.all(
+        from.map(async (g) => ({
+          groupName: g.name,
+          coverage: await api.get<GroupProjectCoverage[]>(`/admin/groups/${g.id}/projects`),
+          users: [subject],
+        })),
+      );
+      // 이 사람이 실제로 참여 중인 프로젝트만 남기는 일은 buildRemoveSide 가 맡는다.
+      // 그러지 않으면 빼기 목록에 없는 프로젝트가 올라가 확인 시 404 NOT_A_MEMBER 로
+      // 막다른 길에 빠진다. 이어서 뺄 수 없는 항목(그 프로젝트에 남는 MANAGER 가 없는
+      // 경우)에 이유를 달아 체크 자체를 막는다.
+      const removeFrom = await annotateBlockedTargets(buildRemoveSide(parts));
 
       if (target) {
         // move: true 로 부르면 기존 소속에서 빼고 넣는 일이 요청 하나로 일어난다.
@@ -256,12 +270,12 @@ function GroupSection({ userId, displayName }: { userId: string; displayName: st
         }
       }
 
-      let addTo: SyncSide | undefined;
+      let addTo: AddSide | undefined;
       if (target) {
         const rowsAfter = await api.get<GroupProjectCoverage[]>(
           `/admin/groups/${target.id}/projects`,
         );
-        if (rowsAfter.length > 0) addTo = { groupName: target.name, coverage: rowsAfter };
+        addTo = buildAddSide(target.name, rowsAfter, [subject]);
       }
 
       // 재조회가 끝나기를 기다린 뒤에 덮개를 내려, 덮개가 사라지는 순간 소속 표시가 이미
@@ -330,8 +344,8 @@ function GroupSection({ userId, displayName }: { userId: string; displayName: st
       </div>
       {multi && (
         <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-400">
-          이 사용자는 그룹 두 곳 이상에 속해 있습니다. 소속을 바꾸면 위 목록의 첫 번째 그룹을
-          기준으로 옮깁니다. 나머지는 그룹 관리 화면에서 정리하십시오.
+          이 사용자는 그룹 두 곳 이상에 속해 있습니다. 소속을 바꾸면 위에 나열된 그룹 모두에서
+          빠지고, 고른 그룹 한 곳에만 속하게 됩니다.
         </p>
       )}
       <p className="mt-2 text-[11px] text-slate-500">
@@ -347,7 +361,6 @@ function GroupSection({ userId, displayName }: { userId: string; displayName: st
       {sync && (
         <GroupProjectSyncDialog
           title={sync.title}
-          userIds={[userId]}
           addTo={sync.addTo}
           removeFrom={sync.removeFrom}
           onClose={() => setSync(null)}

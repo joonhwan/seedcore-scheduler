@@ -23,10 +23,18 @@ import {
 } from '../lib/groups';
 import { useUsers } from '../lib/users';
 import { flattenGroupTree } from '../lib/groupTreeView';
-import { apiErrorMessage } from '../lib/errors';
+import { apiErrorMessage, isConflict } from '../lib/errors';
 import { toast } from '../lib/toast';
 import UserPickerDialog from '../components/UserPickerDialog';
-import GroupProjectSyncDialog, { type SyncSide } from '../components/GroupProjectSyncDialog';
+import GroupProjectSyncDialog from '../components/GroupProjectSyncDialog';
+import {
+  annotateBlockedTargets,
+  buildAddSide,
+  buildRemoveSide,
+  type AddSide,
+  type RemoveSide,
+  type SyncUser,
+} from '../lib/groupSync';
 import BusyOverlay from '../components/BusyOverlay';
 
 export default function AdminGroupsPage() {
@@ -212,9 +220,8 @@ function GroupDetailPanel({
   const coverage = useGroupProjects(group.id);
   const [sync, setSync] = useState<{
     title: string;
-    userIds: string[];
-    addTo?: SyncSide;
-    removeFrom?: SyncSide;
+    addTo?: AddSide;
+    removeFrom?: RemoveSide;
   } | null>(null);
   const update = useUpdateGroup();
   const remove = useDeleteGroup();
@@ -258,11 +265,27 @@ function GroupDetailPanel({
           name: name.trim(),
           description: description.trim() || null,
           parentId,
+          // 내가 이 화면을 열 때 읽은 값. 그 사이 다른 관리자가 고쳤으면 서버가 409 로
+          // 거부한다. 아래 touched 는 내가 손댄 필드를 상대의 변경으로 덮지 않으려고
+          // 재동기화를 멈추므로, 그것만으로는 반대 방향(내가 상대를 덮는 것)을 막지 못한다.
+          expectedUpdatedAt: group.updatedAt,
         },
       });
       toast.success('그룹 정보가 저장되었습니다.');
       setTouched(false);
     } catch (err) {
+      if (isConflict(err)) {
+        toast.error(
+          '다른 관리자가 이 그룹을 먼저 수정했습니다. 화면을 최신 내용으로 되돌렸으니 확인한 뒤 다시 시도하십시오.',
+        );
+        // 손댄 표시를 풀고 다시 읽는다. 둘 다 필요하다 — 저장이 실패하면 뮤테이션의
+        // onSuccess 무효화가 돌지 않아 group prop 이 옛 값 그대로이고, touched 가 켜져
+        // 있으면 새 값이 도착해도 화면에 반영되지 않는다. 내가 입력하던 값은 이때
+        // 사라지는데, 상대가 무엇을 바꿨는지 보지 않은 채 덮어쓰지 않게 하려는 것이다.
+        setTouched(false);
+        qc.invalidateQueries({ queryKey: groupsKey });
+        return;
+      }
       toast.error(apiErrorMessage(err));
     }
   }
@@ -284,6 +307,10 @@ function GroupDetailPanel({
    * 충돌 목록을 돌려준다. 그때 확인 창을 띄우고, 승인하면 move: true 로 다시 부른다.
    */
   async function onAddMembers(userIds: string[]) {
+    const nameOf = new Map((users.data ?? []).map((u) => [u.id, u.displayName] as const));
+    // 대화상자는 프로젝트마다 대상 인원을 따로 들고, 실패를 알릴 때 이름을 쓴다.
+    const syncUserOf = (id: string): SyncUser => ({ id, displayName: nameOf.get(id) ?? id });
+
     try {
       await addMembers.mutateAsync({ userIds, move: false });
       toast.success(`${userIds.length}명이 추가되었습니다.`);
@@ -298,11 +325,11 @@ function GroupDetailPanel({
           api.get<GroupProjectCoverage[]>(`/admin/groups/${group.id}/projects`),
           qc.invalidateQueries({ queryKey: groupsKey }),
         ]);
-        if (rows.length > 0) {
+        const addTo = buildAddSide(group.name, rows, userIds.map(syncUserOf));
+        if (addTo) {
           setSync({
             title: `${userIds.length}명을 "${group.name}" 에 넣었습니다.`,
-            userIds,
-            addTo: { groupName: group.name, coverage: rows },
+            addTo,
           });
         }
       } finally {
@@ -315,9 +342,6 @@ function GroupDetailPanel({
         toast.error(apiErrorMessage(err));
         return;
       }
-      const nameOf = new Map(
-        (users.data ?? []).map((u) => [u.id, u.displayName] as const),
-      );
       const names = conflicts
         .map((c) => {
           const g = allGroups.find((x) => x.id === c.groupId);
@@ -337,27 +361,33 @@ function GroupDetailPanel({
         // 가릴 수 없다 (이 화면에서 GET 이 안전하다고 안심하면 안 되는 지점 — 옮기기는
         // move: true 요청 한 번에서 빼기·넣기가 함께 일어나므로 그 요청 전에 읽어야 한다).
         //
-        // 이전 그룹이 여럿이면 첫 번째만 다룬다 — 1인 1소속 운영에서 여럿이 섞이는 경우는
-        // 드물고, 남은 것은 그룹 관리 화면의 상시 패널로 언제든 확인할 수 있기 때문이다.
-        const previousGroupId = conflicts[0]?.groupId;
-        const previousGroup = allGroups.find((g) => g.id === previousGroupId);
-        // 실제로 이 이전 그룹에서 넘어가는 사람만 추린다. userIds 전체가 아니라 이들 기준으로
-        // 걸러야 한다 — userIds 에는 이전 그룹과 무관한(원래 무소속이던) 사람도 섞여 있다.
-        const movingUserIds = conflicts
-          .filter((c) => c.groupId === previousGroupId)
-          .map((c) => c.userId);
-        const removeRowsRaw =
-          previousGroupId !== undefined
-            ? await api.get<GroupProjectCoverage[]>(
-                `/admin/groups/${previousGroupId}/projects`,
-              )
-            : [];
-        // missingUserIds 에 이 이전 그룹 인원 중 넘어가는 사람이 전혀 없는(=아무도 참여하지
-        // 않는) 프로젝트는 뺀다. 그래야 대화상자의 "빼기" 목록이 실제로 뺄 사람이 있는
-        // 프로젝트만 담아, DELETE 가 404 NOT_A_MEMBER 로 막다른 길에 빠지는 것을 줄인다.
-        const removeRows = removeRowsRaw.filter((c) =>
-          movingUserIds.some((uid) => !c.missingUserIds.includes(uid)),
+        // 이전 그룹이 여럿이면 **모두** 다룬다. 서버의 move: true 는 대상 그룹 밖의 소속을
+        // 전부 지우므로, 첫 번째 그룹만 보면 나머지 그룹으로 얽혔던 프로젝트 참여가 아무
+        // 안내 없이 남는다. 사람마다 이전 그룹이 다를 수 있어 그룹별로 묶어서 읽는다.
+        const movingByGroup = new Map<string, SyncUser[]>();
+        for (const c of conflicts) {
+          const list = movingByGroup.get(c.groupId);
+          if (list) list.push(syncUserOf(c.userId));
+          else movingByGroup.set(c.groupId, [syncUserOf(c.userId)]);
+        }
+        // 대상은 실제로 그 그룹에서 넘어가는 사람뿐이다. userIds 전체를 넘기면 안 된다 —
+        // 거기에는 이전 그룹과 무관한(원래 무소속이던) 사람도 섞여 있어서, 그들이 직접
+        // 참여하던 프로젝트에서까지 함께 빠진다.
+        //
+        // 프로젝트별로 실제로 뺄 사람이 남는지는 buildRemoveSide 가 missingUserIds 로
+        // 걸러 준다. 그래야 DELETE 가 404 NOT_A_MEMBER 로 막다른 길에 빠지지 않는다.
+        const parts = await Promise.all(
+          [...movingByGroup].map(async ([groupId, movingUsers]) => ({
+            groupName: allGroups.find((g) => g.id === groupId)?.name ?? '알 수 없는 그룹',
+            coverage: await api.get<GroupProjectCoverage[]>(
+              `/admin/groups/${groupId}/projects`,
+            ),
+            users: movingUsers,
+          })),
         );
+        // 뺄 수 없는 항목(그 프로젝트에 남는 MANAGER 가 없는 경우)은 여기서 미리 가려내
+        // 체크 자체를 막는다. 눌러 본 뒤에야 알면 일부만 반영된 채로 끝난다.
+        const removeFrom = await annotateBlockedTargets(buildRemoveSide(parts));
 
         await addMembers.mutateAsync({ userIds, move: true });
         toast.success(`${userIds.length}명이 추가되었습니다.`);
@@ -368,17 +398,13 @@ function GroupDetailPanel({
           api.get<GroupProjectCoverage[]>(`/admin/groups/${group.id}/projects`),
           qc.invalidateQueries({ queryKey: groupsKey }),
         ]);
+        const addTo = buildAddSide(group.name, rows, userIds.map(syncUserOf));
 
-        if (rows.length > 0 || removeRows.length > 0) {
+        if (addTo || removeFrom) {
           setSync({
             title: `${userIds.length}명을 "${group.name}" 으로 옮겼습니다.`,
-            userIds,
-            ...(rows.length > 0
-              ? { addTo: { groupName: group.name, coverage: rows } }
-              : {}),
-            ...(removeRows.length > 0 && previousGroup !== undefined
-              ? { removeFrom: { groupName: previousGroup.name, coverage: removeRows } }
-              : {}),
+            ...(addTo ? { addTo } : {}),
+            ...(removeFrom ? { removeFrom } : {}),
           });
         }
       } catch (retryErr) {
@@ -401,20 +427,23 @@ function GroupDetailPanel({
       // 대화상자가 그 사람이 없는 프로젝트까지 체크 목록에 올려, 확인 시 DELETE 가
       // 404 NOT_A_MEMBER 로 막다른 길에 빠진다.
       const rows = await api.get<GroupProjectCoverage[]>(`/admin/groups/${group.id}/projects`);
-      // missingUserIds 에 이 사람이 없는(=참여 중인) 프로젝트만 남긴다. 이것이 "그 사람이
-      // 실제로 참여 중인 프로젝트"다.
-      const coverage = rows.filter((c) => !c.missingUserIds.includes(userId));
+      // missingUserIds 에 이 사람이 없는(=참여 중인) 프로젝트만 남기는 일은 buildRemoveSide
+      // 가 맡는다. 그것이 "그 사람이 실제로 참여 중인 프로젝트"다.
+      const removeFrom = await annotateBlockedTargets(
+        buildRemoveSide([
+          { groupName: group.name, coverage: rows, users: [{ id: userId, displayName }] },
+        ]),
+      );
 
       await removeMember.mutateAsync(userId);
       toast.success('소속이 해제되었습니다.');
       // 재조회가 끝나기를 기다린 뒤에 덮개를 내린다. 기다리지 않으면 덮개가 사라진 화면에
       // 방금 뺀 사람이 잠시 그대로 남아 있어, 해제가 안 된 것처럼 보인다.
       await qc.invalidateQueries({ queryKey: groupsKey });
-      if (coverage.length > 0) {
+      if (removeFrom) {
         setSync({
           title: `"${displayName}" 을(를) "${group.name}" 에서 뺐습니다.`,
-          userIds: [userId],
-          removeFrom: { groupName: group.name, coverage },
+          removeFrom,
         });
       }
     } catch (err) {
@@ -586,7 +615,6 @@ function GroupDetailPanel({
       {sync && (
         <GroupProjectSyncDialog
           title={sync.title}
-          userIds={sync.userIds}
           addTo={sync.addTo}
           removeFrom={sync.removeFrom}
           onClose={() => setSync(null)}

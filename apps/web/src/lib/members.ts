@@ -20,6 +20,27 @@ export function useMembers(projectId: string | undefined) {
   });
 }
 
+/**
+ * 여러 프로젝트의 MANAGER 목록을 한 번에 읽는다.
+ *
+ * 그룹 소속을 바꾼 뒤 여는 동기화 대화상자가 "이 사람을 빼면 MANAGER 가 한 명도 남지
+ * 않는" 프로젝트를 미리 가려내는 데 쓴다. 대상이 몇 건 규모라 프로젝트마다 한 번씩 부른다.
+ */
+export async function fetchProjectManagers(
+  projectIds: string[],
+): Promise<Map<string, string[]>> {
+  const entries = await Promise.all(
+    projectIds.map(async (projectId) => {
+      const members = await api.get<ProjectMemberItem[]>(`/projects/${projectId}/members`);
+      return [
+        projectId,
+        members.filter((m) => m.role === 'MANAGER').map((m) => m.userId),
+      ] as const;
+    }),
+  );
+  return new Map(entries);
+}
+
 export function useAddMember(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
