@@ -127,9 +127,6 @@ export default function ProjectsPage() {
   const [sortBy, setSortBy] = useState<keyof ProjectListItem | 'progress' | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(null);
 
-  // 페이징 상태
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
 
   // 삭제 확인 모달 상태
   const [deleteTarget, setDeleteTarget] = useState<ProjectListItem | null>(null);
@@ -173,7 +170,6 @@ export default function ProjectsPage() {
       setSortBy(field);
       setSortOrder('asc');
     }
-    setCurrentPage(1);
   };
 
   const handleDeleteExecute = async () => {
@@ -260,23 +256,10 @@ export default function ProjectsPage() {
   }, [projects.data, searchTerm, statusFilter, delayFilter, adminMode, sortBy, sortOrder]);
 
 
-  // 3. 페이징 처리
+  // 3. 전체 건수. 요청 4번으로 페이지 나누기를 없애고 표 안에서 세로로 스크롤한다.
+  // 서버가 이미 한 번에 최대 500 건을 내려주므로(projects.service.ts 의 take: 500)
+  // 화면에서 다시 자를 이유가 없다.
   const totalItems = filtered.length;
-  const totalPages = Math.ceil(totalItems / pageSize);
-  const paginated = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, currentPage, pageSize]);
-
-  // 마지막 페이지의 마지막 항목을 보관(또는 삭제)하면 그 행이 목록에서 빠지면서
-  // currentPage 가 totalPages 를 넘어 빈 표가 남는다. 이때 마지막 페이지로 당긴다.
-  // totalPages 가 0 이면 건드리지 않는다 — 결과가 없을 때는 페이징 컨트롤 자체가 숨겨지고
-  // "조건에 부합하는 프로젝트가 없습니다" 안내가 대신 뜬다.
-  useEffect(() => {
-    if (totalPages > 0 && currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [totalPages, currentPage]);
 
   const renderSortIcon = (field: keyof ProjectListItem) => {
     if (sortBy !== field || !sortOrder) {
@@ -298,7 +281,7 @@ export default function ProjectsPage() {
   };
 
   return (
-    <main className="px-3 py-6">
+    <main className="flex h-full flex-col overflow-hidden px-3 py-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold">프로젝트</h1>
         {canCreate && (
@@ -316,7 +299,7 @@ export default function ProjectsPage() {
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <button
             type="button"
-            onClick={() => { setDelayFilter('ALL'); setCurrentPage(1); }}
+            onClick={() => { setDelayFilter('ALL'); }}
             className={`p-3 rounded-lg border text-left transition-all ${
               delayFilter === 'ALL'
                 ? 'border-sky-500 bg-sky-50/50 dark:bg-sky-950/30 ring-1 ring-sky-500'
@@ -329,7 +312,7 @@ export default function ProjectsPage() {
 
           <button
             type="button"
-            onClick={() => { setDelayFilter('CRITICAL'); setCurrentPage(1); }}
+            onClick={() => { setDelayFilter('CRITICAL'); }}
             className={`p-3 rounded-lg border text-left transition-all ${
               delayFilter === 'CRITICAL'
                 ? 'border-red-500 bg-red-50/50 dark:bg-red-950/30 ring-1 ring-red-500'
@@ -350,7 +333,7 @@ export default function ProjectsPage() {
 
           <button
             type="button"
-            onClick={() => { setDelayFilter('DELAYED'); setCurrentPage(1); }}
+            onClick={() => { setDelayFilter('DELAYED'); }}
             className={`p-3 rounded-lg border text-left transition-all ${
               delayFilter === 'DELAYED'
                 ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/30 ring-1 ring-amber-500'
@@ -363,7 +346,7 @@ export default function ProjectsPage() {
 
           <button
             type="button"
-            onClick={() => { setDelayFilter('ON_TRACK'); setCurrentPage(1); }}
+            onClick={() => { setDelayFilter('ON_TRACK'); }}
             className={`p-3 rounded-lg border text-left transition-all ${
               delayFilter === 'ON_TRACK'
                 ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-1 ring-emerald-500'
@@ -389,7 +372,6 @@ export default function ProjectsPage() {
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
-              setCurrentPage(1);
             }}
             placeholder="프로젝트 이름 검색..."
             className="block w-full rounded-md border border-slate-300 bg-white py-1.5 pl-10 pr-3 text-sm placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
@@ -401,7 +383,7 @@ export default function ProjectsPage() {
           <div className="flex rounded-md border border-slate-200 p-0.5 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
             <button
               type="button"
-              onClick={() => { setDelayFilter('ALL'); setCurrentPage(1); }}
+              onClick={() => { setDelayFilter('ALL'); }}
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 delayFilter === 'ALL'
                   ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
@@ -412,7 +394,7 @@ export default function ProjectsPage() {
             </button>
             <button
               type="button"
-              onClick={() => { setDelayFilter('CRITICAL'); setCurrentPage(1); }}
+              onClick={() => { setDelayFilter('CRITICAL'); }}
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 delayFilter === 'CRITICAL'
                   ? 'bg-red-500 text-white shadow-sm font-semibold'
@@ -423,7 +405,7 @@ export default function ProjectsPage() {
             </button>
             <button
               type="button"
-              onClick={() => { setDelayFilter('DELAYED'); setCurrentPage(1); }}
+              onClick={() => { setDelayFilter('DELAYED'); }}
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 delayFilter === 'DELAYED'
                   ? 'bg-amber-500 text-white shadow-sm font-semibold'
@@ -434,7 +416,7 @@ export default function ProjectsPage() {
             </button>
             <button
               type="button"
-              onClick={() => { setDelayFilter('ON_TRACK'); setCurrentPage(1); }}
+              onClick={() => { setDelayFilter('ON_TRACK'); }}
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 delayFilter === 'ON_TRACK'
                   ? 'bg-emerald-600 text-white shadow-sm font-semibold'
@@ -449,7 +431,7 @@ export default function ProjectsPage() {
             <div className="flex rounded-md border border-slate-200 p-0.5 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
               <button
                 type="button"
-                onClick={() => { setStatusFilter('ALL'); setCurrentPage(1); }}
+                onClick={() => { setStatusFilter('ALL'); }}
                 className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                   statusFilter === 'ALL'
                     ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
@@ -460,7 +442,7 @@ export default function ProjectsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => { setStatusFilter('ACTIVE'); setCurrentPage(1); }}
+                onClick={() => { setStatusFilter('ACTIVE'); }}
                 className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                   statusFilter === 'ACTIVE'
                     ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
@@ -471,7 +453,7 @@ export default function ProjectsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => { setStatusFilter('ARCHIVED'); setCurrentPage(1); }}
+                onClick={() => { setStatusFilter('ARCHIVED'); }}
                 className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                   statusFilter === 'ARCHIVED'
                     ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
@@ -507,20 +489,30 @@ export default function ProjectsPage() {
       )}
 
       {projects.data && filtered.length > 0 && (
-        <div className="mt-6">
+        <div className="mt-6 flex min-h-0 flex-1 flex-col">
+          <div className="mb-2 shrink-0 text-xs text-slate-500 dark:text-slate-400">
+            총 <span className="font-semibold text-slate-900 dark:text-slate-100">{totalItems}</span>개
+          </div>
+          {/*
+            세로 스크롤이 이 div 안에서 일어나야 머리글 고정(sticky)이 동작한다.
+            이 div 에는 원래부터 overflow-x-auto 가 걸려 있고, CSS 규칙상 한 축이 auto 면
+            다른 축의 visible 도 auto 로 계산되므로 이미 세로 스크롤 컨테이너였다. 다만 높이가
+            내용에 맞춰 늘어나 세로로 스크롤될 일이 없었고, 그래서 sticky 를 붙여도 페이지를
+            스크롤할 때 아무 일이 일어나지 않는다. flex-1 + min-h-0 으로 높이를 묶어야 한다.
+          */}
           <div
             ref={attachTableWrap}
-            className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
+            className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
           >
             <table
               className="divide-y divide-slate-200 dark:divide-slate-800 text-sm"
               style={{ tableLayout: 'fixed', width: `${tableWidth}px` }}
             >
-              <thead className="bg-slate-50 dark:bg-slate-800/50">
+              <thead>
                 <tr>
                   <th
                     scope="col"
-                    className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    className="sticky top-0 z-10 relative select-none bg-slate-50 px-4 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
                     style={{ width: `${renderedWidths.name}px` }}
                   >
                     <div
@@ -536,7 +528,7 @@ export default function ProjectsPage() {
                   </th>
                   <th
                     scope="col"
-                    className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    className="sticky top-0 z-10 relative select-none bg-slate-50 px-4 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
                     style={{ width: `${renderedWidths.description}px` }}
                   >
                     <div className="flex items-center justify-center gap-1.5">
@@ -549,7 +541,7 @@ export default function ProjectsPage() {
                   </th>
                   <th
                     scope="col"
-                    className="relative select-none px-3 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    className="sticky top-0 z-10 relative select-none bg-slate-50 px-3 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
                     style={{ width: `${renderedWidths.progress}px` }}
                   >
                     <div
@@ -565,7 +557,7 @@ export default function ProjectsPage() {
                   </th>
                   <th
                     scope="col"
-                    className="relative select-none px-3 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    className="sticky top-0 z-10 relative select-none bg-slate-50 px-3 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
                     style={{ width: `${renderedWidths.status}px` }}
                   >
                     <div
@@ -581,7 +573,7 @@ export default function ProjectsPage() {
                   </th>
                   <th
                     scope="col"
-                    className="relative select-none px-3 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    className="sticky top-0 z-10 relative select-none bg-slate-50 px-3 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
                     style={{ width: `${renderedWidths.memberCount}px` }}
                   >
                     <div
@@ -597,7 +589,7 @@ export default function ProjectsPage() {
                   </th>
                   <th
                     scope="col"
-                    className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    className="sticky top-0 z-10 relative select-none bg-slate-50 px-4 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
                     style={{ width: `${renderedWidths.myRole}px` }}
                   >
                     <div
@@ -613,7 +605,7 @@ export default function ProjectsPage() {
                   </th>
                   <th
                     scope="col"
-                    className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    className="sticky top-0 z-10 relative select-none bg-slate-50 px-4 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
                     style={{ width: `${renderedWidths.createdAt}px` }}
                   >
                     <div
@@ -629,7 +621,7 @@ export default function ProjectsPage() {
                   </th>
                   <th
                     scope="col"
-                    className="relative select-none px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 group/th"
+                    className="sticky top-0 z-10 relative select-none bg-slate-50 px-4 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
                     style={{ width: `${renderedWidths.updatedAt}px` }}
                   >
                     <div
@@ -648,7 +640,7 @@ export default function ProjectsPage() {
                   {adminMode && (
                     <th
                       scope="col"
-                      className="px-4 py-3.5 text-center font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap"
+                      className="sticky top-0 z-10 bg-slate-50 px-4 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 whitespace-nowrap"
                       style={{ width: `${renderedWidths.manage}px` }}
                     >
                       관리
@@ -657,7 +649,7 @@ export default function ProjectsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                {paginated.map((p) => {
+                {filtered.map((p) => {
                   const summary = p.delaySummary;
                   const isCritical = summary?.status === 'CRITICAL';
                   const isWarning = summary?.status === 'WARNING';
@@ -781,56 +773,6 @@ export default function ProjectsPage() {
               </tbody>
             </table>
           </div>
-
-
-          {/* 페이징 컨트롤 */}
-          {totalPages > 1 && (
-            <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 pt-4 dark:border-slate-800">
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                총 <span className="font-semibold text-slate-900 dark:text-slate-100">{totalItems}</span>개 중{' '}
-                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                  {Math.min((currentPage - 1) * pageSize + 1, totalItems)}
-                </span>
-                -
-                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                  {Math.min(currentPage * pageSize, totalItems)}
-                </span>
-                개 표시
-              </div>
-              <div className="flex gap-1 self-center">
-                <button
-                  type="button"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
-                >
-                  이전
-                </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    type="button"
-                    onClick={() => setCurrentPage(page)}
-                    className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
-                      currentPage === page
-                        ? 'bg-sky-600 text-white shadow-sm hover:bg-sky-700'
-                        : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
-                >
-                  다음
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
