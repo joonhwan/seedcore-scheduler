@@ -22,6 +22,11 @@ const KNOWN: Record<string, string> = {
   USER_INACTIVE: '비활성 상태인 사용자는 프로젝트에 참여시킬 수 없습니다.',
   PASSWORD_POLICY_VIOLATION: '비밀번호 정책을 충족하지 않습니다.',
   LAST_ACTIVE_ADMIN: '활성 ADMIN 이 자기 자신뿐이라 비활성화할 수 없습니다.',
+  SELF_ACTION_FORBIDDEN: '자기 자신의 계정에는 할 수 없는 작업입니다.',
+  ALREADY_RETIRED: '이미 퇴사 처리된 계정입니다.',
+  NOT_RETIRED: '퇴사 처리된 계정이 아닙니다.',
+  USER_HAS_ACTIVITY:
+    '활동 기록이 남아 있어 삭제할 수 없습니다. 화면을 새로 읽어 현재 상태를 확인하십시오.',
   CSRF_ORIGIN_MISMATCH: '요청 출처 검증 실패. 새로고침 후 다시 시도하세요.',
   CSRF_ORIGIN_MISSING: '요청 출처 검증 실패. 새로고침 후 다시 시도하세요.',
   RATE_LIMITED: '요청이 너무 많습니다. 잠시 후 다시 시도하세요.',

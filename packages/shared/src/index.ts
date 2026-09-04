@@ -132,6 +132,8 @@ export const UserListItem = z.object({
   lockedUntil: z.string().nullable(), // ISO datetime
   failedLoginCount: z.number().int(),
   lastLoginAt: z.string().nullable(),
+  /** 퇴사 처리 시각. 비어 있으면 재직. 값이 있으면 isActive 는 반드시 false 다. */
+  retiredAt: z.string().nullable(),
   createdAt: z.string(),
 });
 export type UserListItem = z.infer<typeof UserListItem>;
@@ -140,6 +142,35 @@ export const ResetPasswordResponse = z.object({
   temporaryPassword: z.string(),
 });
 export type ResetPasswordResponse = z.infer<typeof ResetPasswordResponse>;
+
+/**
+ * 계정 하나가 남긴 활동의 집계. 완전 삭제가 가능한지 판단하는 근거다.
+ *
+ * `clearable` 과 `permanent` 로 나눈 이유는 관리자가 무엇을 하면 지울 수 있는지 알려 주기
+ * 위함이다. 앞의 둘은 화면에서 빼면 0 이 되지만, 뒤의 일곱은 영구히 남으므로 그 계정은
+ * 퇴사 처리만 할 수 있다. 화면이 "일정 47건을 수정하고 댓글 5건을 남긴" 같은 문구를 만들 수
+ * 있도록 합계가 아니라 항목별 건수를 그대로 내린다.
+ */
+export const UserActivitySummary = z.object({
+  /** 아래 아홉 갈래가 모두 0 인가. */
+  canDelete: z.boolean(),
+  /** 관리자가 정리하면 없어지는 것. */
+  clearable: z.object({
+    projectMemberships: z.number().int(),
+    groupMemberships: z.number().int(),
+  }),
+  /** 지울 수 없는 것. 하나라도 있으면 그 계정은 영구히 삭제할 수 없다. */
+  permanent: z.object({
+    createdProjects: z.number().int(),
+    nodesCreated: z.number().int(),
+    nodesUpdated: z.number().int(),
+    comments: z.number().int(),
+    history: z.number().int(),
+    membershipsAdded: z.number().int(),
+    groupMembersAdded: z.number().int(),
+  }),
+});
+export type UserActivitySummary = z.infer<typeof UserActivitySummary>;
 
 // ─── 감사로그 액션 ─────────────────────────────────────────────────────────
 export const AuditAction = z.enum([
@@ -154,6 +185,9 @@ export const AuditAction = z.enum([
   'USER_ACTIVATE',
   'USER_PASSWORD_RESET',
   'USER_UNLOCK',
+  'USER_RETIRE',
+  'USER_UNRETIRE',
+  'USER_DELETE',
   'ADMIN_OVERRIDE_EDIT',
   'PROJECT_CREATE',
   'PROJECT_UPDATE',
