@@ -363,6 +363,50 @@ export class UsersService {
 
     return toUserListItem(updated);
   }
+
+  /**
+   * 완전 삭제. 활동이 한 건도 없는 계정만 지운다.
+   *
+   * 감사로그는 **행을 남긴 채 행위자만 비운다.** 계정을 만들어 한 번 로그인하기만 해도
+   * LOGIN_SUCCESS 가 남으므로, 그것을 활동으로 세면 지울 수 있는 계정이 사실상 없어져
+   * "잘못 만든 계정을 정리한다"는 요청 취지를 절반만 채우게 된다(설계 문서 §3).
+   * 세션은 users 행을 지우면 Cascade 로 함께 사라진다.
+   *
+   * 감사로그를 트랜잭션 밖에서 남기는 이유는, 삭제가 실패했는데 기록만 남는 일을 막기
+   * 위함이다. 트랜잭션이 커밋된 뒤에만 기록된다.
+   */
+  async remove(id: string, ctx: ActorContext): Promise<void> {
+    const target = await this.prisma.user.findUnique({ where: { id } });
+    if (!target) throw new NotFoundException({ error: 'USER_NOT_FOUND' });
+    if (id === ctx.actorId) {
+      throw new BadRequestException({ error: 'SELF_ACTION_FORBIDDEN' });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 화면이 집계를 읽은 뒤 삭제를 누르기까지 사이에 그 사람이 프로젝트에 추가될 수 있다.
+      // 그래서 지우기 직전에 같은 기준으로 한 번 더 센다.
+      const { total } = await this.countActivity(id, tx);
+      if (total > 0) {
+        throw new BadRequestException({ error: 'USER_HAS_ACTIVITY' });
+      }
+
+      await tx.auditLog.updateMany({
+        where: { actorId: id },
+        data: { actorId: null },
+      });
+      await tx.user.delete({ where: { id } });
+    });
+
+    await this.audit.log({
+      actorId: ctx.actorId,
+      action: 'USER_DELETE',
+      targetType: 'user',
+      targetId: id,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      payload: { username: target.username, displayName: target.displayName },
+    });
+  }
 }
 
 /**

@@ -261,3 +261,67 @@ describe('UsersService.unretire()', () => {
     });
   });
 });
+
+describe('UsersService.remove()', () => {
+  it('활동이 없으면 감사로그의 행위자를 비운 뒤 지운다', async () => {
+    const { service, prismaObject, audit, deleted } = buildService({
+      users: [userRow({ id: 'u1', username: 'hong', displayName: '홍길동' })],
+    });
+
+    await service.remove('u1', CTX);
+
+    expect(prismaObject.auditLog.updateMany).toHaveBeenCalledWith({
+      where: { actorId: 'u1' },
+      data: { actorId: null },
+    });
+    expect(deleted).toEqual(['u1']);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'USER_DELETE',
+        payload: { username: 'hong', displayName: '홍길동' },
+      }),
+    );
+  });
+
+  it('활동이 한 건이라도 있으면 거부한다', async () => {
+    const { service, deleted } = buildService({ counts: { comments: 1 } });
+    await expect(service.remove('u1', CTX)).rejects.toMatchObject({
+      response: { error: 'USER_HAS_ACTIVITY' },
+    });
+    expect(deleted).toEqual([]);
+  });
+
+  it('남을 추가한 기록만 있어도 거부한다', async () => {
+    const { service, deleted } = buildService({ counts: { membershipsAdded: 1 } });
+    await expect(service.remove('u1', CTX)).rejects.toMatchObject({
+      response: { error: 'USER_HAS_ACTIVITY' },
+    });
+    expect(deleted).toEqual([]);
+  });
+
+  it('지우기 직전에 집계를 다시 센다', async () => {
+    const { service, prismaObject } = buildService();
+    await service.remove('u1', CTX);
+    // 트랜잭션 안에서 아홉 번 센다 (projectMember 2, userGroupMember 2, scheduleNode 2, 나머지 3)
+    expect(prismaObject.projectMember.count).toHaveBeenCalledTimes(2);
+    expect(prismaObject.scheduleNode.count).toHaveBeenCalledTimes(2);
+  });
+
+  it('자기 자신은 지울 수 없다', async () => {
+    const { service, deleted } = buildService({
+      users: [userRow({ id: 'admin1', globalRole: 'ADMIN' })],
+    });
+    await expect(service.remove('admin1', CTX)).rejects.toMatchObject({
+      response: { error: 'SELF_ACTION_FORBIDDEN' },
+    });
+    expect(deleted).toEqual([]);
+  });
+
+  it('퇴사한 사람도 활동이 없으면 지울 수 있다', async () => {
+    const { service, deleted } = buildService({
+      users: [userRow({ id: 'u1', isActive: false, retiredAt: T0 })],
+    });
+    await service.remove('u1', CTX);
+    expect(deleted).toEqual(['u1']);
+  });
+});
