@@ -50,7 +50,10 @@ export default function AdminUserDetailPage() {
   const me = useMe();
   const { on: adminMode } = useAdminMode();
   // 사용자 단건 조회 API 가 없으므로 목록에서 골라 쓴다. 150명 규모라 부담이 없다.
-  const users = useUsers({ status: 'all' });
+  // includeRetired: true 가 반드시 필요하다. 이 화면은 특정 한 사람을 보는 자리라 목록
+  // 화면의 "기본으로 퇴사자를 감춘다" 는 목적과 정반대다 — 퇴사자를 빼면 그 사람의 상세로
+  // 들어올 수 없어 복직 처리(§6-나)에 아예 도달하지 못한다.
+  const users = useUsers({ status: 'all', includeRetired: true });
   const user = users.data?.find((u) => u.id === id) ?? null;
 
   if (me.isLoading) return <div className="p-6 text-sm text-slate-500">로딩…</div>;
