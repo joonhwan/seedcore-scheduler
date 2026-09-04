@@ -280,6 +280,89 @@ export class UsersService {
     const { summary } = await this.countActivity(id, this.prisma);
     return summary;
   }
+
+  /**
+   * 퇴사 처리. **`retired_at` 과 `is_active` 를 반드시 함께 바꾼다.**
+   *
+   * `is_active` 를 보고 사람을 걸러내는 자리가 서버에 열다섯 군데 있다(로그인, 세션 검증,
+   * 참여자 후보, 그룹 인원 추가 등). 함께 내리면 그 코드가 그대로 퇴사자를 막으므로 한 군데를
+   * 빠뜨려 퇴사자가 참여자 후보에 뜨는 사고가 구조적으로 불가능해진다(설계 문서 §3).
+   *
+   * 그래서 `retired_at` 이 채워졌는데 `is_active = true` 인 조합은 만들지 않는다. 화면도
+   * 퇴사자 행에서는 활성 토글을 감춘다.
+   */
+  async retire(id: string, ctx: ActorContext): Promise<UserListItem> {
+    const target = await this.prisma.user.findUnique({ where: { id } });
+    if (!target) throw new NotFoundException({ error: 'USER_NOT_FOUND' });
+    if (id === ctx.actorId) {
+      throw new BadRequestException({ error: 'SELF_ACTION_FORBIDDEN' });
+    }
+    if (target.retiredAt !== null) {
+      throw new BadRequestException({ error: 'ALREADY_RETIRED' });
+    }
+
+    // 단일 ADMIN 보호 — update() 의 비활성화 금지와 같은 규칙이다.
+    if (target.globalRole === 'ADMIN' && target.isActive) {
+      const otherActiveAdmins = await this.prisma.user.count({
+        where: { globalRole: 'ADMIN', isActive: true, id: { not: id } },
+      });
+      if (otherActiveAdmins === 0) {
+        throw new BadRequestException({ error: 'LAST_ACTIVE_ADMIN' });
+      }
+    }
+
+    // 업데이트 직전에 남겨 둔다 — 업데이트 뒤에 target.isActive 를 읽으면 이미 바뀐 값이다.
+    const wasActive = target.isActive;
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { retiredAt: new Date(), isActive: false },
+    });
+    const sessionsKilled = await this.sessions.destroyAllForUser(id);
+
+    await this.audit.log({
+      actorId: ctx.actorId,
+      action: 'USER_RETIRE',
+      targetType: 'user',
+      targetId: id,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      payload: { wasActive, sessionsKilled },
+    });
+
+    return toUserListItem(updated);
+  }
+
+  /**
+   * 복직. **항상 활성으로 되돌린다.**
+   *
+   * 퇴사 전에 비활성이던 사람이라면 관리자가 복직 후 다시 내리면 된다. 드문 경우를 위해
+   * 전이를 복잡하게 만들지 않는다. 퇴사 직전의 상태는 USER_RETIRE 감사로그의 wasActive 에
+   * 남아 있다.
+   */
+  async unretire(id: string, ctx: ActorContext): Promise<UserListItem> {
+    const target = await this.prisma.user.findUnique({ where: { id } });
+    if (!target) throw new NotFoundException({ error: 'USER_NOT_FOUND' });
+    if (target.retiredAt === null) {
+      throw new BadRequestException({ error: 'NOT_RETIRED' });
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { retiredAt: null, isActive: true },
+    });
+
+    await this.audit.log({
+      actorId: ctx.actorId,
+      action: 'USER_UNRETIRE',
+      targetType: 'user',
+      targetId: id,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
+    return toUserListItem(updated);
+  }
 }
 
 /**

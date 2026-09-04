@@ -173,3 +173,87 @@ describe('UsersService.activity()', () => {
     });
   });
 });
+
+const CTX = { actorId: 'admin1', ip: '127.0.0.1', userAgent: 'test' };
+
+describe('UsersService.retire()', () => {
+  it('retired_at 과 is_active 를 함께 바꾸고 세션을 끊는다', async () => {
+    const { service, sessions, audit, users } = buildService({
+      users: [userRow({ id: 'u1' }), userRow({ id: 'admin1', globalRole: 'ADMIN' })],
+    });
+
+    const result = await service.retire('u1', CTX);
+
+    expect(result.retiredAt).not.toBeNull();
+    expect(result.isActive).toBe(false);
+    expect(users.find((u) => u.id === 'u1')!.retiredAt).not.toBeNull();
+    expect(sessions.destroyAllForUser).toHaveBeenCalledWith('u1');
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'USER_RETIRE',
+        payload: { wasActive: true, sessionsKilled: 2 },
+      }),
+    );
+  });
+
+  it('퇴사 직전에 비활성이던 것을 wasActive 로 남긴다', async () => {
+    const { service, audit } = buildService({
+      users: [userRow({ id: 'u1', isActive: false }), userRow({ id: 'admin1', globalRole: 'ADMIN' })],
+    });
+
+    await service.retire('u1', CTX);
+
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: { wasActive: false, sessionsKilled: 2 } }),
+    );
+  });
+
+  it('자기 자신은 퇴사시킬 수 없다', async () => {
+    const { service } = buildService({ users: [userRow({ id: 'admin1', globalRole: 'ADMIN' })] });
+    await expect(service.retire('admin1', CTX)).rejects.toMatchObject({
+      response: { error: 'SELF_ACTION_FORBIDDEN' },
+    });
+  });
+
+  it('이미 퇴사한 사람은 다시 퇴사시킬 수 없다', async () => {
+    const { service } = buildService({
+      users: [userRow({ id: 'u1', isActive: false, retiredAt: T0 })],
+    });
+    await expect(service.retire('u1', CTX)).rejects.toMatchObject({
+      response: { error: 'ALREADY_RETIRED' },
+    });
+  });
+
+  it('활성 ADMIN 이 자기 혼자면 그 계정을 퇴사시킬 수 없다', async () => {
+    const { service } = buildService({
+      users: [userRow({ id: 'onlyAdmin', globalRole: 'ADMIN' }), userRow({ id: 'admin1' })],
+    });
+    await expect(service.retire('onlyAdmin', CTX)).rejects.toMatchObject({
+      response: { error: 'LAST_ACTIVE_ADMIN' },
+    });
+  });
+});
+
+describe('UsersService.unretire()', () => {
+  it('retired_at 을 비우고 활성으로 되돌린다', async () => {
+    const { service, audit, users } = buildService({
+      users: [userRow({ id: 'u1', isActive: false, retiredAt: T0 })],
+    });
+
+    const result = await service.unretire('u1', CTX);
+
+    expect(result.retiredAt).toBeNull();
+    expect(result.isActive).toBe(true);
+    expect(users.find((u) => u.id === 'u1')!.retiredAt).toBeNull();
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'USER_UNRETIRE' }),
+    );
+  });
+
+  it('재직 중인 사람은 복직시킬 수 없다', async () => {
+    const { service } = buildService({ users: [userRow({ id: 'u1' })] });
+    await expect(service.unretire('u1', CTX)).rejects.toMatchObject({
+      response: { error: 'NOT_RETIRED' },
+    });
+  });
+});
