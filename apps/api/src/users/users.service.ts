@@ -5,7 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { validatePassword, type UserListItem } from '@sam/shared';
+import type { Prisma } from '@prisma/client';
+import {
+  validatePassword,
+  type UserActivitySummary,
+  type UserListItem,
+} from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { SessionsService } from '../sessions/sessions.service';
@@ -45,18 +50,7 @@ export class UsersService {
       orderBy: { createdAt: 'desc' },
       take: 500,
     });
-    return users.map((u) => ({
-      id: u.id,
-      username: u.username,
-      displayName: u.displayName,
-      globalRole: u.globalRole === 'ADMIN' ? 'ADMIN' : 'USER',
-      isActive: u.isActive,
-      passwordMustChange: u.passwordMustChange,
-      lockedUntil: u.lockedUntil ? u.lockedUntil.toISOString() : null,
-      failedLoginCount: u.failedLoginCount,
-      lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
-      createdAt: u.createdAt.toISOString(),
-    }));
+    return users.map(toUserListItem);
   }
 
   async create(
@@ -99,18 +93,7 @@ export class UsersService {
       payload: { username: user.username, displayName: user.displayName },
     });
 
-    return {
-      id: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      globalRole: 'USER',
-      isActive: user.isActive,
-      passwordMustChange: user.passwordMustChange,
-      lockedUntil: null,
-      failedLoginCount: user.failedLoginCount,
-      lastLoginAt: null,
-      createdAt: user.createdAt.toISOString(),
-    };
+    return toUserListItem(user);
   }
 
   async update(
@@ -179,18 +162,7 @@ export class UsersService {
       });
     }
 
-    return {
-      id: updated.id,
-      username: updated.username,
-      displayName: updated.displayName,
-      globalRole: updated.globalRole === 'ADMIN' ? 'ADMIN' : 'USER',
-      isActive: updated.isActive,
-      passwordMustChange: updated.passwordMustChange,
-      lockedUntil: updated.lockedUntil ? updated.lockedUntil.toISOString() : null,
-      failedLoginCount: updated.failedLoginCount,
-      lastLoginAt: updated.lastLoginAt ? updated.lastLoginAt.toISOString() : null,
-      createdAt: updated.createdAt.toISOString(),
-    };
+    return toUserListItem(updated);
   }
 
   async resetPassword(id: string, ctx: ActorContext): Promise<string> {
@@ -247,6 +219,101 @@ export class UsersService {
       },
     });
   }
+
+  /**
+   * 계정 하나가 남긴 활동을 센다.
+   *
+   * `client` 를 받는 이유는 삭제가 트랜잭션 안에서 이 함수를 다시 부르기 때문이다. 조회
+   * 시점과 삭제 시점 사이에 그 사람이 프로젝트에 추가될 수 있으므로, 지우기 직전에 같은
+   * 기준으로 한 번 더 센다(설계 문서 §5.3).
+   *
+   * 세는 것은 아홉 갈래다. `sessions` 는 계정을 지우면 Cascade 로 함께 사라지고,
+   * `audit_logs` 는 행을 남긴 채 행위자만 비우므로 둘 다 세지 않는다(설계 문서 §5.1).
+   */
+  private async countActivity(
+    id: string,
+    client: Prisma.TransactionClient,
+  ): Promise<{ summary: UserActivitySummary; total: number }> {
+    const [
+      projectMemberships,
+      groupMemberships,
+      createdProjects,
+      nodesCreated,
+      nodesUpdated,
+      comments,
+      history,
+      membershipsAdded,
+      groupMembersAdded,
+    ] = await Promise.all([
+      client.projectMember.count({ where: { userId: id } }),
+      client.userGroupMember.count({ where: { userId: id } }),
+      client.project.count({ where: { createdById: id } }),
+      client.scheduleNode.count({ where: { createdById: id } }),
+      client.scheduleNode.count({ where: { updatedById: id } }),
+      client.nodeComment.count({ where: { authorId: id } }),
+      client.nodeHistory.count({ where: { actorId: id } }),
+      client.projectMember.count({ where: { addedById: id } }),
+      client.userGroupMember.count({ where: { addedById: id } }),
+    ]);
+
+    const clearable = { projectMemberships, groupMemberships };
+    const permanent = {
+      createdProjects,
+      nodesCreated,
+      nodesUpdated,
+      comments,
+      history,
+      membershipsAdded,
+      groupMembersAdded,
+    };
+    const total =
+      Object.values(clearable).reduce((a, b) => a + b, 0) +
+      Object.values(permanent).reduce((a, b) => a + b, 0);
+
+    return { summary: { canDelete: total === 0, clearable, permanent }, total };
+  }
+
+  async activity(id: string): Promise<UserActivitySummary> {
+    const target = await this.prisma.user.findUnique({ where: { id } });
+    if (!target) throw new NotFoundException({ error: 'USER_NOT_FOUND' });
+
+    const { summary } = await this.countActivity(id, this.prisma);
+    return summary;
+  }
+}
+
+/**
+ * Prisma 의 사용자 행을 API 응답으로 바꾼다.
+ *
+ * list·create·update·retire·unretire 다섯 곳이 같은 매핑을 하므로 한 곳에 모은다.
+ * 필드가 하나 늘 때마다 다섯 곳을 고치다 한 곳을 빠뜨리는 일을 막기 위함이다.
+ */
+function toUserListItem(u: {
+  id: string;
+  username: string;
+  displayName: string;
+  globalRole: string;
+  isActive: boolean;
+  passwordMustChange: boolean;
+  lockedUntil: Date | null;
+  failedLoginCount: number;
+  lastLoginAt: Date | null;
+  retiredAt: Date | null;
+  createdAt: Date;
+}): UserListItem {
+  return {
+    id: u.id,
+    username: u.username,
+    displayName: u.displayName,
+    globalRole: u.globalRole === 'ADMIN' ? 'ADMIN' : 'USER',
+    isActive: u.isActive,
+    passwordMustChange: u.passwordMustChange,
+    lockedUntil: u.lockedUntil ? u.lockedUntil.toISOString() : null,
+    failedLoginCount: u.failedLoginCount,
+    lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
+    retiredAt: u.retiredAt ? u.retiredAt.toISOString() : null,
+    createdAt: u.createdAt.toISOString(),
+  };
 }
 
 /**
