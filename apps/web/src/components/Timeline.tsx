@@ -780,6 +780,16 @@ function TimelineComponent({
     // deltaDays 는 함수형 업데이트로 다루므로 deps 에서 제외해 리스너 재등록을 줄인다.
   }, [barDrag?.nodeId, barDrag?.startClientX, barDrag?.startScrollLeft, barDrag?.mode, ppd, items, onBarChange, labelWidth, totalWidth]);
 
+  /**
+   * 배율이 바뀐 커밋에서 적용할 목표 scrollLeft.
+   *
+   * 이 값을 setTimeout 으로 미루면 안 된다. setPpd 로 넓어진 차트가 옛 scrollLeft 위에
+   * 먼저 그려지고 나중에 스크롤이 교정되므로, 그 사이 두 프레임 동안 엉뚱한 구간이
+   * 비쳤다가 제자리로 돌아온다 — 실측으로 화면 폭의 123%(2,327px) 만큼 튀었다.
+   * 아래 useLayoutEffect 가 DOM 변경 직후·화면에 그려지기 전에 동기로 적용한다.
+   */
+  const pendingScrollLeftRef = useRef<number | null>(null);
+
   const fitToScreen = () => {
     if (!scrollerRef.current || !range || items.length === 0) return;
 
@@ -808,17 +818,19 @@ function TimelineComponent({
     // 활성 범위가 화면에 가득 차도록 ppd(Pixels Per Day) 계산
     const calculatedPpd = availableWidth / activeDays;
     const newPpd = clampPpd(calculatedPpd); // 합리적 제한 (최소 0.5px ~ 최대 100px)
-    setPpd(newPpd);
 
     // activeStart가 화면 왼쪽에 위치하도록 스크롤 위치 조정
     const offsetDays = dayDiff(activeStart, range.start);
-    const scrollTarget = offsetDays * newPpd - 20; // 20px 왼쪽 마진 포함
+    const scrollTarget = Math.max(0, offsetDays * newPpd - 20); // 20px 왼쪽 마진 포함
 
-    setTimeout(() => {
-      if (scrollerRef.current) {
-        scrollerRef.current.scrollTo({ left: Math.max(0, scrollTarget), behavior: 'auto' });
-      }
-    }, 50);
+    if (newPpd === ppd) {
+      // 배율이 그대로면 다시 렌더링되지 않아 아래 useLayoutEffect 가 돌지 않는다.
+      // 폭이 바뀌지 않으므로 지금 옮겨도 화면이 튀지 않는다.
+      scrollerRef.current.scrollLeft = scrollTarget;
+      return;
+    }
+    pendingScrollLeftRef.current = scrollTarget;
+    setPpd(newPpd);
   };
 
   /**
@@ -833,18 +845,24 @@ function TimelineComponent({
     const daysAtCenter = centerOffset / ppd;
 
     const newPpd = clampPpd(nextPpd);
-    setPpd(newPpd);
+    if (newPpd === ppd) return; // 하한·상한에서 더 눌렀을 때 헛돌지 않게 한다
 
     // 줌 후에도 화면 중앙 기준 일치되도록 스크롤 복원
     const newCenterOffset = daysAtCenter * newPpd;
     const newScrollLeft = newCenterOffset - (scroller.clientWidth - labelWidth) / 2;
+    pendingScrollLeftRef.current = Math.max(0, newScrollLeft);
 
-    setTimeout(() => {
-      if (scrollerRef.current) {
-        scrollerRef.current.scrollLeft = Math.max(0, newScrollLeft);
-      }
-    }, 10);
+    setPpd(newPpd);
   };
+
+  // 배율이 바뀐 커밋에서 목표 스크롤 위치를 그리기 전에 적용한다. 폭 변경과 스크롤 교정이
+  // 한 프레임에 함께 반영되어야 화면이 번쩍이지 않는다.
+  useLayoutEffect(() => {
+    const target = pendingScrollLeftRef.current;
+    if (target === null || !scrollerRef.current) return;
+    pendingScrollLeftRef.current = null;
+    scrollerRef.current.scrollLeft = target;
+  }, [ppd]);
 
   const handleZoom = (zoomIn: boolean) => {
     applyPpd(zoomPpd(ppd, zoomIn));
