@@ -21,13 +21,14 @@ export default function AdminUsersPage() {
   const me = useMe();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<UserListStatus>('all');
+  const [includeRetired, setIncludeRetired] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [tempPw, setTempPw] = useState<{ displayName: string; password: string } | null>(null);
 
   // 검색어를 서버로 넘기지 않고 화면에서 거른다. 서버는 username·displayName 만 보고
   // 걸러내므로 그룹 이름을 넣으면 0명이 돌아와, 화면에서 그룹으로 보탤 여지가 없어진다.
   // 소속은 이미 배지 때문에 받아 두는 값이라 여기서 함께 보면 된다(150명 규모, AGENTS.md 1장).
-  const users = useUsers({ status });
+  const users = useUsers({ status, includeRetired });
   const tree = useGroupTree();
   const groupPaths = useMemo(
     () =>
@@ -108,6 +109,15 @@ export default function AdminUsersPage() {
             <option value="inactive">비활성</option>
           </select>
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={includeRetired}
+            onChange={(e) => setIncludeRetired(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 dark:border-slate-700"
+          />
+          <span className="text-slate-600 dark:text-slate-400">퇴사자 포함</span>
+        </label>
       </section>
 
       <section className="mt-4 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -169,6 +179,7 @@ function UserRow({
   const unlock = useUnlockUser();
 
   const isLocked = user.lockedUntil !== null && new Date(user.lockedUntil).getTime() > Date.now();
+  const isRetired = user.retiredAt !== null;
 
   async function onToggleActive() {
     const next = !user.isActive;
@@ -230,6 +241,11 @@ function UserRow({
               비활성
             </span>
           )}
+          {isRetired && (
+            <span className="rounded border border-purple-300 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:border-purple-700 dark:bg-purple-950 dark:text-purple-200">
+              퇴사
+            </span>
+          )}
           {isLocked && (
             <span className="rounded border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 dark:border-rose-700 dark:bg-rose-950 dark:text-rose-200">
               잠김
@@ -268,19 +284,21 @@ function UserRow({
         >
           비번 리셋
         </button>
-        <button
-          type="button"
-          onClick={onToggleActive}
-          disabled={busy || isSelf}
-          title={isSelf ? '자기 자신은 토글할 수 없습니다.' : undefined}
-          className={`rounded border px-2 py-1 text-xs font-semibold disabled:opacity-50 ${
-            user.isActive
-              ? 'border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-950'
-              : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950'
-          }`}
-        >
-          {user.isActive ? '비활성화' : '활성화'}
-        </button>
+        {!isRetired && (
+          <button
+            type="button"
+            onClick={onToggleActive}
+            disabled={busy || isSelf}
+            title={isSelf ? '자기 자신은 토글할 수 없습니다.' : undefined}
+            className={`rounded border px-2 py-1 text-xs font-semibold disabled:opacity-50 ${
+              user.isActive
+                ? 'border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-950'
+                : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950'
+            }`}
+          >
+            {user.isActive ? '비활성화' : '활성화'}
+          </button>
+        )}
       </div>
     </li>
   );
