@@ -4,6 +4,7 @@ import {
   CloneProjectDto,
   buildRemapPlan,
   findDateSpan,
+  mergeMemberDrafts,
   remapDatePair,
   toEpochDay,
   type CloneDateMode,
@@ -54,19 +55,22 @@ export default function ProjectClonePage() {
   useEffect(() => {
     if (draftsSeeded || !sourceMembers.data || !users.data) return;
     const activeIds = new Set(users.data.map((u) => u.id));
-    setDrafts(
-      sourceMembers.data.map((m) => {
-        const isActive = activeIds.has(m.userId);
-        return {
-          userId: m.userId,
-          displayName: m.displayName,
-          username: m.username,
-          // 비활성 사용자는 서버가 어차피 거부하므로 기본값을 제외로 둔다.
-          role: isActive ? m.role : null,
-          inactive: !isActive,
-        };
-      }),
-    );
+    const seeded = sourceMembers.data.map((m) => {
+      const isActive = activeIds.has(m.userId);
+      return {
+        userId: m.userId,
+        displayName: m.displayName,
+        username: m.username,
+        // 비활성 사용자는 서버가 어차피 거부하므로 기본값을 제외로 둔다.
+        role: isActive ? m.role : null,
+        inactive: !isActive,
+      };
+    });
+    // 통째로 갈아 끼우지 않고 합친다. 명단 편집기는 users.data 만 도착하면 곧바로 조작할 수
+    // 있어서, 원본 멤버 응답이 느리거나 한 번 실패한 뒤 다시 오는 동안 관리자가 이미 사람을
+    // 담아 두었을 수 있다. 교체하면 그 입력이 소리 없이 사라진다. mergeMemberDrafts 는
+    // 이미 있는 사람의 역할을 보존하므로 원본 역할이 관리자의 선택을 덮지도 않는다.
+    setDrafts((prev) => mergeMemberDrafts(prev, seeded));
     setDraftsSeeded(true);
   }, [sourceMembers.data, users.data, draftsSeeded]);
 
