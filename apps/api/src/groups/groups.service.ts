@@ -128,6 +128,16 @@ export class GroupsService {
     const current = rows.find((g) => g.id === id);
     if (!current) throw new NotFoundException({ error: 'GROUP_NOT_FOUND' });
 
+    // 낙관적 동시성 검사 (AGENTS.md 4.5). 이 검사가 없던 동안은 나중에 저장한 쪽이
+    // 이겨서, 다른 관리자가 방금 바꾼 이름과 상위 그룹이 아무 표시 없이 사라졌다.
+    if (current.updatedAt.toISOString() !== input.expectedUpdatedAt) {
+      throw new ConflictException({
+        code: 'CONFLICT',
+        message: '데이터가 다른 사용자에 의해 변경되었습니다. 새로고침 후 다시 시도하십시오.',
+        currentUpdatedAt: current.updatedAt.toISOString(),
+      });
+    }
+
     const nodes: GroupNode[] = rows.map((g) => ({ id: g.id, parentId: g.parentId }));
     const nextParentId = input.parentId !== undefined ? input.parentId : current.parentId;
     const nextName = input.name ?? current.name;

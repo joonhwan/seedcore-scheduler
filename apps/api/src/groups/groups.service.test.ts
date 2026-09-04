@@ -229,7 +229,9 @@ function buildService(
   const prisma = prismaObject as unknown as PrismaService;
 
   const audit = { log: vi.fn(async () => {}) } as unknown as AuditService;
-  return { service: new GroupsService(prisma, audit), audit, groups, members };
+  // prismaObject 를 그대로 함께 돌려준다. PrismaService 로 단언한 prisma 는 vi.fn 의
+  // 호출 기록에 접근할 수 없기 때문이다.
+  return { service: new GroupsService(prisma, audit), audit, groups, members, prismaSpies: prismaObject };
 }
 
 const CTX = { actorId: 'admin-1' };
@@ -286,6 +288,8 @@ describe('GroupsService.create', () => {
 });
 
 describe('GroupsService.update', () => {
+  // 모든 seed 그룹의 updatedAt 이 T0 이므로, 정상 흐름은 이 값을 그대로 보낸다.
+  const EXPECTED = T0.toISOString();
   const SAMPLE = [
     group('center', null, '운영기술센터'),
     group('mech', 'center', '기구완성팀'),
@@ -294,14 +298,14 @@ describe('GroupsService.update', () => {
 
   it('자기 자신을 상위로 지정하면 GROUP_CYCLE', async () => {
     const { service } = buildService({ groups: [...SAMPLE] });
-    await expect(service.update('center', { parentId: 'center' }, CTX)).rejects.toMatchObject({
+    await expect(service.update('center', { parentId: 'center', expectedUpdatedAt: EXPECTED }, CTX)).rejects.toMatchObject({
       response: { error: 'GROUP_CYCLE' },
     });
   });
 
   it('자기 자손을 상위로 지정하면 GROUP_CYCLE', async () => {
     const { service } = buildService({ groups: [...SAMPLE] });
-    await expect(service.update('center', { parentId: 'mech' }, CTX)).rejects.toMatchObject({
+    await expect(service.update('center', { parentId: 'mech', expectedUpdatedAt: EXPECTED }, CTX)).rejects.toMatchObject({
       response: { error: 'GROUP_CYCLE' },
     });
   });
@@ -310,7 +314,7 @@ describe('GroupsService.update', () => {
     const chain = Array.from({ length: 8 }, (_, i) => group(`g${i}`, i === 0 ? null : `g${i - 1}`));
     chain.push(group('loose', null));
     const { service } = buildService({ groups: chain });
-    await expect(service.update('loose', { parentId: 'g7' }, CTX)).rejects.toMatchObject({
+    await expect(service.update('loose', { parentId: 'g7', expectedUpdatedAt: EXPECTED }, CTX)).rejects.toMatchObject({
       response: { error: 'GROUP_DEPTH_EXCEEDED' },
     });
   });
@@ -319,21 +323,21 @@ describe('GroupsService.update', () => {
     const { service } = buildService({
       groups: [...SAMPLE, group('dup', 'center', '구매팀')],
     });
-    await expect(service.update('purchase', { parentId: 'center' }, CTX)).rejects.toMatchObject({
+    await expect(service.update('purchase', { parentId: 'center', expectedUpdatedAt: EXPECTED }, CTX)).rejects.toMatchObject({
       response: { error: 'GROUP_NAME_DUPLICATE' },
     });
   });
 
   it('없는 그룹은 GROUP_NOT_FOUND', async () => {
     const { service } = buildService({ groups: [...SAMPLE] });
-    await expect(service.update('nope', { name: 'x' }, CTX)).rejects.toMatchObject({
+    await expect(service.update('nope', { name: 'x', expectedUpdatedAt: EXPECTED }, CTX)).rejects.toMatchObject({
       response: { error: 'GROUP_NOT_FOUND' },
     });
   });
 
   it('이름만 바꾸는 것은 통과한다', async () => {
     const { service } = buildService({ groups: [...SAMPLE] });
-    const updated = await service.update('mech', { name: '기구설계팀' }, CTX);
+    const updated = await service.update('mech', { name: '기구설계팀', expectedUpdatedAt: EXPECTED }, CTX);
     expect(updated.name).toBe('기구설계팀');
   });
 
@@ -347,9 +351,30 @@ describe('GroupsService.update', () => {
         { groupId: 'mech', userId: 'm1', addedById: 'admin-1', addedAt: T0 },
       ],
     });
-    const updated = await service.update('center', { name: '운영기술본부' }, CTX);
+    const updated = await service.update('center', { name: '운영기술본부', expectedUpdatedAt: EXPECTED }, CTX);
     expect(updated.directMemberCount).toBe(1);
     expect(updated.totalMemberCount).toBe(2);
+  });
+
+  it('expectedUpdatedAt 이 현재 값과 다르면 409 CONFLICT', async () => {
+    const { service } = buildService({ groups: [...SAMPLE] });
+    await expect(
+      service.update(
+        'mech',
+        { name: '기구설계팀', expectedUpdatedAt: '2026-01-01T00:00:00.000Z' },
+        CTX,
+      ),
+    ).rejects.toMatchObject({
+      response: { code: 'CONFLICT', currentUpdatedAt: EXPECTED },
+    });
+  });
+
+  it('충돌로 거부하면 아무것도 쓰지 않는다', async () => {
+    const { service, prismaSpies } = buildService({ groups: [...SAMPLE] });
+    await expect(
+      service.update('mech', { name: 'x', expectedUpdatedAt: '2026-01-01T00:00:00.000Z' }, CTX),
+    ).rejects.toBeTruthy();
+    expect(prismaSpies.userGroup.update).not.toHaveBeenCalled();
   });
 });
 

@@ -352,6 +352,13 @@ export const UpdateUserGroupDto = z
     name: z.string().min(1).max(64).optional(),
     parentId: z.string().min(1).nullable().optional(),
     description: z.string().max(500).nullable().optional(),
+    /**
+     * 화면이 읽어 둔 그룹의 최종 수정 시각. 서버가 지금 값과 다르면 409 로 거부한다.
+     * 그룹 상세 패널은 내가 손댄 필드를 다른 관리자의 변경으로 덮지 않으려고 재동기화를
+     * 멈추는데(touched), 그 사이 상대가 이름이나 상위 그룹을 바꿔 두면 내 저장이 그것을
+     * 조용히 지운다. 그 자리를 막는 것이 이 필드다 (AGENTS.md 4.5).
+     */
+    expectedUpdatedAt: z.string().min(1),
   })
   .refine((v) => v.name !== undefined || v.parentId !== undefined || v.description !== undefined, {
     message: '변경 항목이 없습니다',
