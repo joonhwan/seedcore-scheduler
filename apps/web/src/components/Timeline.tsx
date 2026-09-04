@@ -30,6 +30,7 @@ import {
   computeHeaderCells,
   type TimelineUnit,
 } from '../lib/ganttLayout';
+import { clampPpd, zoomPpd, percentToPpd, ppdToPercentExact } from '../lib/ganttZoom';
 
 export type { TimelineUnit } from '../lib/ganttLayout';
 
@@ -37,6 +38,8 @@ interface Props {
   items: NodeTreeItem[];
   unit: TimelineUnit;
   onUnitChange?: ((unit: TimelineUnit) => void) | undefined;
+  // 도구막대가 현재 배율을 숫자와 슬라이더로 보여주기 위해 받는 통보 (요청 6번).
+  onZoomChange?: ((percent: number) => void) | undefined;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onEdit?: ((id: string) => void) | undefined;
@@ -75,12 +78,15 @@ export interface TimelineHandle {
   zoomIn: () => void;
   zoomOut: () => void;
   fitToScreen: () => void;
+  // 슬라이더가 끌린 자리의 배율을 직접 지정한다 (요청 6번).
+  setZoomPercent: (percent: number) => void;
 }
 
 function TimelineComponent({
   items,
   unit,
   onUnitChange,
+  onZoomChange,
   selectedId,
   onSelect,
   onEdit,
@@ -399,6 +405,14 @@ function TimelineComponent({
       }
     }
   }, [activeUnit, onUnitChange]);
+
+  // 배율 변경 시 도구막대에 통보한다. 버튼·단축키·슬라이더·화면맞춤·단위 전환이 모두
+  // ppd 를 거치므로, 여기 한 곳만 지켜보면 어떤 경로로 바뀌어도 숫자가 따라온다.
+  useEffect(() => {
+    if (onZoomChange) {
+      onZoomChange(ppdToPercentExact(ppd));
+    }
+  }, [ppd, onZoomChange]);
 
   const totalDays = range ? dayDiff(range.end, range.start) + 1 : 0;
   const totalWidth = Math.max(totalDays * ppd, 240);
@@ -793,7 +807,7 @@ function TimelineComponent({
 
     // 활성 범위가 화면에 가득 차도록 ppd(Pixels Per Day) 계산
     const calculatedPpd = availableWidth / activeDays;
-    const newPpd = Math.max(0.5, Math.min(calculatedPpd, 100)); // 합리적 제한 (최소 0.5px ~ 최대 100px)
+    const newPpd = clampPpd(calculatedPpd); // 합리적 제한 (최소 0.5px ~ 최대 100px)
     setPpd(newPpd);
 
     // activeStart가 화면 왼쪽에 위치하도록 스크롤 위치 조정
@@ -807,15 +821,18 @@ function TimelineComponent({
     }, 50);
   };
 
-  const handleZoom = (zoomIn: boolean) => {
+  /**
+   * 화면 중앙에 보이던 날짜를 그대로 둔 채 배율만 바꾼다.
+   * 버튼·단축키·슬라이더가 모두 이 함수를 거치므로 조작 방법에 따라 중심이 달라지지 않는다.
+   */
+  const applyPpd = (nextPpd: number) => {
     if (!scrollerRef.current) return;
     const scroller = scrollerRef.current;
     // 현재 화면 중앙 기준 일수(days) 계산
     const centerOffset = scroller.scrollLeft + (scroller.clientWidth - labelWidth) / 2;
     const daysAtCenter = centerOffset / ppd;
 
-    const multiplier = zoomIn ? 1.3 : 1 / 1.3;
-    const newPpd = Math.max(0.5, Math.min(ppd * multiplier, 100));
+    const newPpd = clampPpd(nextPpd);
     setPpd(newPpd);
 
     // 줌 후에도 화면 중앙 기준 일치되도록 스크롤 복원
@@ -829,11 +846,16 @@ function TimelineComponent({
     }, 10);
   };
 
+  const handleZoom = (zoomIn: boolean) => {
+    applyPpd(zoomPpd(ppd, zoomIn));
+  };
+
   // 헤더 툴바가 호출하는 줌/화면맞춤 제어 노출
   useImperativeHandle(ref, () => ({
     zoomIn: () => handleZoom(true),
     zoomOut: () => handleZoom(false),
     fitToScreen,
+    setZoomPercent: (percent: number) => applyPpd(percentToPpd(percent)),
   }));
 
   // 키보드 수평 줌: +/= 확대, - 축소 (입력 필드 포커스 시 제외)

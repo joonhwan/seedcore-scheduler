@@ -19,6 +19,7 @@ import ParentPickerDialog from '../components/ParentPickerDialog';
 import CommentInputForm, { type CommentInputFormRef } from '../components/CommentInputForm';
 import ActivityFeedPanel from '../components/ActivityFeedPanel';
 import Timeline, { type TimelineUnit, type TimelineHandle } from '../components/Timeline';
+import { TimelineZoomControl } from '../components/TimelineZoomControl';
 import BarChangeConfirmDialog from '../components/BarChangeConfirmDialog';
 import BulkActionConfirmDialog, { type BulkCompleteMode } from '../components/BulkActionConfirmDialog';
 import BulkShiftDatesDialog from '../components/BulkShiftDatesDialog';
@@ -64,6 +65,8 @@ export default function ProjectDetailPage() {
   );
   const [pickParentFor, setPickParentFor] = useState<NodeTreeItem | null>(null);
   const [unit, setUnit] = useState<TimelineUnit>('week');
+  // 도구막대에 보여줄 현재 간트 배율(퍼센트). Timeline 이 ppd 를 바꿀 때마다 통보한다.
+  const [zoomPercent, setZoomPercent] = useState(100);
   const [todayCounter, setTodayCounter] = useState(0);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isDetailDirty, setIsDetailDirty] = useState(false);
@@ -519,8 +522,10 @@ export default function ProjectDetailPage() {
           nodes={nodes.data ?? []}
           canCreate={canCreateNodes}
           onAddNode={handleHeaderAddNode}
+          zoomPercent={zoomPercent}
           onZoomIn={() => timelineRef.current?.zoomIn()}
           onZoomOut={() => timelineRef.current?.zoomOut()}
+          onZoomPercentChange={(p) => timelineRef.current?.setZoomPercent(p)}
           onFitToScreen={() => timelineRef.current?.fitToScreen()}
           onJumpToday={() => setTodayCounter((c) => c + 1)}
           onExportImage={() => setExportOpen(true)}
@@ -537,6 +542,7 @@ export default function ProjectDetailPage() {
               items={nodes.data ?? []}
               unit={unit}
               onUnitChange={setUnit}
+              onZoomChange={setZoomPercent}
               selectedId={selectedId}
               onSelect={handleSelectNode}
               onEdit={handleEditNode}
@@ -830,8 +836,10 @@ function ProjectHeader({
   nodes,
   canCreate,
   onAddNode,
+  zoomPercent,
   onZoomIn,
   onZoomOut,
+  onZoomPercentChange,
   onFitToScreen,
   onJumpToday,
   onExportImage,
@@ -845,8 +853,11 @@ function ProjectHeader({
   /** 일정 추가 권한 — MANAGER 또는 관리자 모드. 편집(canEditNodes)보다 강한 조건이다. */
   canCreate: boolean;
   onAddNode: () => void;
+  /** 현재 간트 배율(퍼센트). 일 단위 기본 배율 36px/일 이 100% 다. */
+  zoomPercent: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
+  onZoomPercentChange: (percent: number) => void;
   onFitToScreen: () => void;
   onJumpToday: () => void;
   onExportImage: () => void;
@@ -1050,40 +1061,14 @@ function ProjectHeader({
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
           {/* 간트 확대/축소/화면맞춤/오늘 조절 (기존 플로팅 툴바를 헤더로 이동) */}
-          <div className="flex items-center gap-0.5 rounded-md border border-slate-300 p-0.5 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={onZoomOut}
-              title="축소 (단축키: -)"
-              className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
-            >
-              －
-            </button>
-            <button
-              type="button"
-              onClick={onZoomIn}
-              title="확대 (단축키: +, =)"
-              className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
-            >
-              ＋
-            </button>
-            <button
-              type="button"
-              onClick={onFitToScreen}
-              title="화면에 꽉 차게 맞춤"
-              className="flex h-6 items-center justify-center rounded px-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
-            >
-              화면맞춤
-            </button>
-            <button
-              type="button"
-              onClick={onJumpToday}
-              title="오늘 날짜 위치로 스크롤"
-              className="flex h-6 items-center justify-center rounded px-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
-            >
-              오늘
-            </button>
-          </div>
+          <TimelineZoomControl
+            percent={zoomPercent}
+            onZoomIn={onZoomIn}
+            onZoomOut={onZoomOut}
+            onPercentChange={onZoomPercentChange}
+            onFitToScreen={onFitToScreen}
+            onJumpToday={onJumpToday}
+          />
           <ExportMenu
             onSelectImage={onExportImage}
             onSelectCsv={handleExportCsv}

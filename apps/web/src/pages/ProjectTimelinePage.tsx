@@ -9,6 +9,7 @@ import NodeDetail from '../components/NodeDetail';
 import NodeCommentsPanel from '../components/NodeCommentsPanel';
 import NodeHistoryPanel from '../components/NodeHistoryPanel';
 import Timeline, { type TimelineUnit, type TimelineHandle } from '../components/Timeline';
+import { TimelineZoomControl } from '../components/TimelineZoomControl';
 
 export default function ProjectTimelinePage() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +21,8 @@ export default function ProjectTimelinePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [unit, setUnit] = useState<TimelineUnit>('week');
   const [todayCounter, setTodayCounter] = useState(0);
+  // 도구막대에 보여줄 현재 간트 배율(퍼센트). Timeline 이 ppd 를 바꿀 때마다 통보한다.
+  const [zoomPercent, setZoomPercent] = useState(100);
   const timelineRef = useRef<TimelineHandle>(null);
 
   const isAdmin = me.data?.globalRole === 'ADMIN';
@@ -65,40 +68,14 @@ export default function ProjectTimelinePage() {
         </div>
         <div className="flex items-center gap-2">
           {/* 간트 확대/축소/화면맞춤/오늘 조절 */}
-          <div className="flex items-center gap-0.5 rounded-md border border-slate-300 p-0.5 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={() => timelineRef.current?.zoomOut()}
-              title="축소 (단축키: -)"
-              className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
-            >
-              －
-            </button>
-            <button
-              type="button"
-              onClick={() => timelineRef.current?.zoomIn()}
-              title="확대 (단축키: +, =)"
-              className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
-            >
-              ＋
-            </button>
-            <button
-              type="button"
-              onClick={() => timelineRef.current?.fitToScreen()}
-              title="화면에 꽉 차게 맞춤"
-              className="flex h-6 items-center justify-center rounded px-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
-            >
-              화면맞춤
-            </button>
-            <button
-              type="button"
-              onClick={() => setTodayCounter((c) => c + 1)}
-              title="오늘 날짜 위치로 스크롤"
-              className="flex h-6 items-center justify-center rounded px-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
-            >
-              오늘
-            </button>
-          </div>
+          <TimelineZoomControl
+            percent={zoomPercent}
+            onZoomIn={() => timelineRef.current?.zoomIn()}
+            onZoomOut={() => timelineRef.current?.zoomOut()}
+            onPercentChange={(p) => timelineRef.current?.setZoomPercent(p)}
+            onFitToScreen={() => timelineRef.current?.fitToScreen()}
+            onJumpToday={() => setTodayCounter((c) => c + 1)}
+          />
           <Link
             to={`/projects/${id}`}
             className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -118,6 +95,7 @@ export default function ProjectTimelinePage() {
             items={nodes.data ?? []}
             unit={unit}
             onUnitChange={setUnit}
+            onZoomChange={setZoomPercent}
             selectedId={selectedId}
             onSelect={setSelectedId}
             jumpToTodayCounter={todayCounter}
