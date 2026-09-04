@@ -34,10 +34,13 @@ export class UsersService {
   async list(args: {
     query?: string | undefined;
     status?: 'active' | 'inactive' | 'all' | undefined;
+    includeRetired?: boolean | undefined;
   }): Promise<UserListItem[]> {
     const where: Record<string, unknown> = {};
     if (args.status === 'active') where.isActive = true;
     else if (args.status === 'inactive') where.isActive = false;
+    // 재직 여부와 활성 여부는 독립한 축이다. 기본 화면에서는 퇴사자를 감춘다(확정명세 §6-나).
+    if (!args.includeRetired) where.retiredAt = null;
     if (args.query && args.query.length > 0) {
       const q = args.query;
       where.OR = [

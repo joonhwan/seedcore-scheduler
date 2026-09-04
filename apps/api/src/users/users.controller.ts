@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -15,6 +16,7 @@ import {
   CreateUserDto,
   UpdateUserDto,
   type ResetPasswordResponse,
+  type UserActivitySummary,
   type UserListItem,
 } from '@sam/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -37,8 +39,10 @@ export class UsersController {
   list(
     @Query('query') query?: string,
     @Query('status') status?: 'active' | 'inactive' | 'all',
+    @Query('includeRetired') includeRetired?: string,
   ): Promise<UserListItem[]> {
-    return this.users.list({ query, status });
+    // 쿼리 파라미터는 항상 문자열이다. '1' 일 때만 참으로 본다.
+    return this.users.list({ query, status, includeRetired: includeRetired === '1' });
   }
 
   @Post()
@@ -88,6 +92,50 @@ export class UsersController {
     @Req() req: AuthenticatedRequest,
   ): Promise<void> {
     await this.users.unlock(id, {
+      actorId: req.user!.id,
+      ip: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
+  }
+
+  @Get(':id/activity')
+  activity(@Param('id') id: string): Promise<UserActivitySummary> {
+    return this.users.activity(id);
+  }
+
+  @Post(':id/retire')
+  @HttpCode(200)
+  retire(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<UserListItem> {
+    return this.users.retire(id, {
+      actorId: req.user!.id,
+      ip: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
+  }
+
+  @Post(':id/unretire')
+  @HttpCode(200)
+  unretire(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<UserListItem> {
+    return this.users.unretire(id, {
+      actorId: req.user!.id,
+      ip: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  async remove(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<void> {
+    await this.users.remove(id, {
       actorId: req.user!.id,
       ip: getClientIp(req),
       userAgent: getUserAgent(req),

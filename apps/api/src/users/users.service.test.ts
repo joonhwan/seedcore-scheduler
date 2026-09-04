@@ -69,7 +69,13 @@ function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
         users.find((u) => u.id === where.id) ?? null,
       ),
-      findMany: vi.fn(async () => users),
+      findMany: vi.fn(async ({ where }: { where?: { retiredAt?: null; isActive?: boolean } }) =>
+        users.filter(
+          (u) =>
+            (where?.retiredAt === undefined || u.retiredAt === null) &&
+            (where?.isActive === undefined || u.isActive === where.isActive),
+        ),
+      ),
       count: vi.fn(
         async ({ where }: { where: { globalRole?: string; isActive?: boolean; id?: { not: string } } }) =>
           users.filter(
@@ -138,6 +144,35 @@ function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
     auditRows,
   };
 }
+
+describe('UsersService.list()', () => {
+  const seed = {
+    users: [
+      userRow({ id: 'active1' }),
+      userRow({ id: 'inactive1', isActive: false }),
+      userRow({ id: 'retired1', isActive: false, retiredAt: T0 }),
+    ],
+  };
+
+  it('기본으로는 퇴사자를 빼고 보여준다', async () => {
+    const { service } = buildService(seed);
+    const rows = await service.list({ status: 'all' });
+    expect(rows.map((r) => r.id)).toEqual(['active1', 'inactive1']);
+  });
+
+  it('includeRetired 를 켜면 퇴사자도 보여준다', async () => {
+    const { service } = buildService(seed);
+    const rows = await service.list({ status: 'all', includeRetired: true });
+    expect(rows.map((r) => r.id)).toEqual(['active1', 'inactive1', 'retired1']);
+  });
+
+  it('퇴사 시각을 응답에 담는다', async () => {
+    const { service } = buildService(seed);
+    const rows = await service.list({ status: 'all', includeRetired: true });
+    expect(rows.find((r) => r.id === 'retired1')!.retiredAt).toBe(T0.toISOString());
+    expect(rows.find((r) => r.id === 'active1')!.retiredAt).toBeNull();
+  });
+});
 
 describe('UsersService.activity()', () => {
   it('아홉 갈래가 모두 0 이면 삭제할 수 있다', async () => {
