@@ -22,9 +22,7 @@ export default function AdminUsersPage() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<UserListStatus>('all');
   const [createOpen, setCreateOpen] = useState(false);
-  const [tempPw, setTempPw] = useState<{ displayName: string; password: string } | null>(
-    null,
-  );
+  const [tempPw, setTempPw] = useState<{ displayName: string; password: string } | null>(null);
 
   // 검색어를 서버로 넘기지 않고 화면에서 거른다. 서버는 username·displayName 만 보고
   // 걸러내므로 그룹 이름을 넣으면 0명이 돌아와, 화면에서 그룹으로 보탤 여지가 없어진다.
@@ -128,9 +126,7 @@ export default function AdminUsersPage() {
                 user={u}
                 isSelf={u.id === me.data!.id}
                 groupPath={groupPaths.get(u.id) ?? []}
-                onTempPassword={(pw) =>
-                  setTempPw({ displayName: u.displayName, password: pw })
-                }
+                onTempPassword={(pw) => setTempPw({ displayName: u.displayName, password: pw })}
               />
             ))}
           </ul>
@@ -172,8 +168,7 @@ function UserRow({
   const reset = useResetPassword();
   const unlock = useUnlockUser();
 
-  const isLocked =
-    user.lockedUntil !== null && new Date(user.lockedUntil).getTime() > Date.now();
+  const isLocked = user.lockedUntil !== null && new Date(user.lockedUntil).getTime() > Date.now();
 
   async function onToggleActive() {
     const next = !user.isActive;

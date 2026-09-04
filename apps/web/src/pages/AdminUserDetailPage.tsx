@@ -57,8 +57,8 @@ export default function AdminUserDetailPage() {
       <main className="mx-auto max-w-2xl p-6">
         <h1 className="text-lg font-semibold">관리자 모드가 필요합니다</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-          이 화면은 ADMIN 사용자가 관리자 모드를 켠 상태에서만 열 수 있습니다. 화면 상단
-          헤더의 관리자 모드 표시를 눌러 켜신 뒤 다시 시도하십시오.
+          이 화면은 ADMIN 사용자가 관리자 모드를 켠 상태에서만 열 수 있습니다. 화면 상단 헤더의
+          관리자 모드 표시를 눌러 켜신 뒤 다시 시도하십시오.
         </p>
         <Link to="/admin/users" className="mt-3 inline-block text-sm text-sky-600 underline">
           ← 사용자 관리
@@ -410,9 +410,7 @@ function ProjectSection({ userId }: { userId: string }) {
   return (
     <section className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">
-          참여 프로젝트 {mine.data?.length ?? 0}건
-        </h2>
+        <h2 className="text-sm font-semibold">참여 프로젝트 {mine.data?.length ?? 0}건</h2>
         <button
           type="button"
           onClick={() => setAddOpen(true)}
@@ -423,9 +421,7 @@ function ProjectSection({ userId }: { userId: string }) {
       </div>
 
       {mine.isLoading && <p className="mt-2 text-sm text-slate-500">로딩…</p>}
-      {mine.isError && (
-        <p className="mt-2 text-sm text-rose-600">{apiErrorMessage(mine.error)}</p>
-      )}
+      {mine.isError && <p className="mt-2 text-sm text-rose-600">{apiErrorMessage(mine.error)}</p>}
       {mine.data && mine.data.length === 0 && (
         <p className="mt-2 text-sm text-slate-500">참여 중인 프로젝트가 없습니다.</p>
       )}
@@ -542,7 +538,9 @@ function AddProjectsDialog({
                 <li key={p.id}>
                   <label
                     className={`flex items-center gap-2 px-3 py-2 ${
-                      taken ? 'opacity-50' : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800'
+                      taken
+                        ? 'opacity-50'
+                        : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <input
@@ -560,9 +558,7 @@ function AddProjectsDialog({
                     />
                     <span className="text-sm">
                       {p.name}
-                      {taken && (
-                        <span className="ml-2 text-xs text-slate-500">참여 중</span>
-                      )}
+                      {taken && <span className="ml-2 text-xs text-slate-500">참여 중</span>}
                     </span>
                   </label>
                 </li>

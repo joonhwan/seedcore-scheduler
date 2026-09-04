@@ -53,8 +53,7 @@ export default function MemberDraftEditor({
     const all = (users.data ?? []).filter((u) => !inDraft.has(u.id));
     if (!q) return all;
     return all.filter(
-      (u) =>
-        u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q),
+      (u) => u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q),
     );
   }, [users.data, inDraft, search]);
 
@@ -68,8 +67,7 @@ export default function MemberDraftEditor({
     [checked, inDraft],
   );
 
-  const allChecked =
-    candidates.length > 0 && candidates.every((u) => effectiveChecked.has(u.id));
+  const allChecked = candidates.length > 0 && candidates.every((u) => effectiveChecked.has(u.id));
 
   function setRole(userId: string, role: ProjectRole | null) {
     onChange(drafts.map((d) => (d.userId === userId ? { ...d, role } : d)));
@@ -129,8 +127,8 @@ export default function MemberDraftEditor({
     <fieldset className="rounded border border-slate-200 p-3 dark:border-slate-700">
       <legend className="px-1 text-sm font-semibold">참여자 명단 *</legend>
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        총 {counts.total}명 (MANAGER {counts.managers} · MEMBER {counts.members}). MANAGER 는
-        최소 1명이 필요합니다.
+        총 {counts.total}명 (MANAGER {counts.managers} · MEMBER {counts.members}). MANAGER 는 최소
+        1명이 필요합니다.
       </p>
 
       <button
@@ -179,8 +177,7 @@ export default function MemberDraftEditor({
                     onChange={() => toggleCandidate(u.id)}
                   />
                   <span className="text-sm">
-                    {u.displayName}{' '}
-                    <span className="text-xs text-slate-500">@{u.username}</span>{' '}
+                    {u.displayName} <span className="text-xs text-slate-500">@{u.username}</span>{' '}
                     <UserGroupBadge path={groupPaths.get(u.id) ?? []} />
                   </span>
                 </label>
@@ -249,10 +246,7 @@ export default function MemberDraftEditor({
       </ul>
 
       {groupOpen && (
-        <GroupPickerDialog
-          onCancel={() => setGroupOpen(false)}
-          onPick={addFromGroups}
-        />
+        <GroupPickerDialog onCancel={() => setGroupOpen(false)} onPick={addFromGroups} />
       )}
     </fieldset>
   );

@@ -29,11 +29,7 @@ function buildService(seed: { users?: UserRow[] } = {}) {
   const prismaObject = {
     user: {
       findMany: vi.fn(
-        async ({
-          where,
-        }: {
-          where: { id: { in: string[] }; isActive?: boolean };
-        }) => {
+        async ({ where }: { where: { id: { in: string[] }; isActive?: boolean } }) => {
           // seed.users 를 주지 않으면 요청받은 id 를 무조건 활성 사용자로 합성한다
           // (INVALID_*_IDS 분기를 보지 않는 기존 통과 경로 시험용).
           if (users === undefined) {
@@ -43,19 +39,30 @@ function buildService(seed: { users?: UserRow[] } = {}) {
             .map((id) => users.find((u) => u.id === id))
             .filter(
               (u): u is UserRow =>
-                u !== undefined &&
-                (where.isActive === undefined || u.isActive === where.isActive),
+                u !== undefined && (where.isActive === undefined || u.isActive === where.isActive),
             )
             .map((u) => ({ id: u.id }));
         },
       ),
     },
     project: {
-      create: vi.fn(async ({ data }: { data: { id: string; name: string; description: string | null; status: string; createdById: string } }) => ({
-        ...data,
-        createdAt: T0,
-        updatedAt: T0,
-      })),
+      create: vi.fn(
+        async ({
+          data,
+        }: {
+          data: {
+            id: string;
+            name: string;
+            description: string | null;
+            status: string;
+            createdById: string;
+          };
+        }) => ({
+          ...data,
+          createdAt: T0,
+          updatedAt: T0,
+        }),
+      ),
     },
     projectMember: {
       createMany: vi.fn(async ({ data }: { data: PmRow[] }) => {
@@ -84,7 +91,7 @@ describe('ProjectsService.create', () => {
     await service.create(
       {
         name: 'proj',
-        
+
         managerUserIds: ['u1'],
         memberUserIds: ['u1', 'u2'],
       },
@@ -108,33 +115,25 @@ describe('ProjectsService.create', () => {
       ],
     });
     await expect(
-      service.create(
-        { name: 'proj',  managerUserIds: ['u1'], memberUserIds: ['u2'] },
-        CTX,
-      ),
+      service.create({ name: 'proj', managerUserIds: ['u1'], memberUserIds: ['u2'] }, CTX),
     ).rejects.toMatchObject({ response: { error: 'INVALID_MEMBER_IDS', missing: ['u2'] } });
   });
 
   it('memberUserIds 에 존재하지 않는 사용자가 섞이면 INVALID_MEMBER_IDS 로 거부한다', async () => {
     const { service } = buildService({ users: [{ id: 'u1', isActive: true }] });
     await expect(
-      service.create(
-        { name: 'proj',  managerUserIds: ['u1'], memberUserIds: ['ghost'] },
-        CTX,
-      ),
+      service.create({ name: 'proj', managerUserIds: ['u1'], memberUserIds: ['ghost'] }, CTX),
     ).rejects.toMatchObject({ response: { error: 'INVALID_MEMBER_IDS', missing: ['ghost'] } });
   });
 
   it('memberUserIds 를 보내지 않은 기존 형태의 호출도 그대로 동작한다', async () => {
     const { service, createdMembers, audit } = buildService();
     const result = await service.create(
-      { name: 'proj',  managerUserIds: ['u1'], memberUserIds: [] },
+      { name: 'proj', managerUserIds: ['u1'], memberUserIds: [] },
       CTX,
     );
     expect(result.name).toBe('proj');
-    expect(createdMembers).toEqual([
-      expect.objectContaining({ userId: 'u1', role: 'MANAGER' }),
-    ]);
+    expect(createdMembers).toEqual([expect.objectContaining({ userId: 'u1', role: 'MANAGER' })]);
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'PROJECT_CREATE',
@@ -181,7 +180,7 @@ describe('ProjectsService.create', () => {
   it('managerUserIds 가 비면 MANAGER_REQUIRED', async () => {
     const { service } = buildService();
     await expect(
-      service.create({ name: 'proj',  managerUserIds: [], memberUserIds: [] }, CTX),
+      service.create({ name: 'proj', managerUserIds: [], memberUserIds: [] }, CTX),
     ).rejects.toMatchObject({ response: { error: 'MANAGER_REQUIRED' } });
   });
 });

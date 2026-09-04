@@ -159,9 +159,7 @@ export default function UserCreateDialog({
           </span>
         </label>
 
-        {error && (
-          <p className="mt-3 text-xs text-rose-600 dark:text-rose-400">{error}</p>
-        )}
+        {error && <p className="mt-3 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
 
         <div className="mt-5 flex items-center justify-end gap-2">
           <button

@@ -45,10 +45,7 @@ export default function AdminGroupsPage() {
 
   const createGroup = useCreateGroup();
 
-  const rows = useMemo(
-    () => flattenGroupTree(tree.data?.groups ?? []),
-    [tree.data?.groups],
-  );
+  const rows = useMemo(() => flattenGroupTree(tree.data?.groups ?? []), [tree.data?.groups]);
   const selected = tree.data?.groups.find((g) => g.id === selectedId) ?? null;
 
   if (me.isLoading) return <div className="p-6 text-sm text-slate-500">로딩…</div>;
@@ -117,9 +114,7 @@ export default function AdminGroupsPage() {
         </button>
       </div>
 
-      {tree.isError && (
-        <p className="mt-4 text-sm text-rose-600">{apiErrorMessage(tree.error)}</p>
-      )}
+      {tree.isError && <p className="mt-4 text-sm text-rose-600">{apiErrorMessage(tree.error)}</p>}
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         <section className="rounded-lg border border-slate-200 dark:border-slate-700">
@@ -173,9 +168,7 @@ export default function AdminGroupsPage() {
             group={selected}
             allGroups={tree.data?.groups ?? []}
             membershipByUser={
-              new Map(
-                (tree.data?.memberships ?? []).map((m) => [m.userId, m.groupId]),
-              )
+              new Map((tree.data?.memberships ?? []).map((m) => [m.userId, m.groupId]))
             }
             onDeleted={() => setSelectedId(null)}
           />
@@ -246,12 +239,11 @@ function GroupDetailPanel({
   const parentOptions = useMemo(() => {
     const nodes = allGroups.map((g) => ({ id: g.id, parentId: g.parentId }));
     const banned = collectDescendantGroupIds(nodes, [group.id]);
-    return allGroups.filter(
-      (g) => !banned.has(g.id) && canReparentGroup(nodes, group.id, g.id).ok,
-    );
+    return allGroups.filter((g) => !banned.has(g.id) && canReparentGroup(nodes, group.id, g.id).ok);
   }, [allGroups, group.id]);
 
-  const canDelete = group.directMemberCount === 0 && !allGroups.some((g) => g.parentId === group.id);
+  const canDelete =
+    group.directMemberCount === 0 && !allGroups.some((g) => g.parentId === group.id);
   const dirty =
     name.trim() !== group.name ||
     (description.trim() || null) !== group.description ||
@@ -379,9 +371,7 @@ function GroupDetailPanel({
         const parts = await Promise.all(
           [...movingByGroup].map(async ([groupId, movingUsers]) => ({
             groupName: allGroups.find((g) => g.id === groupId)?.name ?? '알 수 없는 그룹',
-            coverage: await api.get<GroupProjectCoverage[]>(
-              `/admin/groups/${groupId}/projects`,
-            ),
+            coverage: await api.get<GroupProjectCoverage[]>(`/admin/groups/${groupId}/projects`),
             users: movingUsers,
           })),
         );
@@ -520,11 +510,7 @@ function GroupDetailPanel({
           type="button"
           onClick={onDelete}
           disabled={!canDelete || remove.isPending}
-          title={
-            canDelete
-              ? undefined
-              : '소속 인원이나 하위 그룹이 남아 있어 삭제할 수 없습니다.'
-          }
+          title={canDelete ? undefined : '소속 인원이나 하위 그룹이 남아 있어 삭제할 수 없습니다.'}
           className="rounded border border-rose-300 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-950"
         >
           그룹 삭제
@@ -583,9 +569,7 @@ function GroupDetailPanel({
       </h3>
       {coverage.isLoading && <p className="mt-2 text-sm text-slate-500">로딩…</p>}
       {coverage.data && coverage.data.length === 0 && (
-        <p className="mt-2 text-sm text-slate-500">
-          이 그룹 인원이 참여 중인 프로젝트가 없습니다.
-        </p>
+        <p className="mt-2 text-sm text-slate-500">이 그룹 인원이 참여 중인 프로젝트가 없습니다.</p>
       )}
       <ul className="mt-2 space-y-1">
         {coverage.data?.map((c) => (

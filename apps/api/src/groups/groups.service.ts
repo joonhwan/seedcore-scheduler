@@ -297,9 +297,7 @@ export class GroupsService {
       });
     }
 
-    const alreadyHere = new Set(
-      existing.filter((m) => m.groupId === groupId).map((m) => m.userId),
-    );
+    const alreadyHere = new Set(existing.filter((m) => m.groupId === groupId).map((m) => m.userId));
     const toAdd = userIds.filter((id) => !alreadyHere.has(id));
     const movedFrom = new Map(elsewhere.map((m) => [m.userId, m.groupId]));
 
@@ -352,11 +350,7 @@ export class GroupsService {
     return this.listMembers(groupId);
   }
 
-  async removeMember(
-    groupId: string,
-    userId: string,
-    ctx: GroupActorContext,
-  ): Promise<void> {
+  async removeMember(groupId: string, userId: string, ctx: GroupActorContext): Promise<void> {
     await this.assertGroupExists(groupId);
     const row = await this.prisma.userGroupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
@@ -411,10 +405,7 @@ export class GroupsService {
       include: { project: { select: { id: true, name: true, status: true } } },
     });
 
-    const byProject = new Map<
-      string,
-      { name: string; status: string; users: Set<string> }
-    >();
+    const byProject = new Map<string, { name: string; status: string; users: Set<string> }>();
     for (const pm of pms) {
       const entry = byProject.get(pm.project.id);
       if (entry) entry.users.add(pm.userId);
@@ -426,16 +417,14 @@ export class GroupsService {
         });
     }
 
-    const out: GroupProjectCoverage[] = [...byProject.entries()].map(
-      ([projectId, entry]) => ({
-        projectId,
-        name: entry.name,
-        status: entry.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
-        groupMemberCount: userIds.length,
-        participatingCount: entry.users.size,
-        missingUserIds: userIds.filter((id) => !entry.users.has(id)),
-      }),
-    );
+    const out: GroupProjectCoverage[] = [...byProject.entries()].map(([projectId, entry]) => ({
+      projectId,
+      name: entry.name,
+      status: entry.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+      groupMemberCount: userIds.length,
+      participatingCount: entry.users.size,
+      missingUserIds: userIds.filter((id) => !entry.users.has(id)),
+    }));
 
     out.sort((a, b) => {
       const ra = a.participatingCount / a.groupMemberCount;

@@ -36,8 +36,7 @@ export default function UserPickerDialog({
     const all = (users.data ?? []).filter((u) => !excludeUserIds.has(u.id));
     if (!q) return all;
     return all.filter(
-      (u) =>
-        u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q),
+      (u) => u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q),
     );
   }, [users.data, excludeUserIds, query]);
 
@@ -87,8 +86,7 @@ export default function UserPickerDialog({
                       onChange={() => toggle(u.id)}
                     />
                     <span className="text-sm">
-                      {u.displayName}{' '}
-                      <span className="text-xs text-slate-500">@{u.username}</span>
+                      {u.displayName} <span className="text-xs text-slate-500">@{u.username}</span>
                       {path !== null && (
                         <span className="ml-2 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
                           현재 {path}

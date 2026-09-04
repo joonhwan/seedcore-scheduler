@@ -68,11 +68,7 @@ function buildService(
     },
     user: {
       findMany: vi.fn(
-        async ({
-          where,
-        }: {
-          where: { id: { in: string[] }; isActive?: boolean };
-        }) => {
+        async ({ where }: { where: { id: { in: string[] }; isActive?: boolean } }) => {
           // seed.users 를 주지 않은 시험은 요청받은 id 를 무조건 활성 사용자로 합성하던
           // 기존 동작을 유지한다 (INVALID_MEMBER_IDS 분기를 보지 않는 기존 시험용).
           if (users === undefined) {
@@ -82,8 +78,7 @@ function buildService(
             .map((id) => users.find((u) => u.id === id))
             .filter(
               (u): u is UserRow =>
-                u !== undefined &&
-                (where.isActive === undefined || u.isActive === where.isActive),
+                u !== undefined && (where.isActive === undefined || u.isActive === where.isActive),
             )
             .map((u) => ({ id: u.id }));
         },
@@ -180,11 +175,10 @@ function buildService(
     userGroupMember: {
       // groupPathMap() 이 where.userId.in 으로 딱 필요한 사람만 읽는다. 대역이 이를
       // 무시하면 "소속 없음" 시험이 우연히 통과하므로 실제로 반영해야 한다.
-      findMany: vi.fn(
-        async ({ where }: { where: { userId: { in: string[] } } }) =>
-          groupMembers
-            .filter((m) => where.userId.in.includes(m.userId))
-            .map((m) => ({ groupId: m.groupId, userId: m.userId })),
+      findMany: vi.fn(async ({ where }: { where: { userId: { in: string[] } } }) =>
+        groupMembers
+          .filter((m) => where.userId.in.includes(m.userId))
+          .map((m) => ({ groupId: m.groupId, userId: m.userId })),
       ),
     },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaObject)),
@@ -224,7 +218,12 @@ describe('MembersService.addBulk', () => {
     });
     const result = await service.addBulk(
       'p1',
-      { members: [{ userId: 'u1', role: 'MEMBER' }, { userId: 'u2', role: 'MEMBER' }] },
+      {
+        members: [
+          { userId: 'u1', role: 'MEMBER' },
+          { userId: 'u2', role: 'MEMBER' },
+        ],
+      },
       MANAGER_CTX,
     );
     expect(result).toEqual({ added: 1, skipped: 1, skippedUserIds: ['u1'] });

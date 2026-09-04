@@ -19,11 +19,7 @@ import {
 } from '@sam/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { OriginGuard } from '../common/origin.guard';
-import {
-  getClientIp,
-  getUserAgent,
-  type AuthenticatedRequest,
-} from '../common/request-context';
+import { getClientIp, getUserAgent, type AuthenticatedRequest } from '../common/request-context';
 import { MembersService } from './members.service';
 
 @Controller('projects/:projectId/members')

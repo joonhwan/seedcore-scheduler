@@ -164,8 +164,8 @@ export default function ProjectClonePage() {
           )}
           {sourceNodes.isError && (
             <p>
-              원본 일정 목록을 불러오지 못했습니다: {apiErrorMessage(sourceNodes.error)} (일정
-              이동 옵션을 선택할 수 없습니다)
+              원본 일정 목록을 불러오지 못했습니다: {apiErrorMessage(sourceNodes.error)} (일정 이동
+              옵션을 선택할 수 없습니다)
             </p>
           )}
           {users.isError && (
@@ -201,9 +201,7 @@ export default function ProjectClonePage() {
         <fieldset className="rounded border border-slate-200 p-3 dark:border-slate-700">
           <legend className="px-1 text-sm font-semibold">일정 처리</legend>
 
-          {sourceNodes.isLoading && (
-            <p className="text-xs text-slate-500">원본 일정 확인 중…</p>
-          )}
+          {sourceNodes.isLoading && <p className="text-xs text-slate-500">원본 일정 확인 중…</p>}
           {span && (
             <p className="text-xs text-slate-500 dark:text-slate-400">
               원본 일정: {span.start} ~ {span.end} ({spanDays}일)
@@ -211,8 +209,8 @@ export default function ProjectClonePage() {
           )}
           {sourceNodes.data && !span && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
-              원본에 날짜가 지정된 일정이 없어 날짜를 옮길 수 없습니다. 원본 일정 유지만
-              선택할 수 있습니다.
+              원본에 날짜가 지정된 일정이 없어 날짜를 옮길 수 없습니다. 원본 일정 유지만 선택할 수
+              있습니다.
             </p>
           )}
 
@@ -259,8 +257,8 @@ export default function ProjectClonePage() {
               <span>
                 <span className="font-medium">새 기간에 맞춰 늘리거나 줄이기</span>
                 <span className="block text-xs text-slate-500 dark:text-slate-400">
-                  전체 일정이 새 범위를 채우도록 비례 조정됩니다. 각 일정의 기간도 함께
-                  늘거나 줄어듭니다.
+                  전체 일정이 새 범위를 채우도록 비례 조정됩니다. 각 일정의 기간도 함께 늘거나
+                  줄어듭니다.
                 </span>
               </span>
             </label>
@@ -302,14 +300,8 @@ export default function ProjectClonePage() {
           )}
         </fieldset>
 
-        <MemberDraftEditor
-          drafts={drafts}
-          onChange={setDrafts}
-          showInactiveWarning
-        />
-        {sourceMembers.isLoading && (
-          <p className="text-sm text-slate-500">원본 멤버 로딩…</p>
-        )}
+        <MemberDraftEditor drafts={drafts} onChange={setDrafts} showInactiveWarning />
+        {sourceMembers.isLoading && <p className="text-sm text-slate-500">원본 멤버 로딩…</p>}
 
         {error && (
           <div className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">

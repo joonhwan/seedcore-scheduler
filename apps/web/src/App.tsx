@@ -69,7 +69,8 @@ function AdminBanner() {
   if (!on || me.data?.globalRole !== 'ADMIN') return null;
   return (
     <div className="border-b border-amber-300 bg-amber-100 px-6 py-1.5 text-center text-xs font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
-      관리자 모드 활성 — 모든 프로젝트/노드를 우회 편집할 수 있습니다. 모든 변경은 감사로그에 기록됩니다.
+      관리자 모드 활성 — 모든 프로젝트/노드를 우회 편집할 수 있습니다. 모든 변경은 감사로그에
+      기록됩니다.
     </div>
   );
 }
@@ -84,10 +85,17 @@ function Header() {
   return (
     <header className="flex items-center justify-between border-b border-slate-200 px-4 py-1.5 dark:border-slate-700 bg-white dark:bg-slate-900 transition-colors shrink-0">
       <div className="flex items-center gap-2">
-        <Link to="/" className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200" title="홈(프로젝트 목록) 화면 이동">
+        <Link
+          to="/"
+          className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200"
+          title="홈(프로젝트 목록) 화면 이동"
+        >
           <img src="/logo_b.png" alt="시드코어" className="h-5 w-auto dark:invert" />
           <span className="text-sm">
-            일정관리 시스템 <span className="text-[10px] italic font-normal text-slate-400 dark:text-slate-500 ml-0.5">{APP_VERSION_LABEL}</span>
+            일정관리 시스템{' '}
+            <span className="text-[10px] italic font-normal text-slate-400 dark:text-slate-500 ml-0.5">
+              {APP_VERSION_LABEL}
+            </span>
           </span>
         </Link>
       </div>
@@ -100,12 +108,34 @@ function Header() {
           aria-label="테마 전환"
         >
           {theme === 'dark' ? (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m0 13.5V21M4.22 4.22l1.58 1.58m12.42 12.42l1.58 1.58M3 12h2.25m13.5 0H21M4.22 19.78l1.58-1.58m12.42-12.42l1.58-1.58M12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="w-4 h-4"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 3v2.25m0 13.5V21M4.22 4.22l1.58 1.58m12.42 12.42l1.58 1.58M3 12h2.25m13.5 0H21M4.22 19.78l1.58-1.58m12.42-12.42l1.58-1.58M12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z"
+              />
             </svg>
           ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="w-4 h-4"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21.752 15.002A9.72 9.72 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"
+              />
             </svg>
           )}
         </button>
@@ -117,8 +147,19 @@ function Header() {
                 className="p-1 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
                 title="사용자 관리"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
+                  />
                 </svg>
               </Link>
             )}
@@ -128,8 +169,19 @@ function Header() {
                 className="p-1 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
                 title="그룹 관리"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
+                  />
                 </svg>
               </Link>
             )}
@@ -139,19 +191,41 @@ function Header() {
                 className="p-1 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
                 title="자동완성 관리"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 21m0 0l-.813-5.096L3 15.187m6 5.813a2 2 0 100-4 2 2 0 000 4zM19.071 4.929a10 10 0 11-14.142 14.142 10 10 0 0114.142-14.142z" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9.813 15.904L9 21m0 0l-.813-5.096L3 15.187m6 5.813a2 2 0 100-4 2 2 0 000 4zM19.071 4.929a10 10 0 11-14.142 14.142 10 10 0 0114.142-14.142z"
+                  />
                 </svg>
               </Link>
             )}
             {isAdmin && (
-              <div 
+              <div
                 className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/40 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800/80 transition-colors cursor-pointer select-none"
                 onClick={() => adminMode.toggle()}
-                title={adminMode.on ? "관리자 모드 해제" : "관리자 모드 활성화"}
+                title={adminMode.on ? '관리자 모드 해제' : '관리자 모드 활성화'}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill={adminMode.on ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-3.5 h-3.5 ${adminMode.on ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill={adminMode.on ? 'currentColor' : 'none'}
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className={`w-3.5 h-3.5 ${adminMode.on ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.248-8.25-3.285z"
+                  />
                 </svg>
                 <button
                   type="button"
@@ -180,8 +254,19 @@ function Header() {
               className="p-1 rounded-md text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:text-slate-400 dark:hover:text-rose-400 dark:hover:bg-rose-950/30 transition-colors"
               title="로그아웃"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                className="w-4 h-4"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75"
+                />
               </svg>
             </button>
           </>
@@ -203,8 +288,7 @@ function Footer() {
       const target = e.target as HTMLElement | null;
       if (
         target &&
-        (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
-          target.isContentEditable)
+        (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable)
       ) {
         return;
       }
@@ -230,8 +314,19 @@ function Footer() {
               className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-600 hover:text-sky-600 hover:bg-sky-50 dark:text-slate-400 dark:hover:text-sky-300 dark:hover:bg-sky-950/40 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
               title="단축키 안내 보기 (? 키)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 001.5 8.25v7.5A2.25 2.25 0 003.75 18h16.5A2.25 2.25 0 0022.5 15.75v-7.5A2.25 2.25 0 0020.25 6H3.75zM3.75 9h16.5M6.75 12h.008v.008H6.75V12zm3 0h.008v.008H9.75V12zm3 0h.008v.008H12.75V12zm3 0h.008v.008H15.75V12zm3 0h.008v.008H18.75V12zM6.75 15h.008v.008H6.75V15zm10.5 0h.008v.008H17.25V15zM9 15h6" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3.75 6A2.25 2.25 0 001.5 8.25v7.5A2.25 2.25 0 003.75 18h16.5A2.25 2.25 0 0022.5 15.75v-7.5A2.25 2.25 0 0020.25 6H3.75zM3.75 9h16.5M6.75 12h.008v.008H6.75V12zm3 0h.008v.008H9.75V12zm3 0h.008v.008H12.75V12zm3 0h.008v.008H15.75V12zm3 0h.008v.008H18.75V12zM6.75 15h.008v.008H6.75V15zm10.5 0h.008v.008H17.25V15zM9 15h6"
+                />
               </svg>
               <span>단축키 (?)</span>
             </button>
@@ -253,23 +348,65 @@ function Footer() {
                   <div className="space-y-1 pl-1">
                     <div className="grid grid-cols-3 gap-2 items-center">
                       <span className="text-slate-600 dark:text-slate-400">위/아래 탐색</span>
-                      <div className="col-span-2"><kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">↑</kbd> / <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">↓</kbd></div>
+                      <div className="col-span-2">
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          ↑
+                        </kbd>{' '}
+                        /{' '}
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          ↓
+                        </kbd>
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 items-center">
                       <span className="text-slate-600 dark:text-slate-400">그룹 접기/펴기</span>
-                      <div className="col-span-2"><kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">←</kbd> / <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">→</kbd></div>
+                      <div className="col-span-2">
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          ←
+                        </kbd>{' '}
+                        /{' '}
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          →
+                        </kbd>
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 items-center">
                       <span className="text-slate-600 dark:text-slate-400">상세 편집 창 열기</span>
-                      <div className="col-span-2"><kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">Enter</kbd> / <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">더블클릭</kbd></div>
+                      <div className="col-span-2">
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          Enter
+                        </kbd>{' '}
+                        /{' '}
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          더블클릭
+                        </kbd>
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 items-center">
-                      <span className="text-slate-600 dark:text-slate-400">새 일정 추가 / 삭제</span>
-                      <div className="col-span-2"><kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">Ctrl+I</kbd> / <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">Ctrl+D</kbd></div>
+                      <span className="text-slate-600 dark:text-slate-400">
+                        새 일정 추가 / 삭제
+                      </span>
+                      <div className="col-span-2">
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          Ctrl+I
+                        </kbd>{' '}
+                        /{' '}
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          Ctrl+D
+                        </kbd>
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 items-center">
                       <span className="text-slate-600 dark:text-slate-400">간트 축소/확대</span>
-                      <div className="col-span-2 font-mono text-[10px]"><kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">-</kbd> / <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">+</kbd></div>
+                      <div className="col-span-2 font-mono text-[10px]">
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
+                          -
+                        </kbd>{' '}
+                        /{' '}
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
+                          +
+                        </kbd>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -282,16 +419,42 @@ function Footer() {
                   <div className="space-y-1 pl-1">
                     <div className="grid grid-cols-3 gap-2 items-center">
                       <span className="text-slate-600 dark:text-slate-400">진척율 조절</span>
-                      <div className="col-span-2 font-mono text-[10px]"><kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">Ctrl+,</kbd>(-10%) <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">Ctrl+.</kbd>(+10%) <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">Ctrl+/</kbd>(100%)</div>
+                      <div className="col-span-2 font-mono text-[10px]">
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
+                          Ctrl+,
+                        </kbd>
+                        (-10%){' '}
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
+                          Ctrl+.
+                        </kbd>
+                        (+10%){' '}
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
+                          Ctrl+/
+                        </kbd>
+                        (100%)
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 items-center">
                       <span className="text-slate-600 dark:text-slate-400">노드 종류 전환</span>
-                      <div className="col-span-2 font-mono text-[10px]"><kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">Alt+1</kbd>(일정) / <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">Alt+2</kbd>(그룹)</div>
+                      <div className="col-span-2 font-mono text-[10px]">
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
+                          Alt+1
+                        </kbd>
+                        (일정) /{' '}
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
+                          Alt+2
+                        </kbd>
+                        (그룹)
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 items-center">
                       <span className="text-slate-600 dark:text-slate-400">창 닫기</span>
-                      <div className="col-span-2"><kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">ESC</kbd></div>
+                      <div className="col-span-2">
+                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          ESC
+                        </kbd>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -306,8 +469,19 @@ function Footer() {
             className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-600 hover:text-sky-600 hover:bg-sky-50 dark:text-slate-400 dark:hover:text-sky-300 dark:hover:bg-sky-950/40 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
             title="사용설명서"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
+              />
             </svg>
             <span>사용설명서</span>
           </Link>
@@ -320,7 +494,13 @@ function Footer() {
 
         {/* 우측: 개발자 이메일 */}
         <div className="text-right text-[11px] text-slate-400 dark:text-slate-500">
-          문의: <a href="mailto:joonhwan.lee@gmail.com" className="hover:text-sky-600 dark:hover:text-sky-400 transition-colors font-mono">joonhwan.lee@gmail.com</a>
+          문의:{' '}
+          <a
+            href="mailto:joonhwan.lee@gmail.com"
+            className="hover:text-sky-600 dark:hover:text-sky-400 transition-colors font-mono"
+          >
+            joonhwan.lee@gmail.com
+          </a>
         </div>
       </footer>
 
@@ -337,8 +517,19 @@ function Footer() {
               <span className="text-xl font-bold">✕</span>
             </button>
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-sky-600 dark:text-sky-400">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2.5}
+                stroke="currentColor"
+                className="w-5 h-5 text-sky-600 dark:text-sky-400"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
+                />
               </svg>
               키보드 단축키 안내
             </h3>
@@ -350,32 +541,96 @@ function Footer() {
                 </h4>
                 <div className="space-y-1.5 pl-1">
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">위 / 아래 탐색</div>
-                    <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">↑</kbd> / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">↓</kbd> 화살표 키</div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                      위 / 아래 탐색
+                    </div>
+                    <div className="col-span-2">
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        ↑
+                      </kbd>{' '}
+                      /{' '}
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        ↓
+                      </kbd>{' '}
+                      화살표 키
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">그룹 접기 / 펴기</div>
-                    <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">←</kbd> / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">→</kbd> 화살표 키</div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                      그룹 접기 / 펴기
+                    </div>
+                    <div className="col-span-2">
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        ←
+                      </kbd>{' '}
+                      /{' '}
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        →
+                      </kbd>{' '}
+                      화살표 키
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">상세 편집 창 열기</div>
-                    <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Enter</kbd> 또는 <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">더블클릭</kbd></div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                      상세 편집 창 열기
+                    </div>
+                    <div className="col-span-2">
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        Enter
+                      </kbd>{' '}
+                      또는{' '}
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        더블클릭
+                      </kbd>
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">새 일정 추가</div>
-                    <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Ctrl + I</kbd></div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                      새 일정 추가
+                    </div>
+                    <div className="col-span-2">
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        Ctrl + I
+                      </kbd>
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">선택 일정 삭제</div>
-                    <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">Ctrl + D</kbd></div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                      선택 일정 삭제
+                    </div>
+                    <div className="col-span-2">
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        Ctrl + D
+                      </kbd>
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">간트 축소 / 확대</div>
-                    <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">-</kbd> / <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">+</kbd></div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                      간트 축소 / 확대
+                    </div>
+                    <div className="col-span-2">
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">
+                        -
+                      </kbd>{' '}
+                      /{' '}
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">
+                        +
+                      </kbd>
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">단축키 창 열기</div>
-                    <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">?</kbd> 또는 <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">h</kbd></div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                      단축키 창 열기
+                    </div>
+                    <div className="col-span-2">
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        ?
+                      </kbd>{' '}
+                      또는{' '}
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        h
+                      </kbd>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -387,17 +642,49 @@ function Footer() {
                 </h4>
                 <div className="space-y-1.5 pl-1">
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">진척율 조절 (일정)</div>
-                    <div className="col-span-2 font-mono text-[10px]"><kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">Ctrl+,</kbd>(-10%) <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">Ctrl+.</kbd>(+10%) <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">Ctrl+/</kbd>(100%)</div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                      진척율 조절 (일정)
+                    </div>
+                    <div className="col-span-2 font-mono text-[10px]">
+                      <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">
+                        Ctrl+,
+                      </kbd>
+                      (-10%){' '}
+                      <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">
+                        Ctrl+.
+                      </kbd>
+                      (+10%){' '}
+                      <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">
+                        Ctrl+/
+                      </kbd>
+                      (100%)
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">노드 종류 전환</div>
-                    <div className="col-span-2 font-mono text-[10px]"><kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">Alt+1</kbd>(일정) / <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">Alt+2</kbd>(그룹)</div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                      노드 종류 전환
+                    </div>
+                    <div className="col-span-2 font-mono text-[10px]">
+                      <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">
+                        Alt+1
+                      </kbd>
+                      (일정) /{' '}
+                      <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">
+                        Alt+2
+                      </kbd>
+                      (그룹)
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">창 닫기 / 취소</div>
-                    <div className="col-span-2"><kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">ESC</kbd></div>
+                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                      창 닫기 / 취소
+                    </div>
+                    <div className="col-span-2">
+                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
+                        ESC
+                      </kbd>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -6,7 +6,6 @@ export * from './member-drafts';
 
 export const GlobalRole = z.enum(['ADMIN', 'USER']);
 
-
 export type GlobalRole = z.infer<typeof GlobalRole>;
 
 export const ProjectRole = z.enum(['MANAGER', 'MEMBER']);
@@ -21,9 +20,7 @@ export type ProjectStatus = z.infer<typeof ProjectStatus>;
 export const NodeAction = z.enum(['CREATE', 'UPDATE', 'MOVE', 'DELETE', 'RESTORE']);
 export type NodeAction = z.infer<typeof NodeAction>;
 
-export const IsoDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD 형식이어야 합니다');
+export const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD 형식이어야 합니다');
 
 export const MAX_TREE_DEPTH = 10;
 
@@ -31,10 +28,7 @@ export const MAX_TREE_DEPTH = 10;
 // 비밀번호 최소 길이 설정 및 규칙 비활성화 (항상 성공 반환)
 export const PASSWORD_MIN_LENGTH = 1;
 
-export type PasswordPolicyError =
-  | 'TOO_SHORT'
-  | 'INSUFFICIENT_VARIETY'
-  | 'CONTAINS_USERNAME';
+export type PasswordPolicyError = 'TOO_SHORT' | 'INSUFFICIENT_VARIETY' | 'CONTAINS_USERNAME';
 
 export const validatePassword = (
   password: string,
@@ -123,10 +117,9 @@ export const UpdateUserDto = z
     displayName: z.string().min(1).max(128).optional(),
     isActive: z.boolean().optional(),
   })
-  .refine(
-    (v) => v.displayName !== undefined || v.isActive !== undefined,
-    { message: '변경 항목이 없습니다' },
-  );
+  .refine((v) => v.displayName !== undefined || v.isActive !== undefined, {
+    message: '변경 항목이 없습니다',
+  });
 export type UpdateUserDto = z.infer<typeof UpdateUserDto>;
 
 export const UserListItem = z.object({
@@ -209,13 +202,9 @@ export const UpdateProjectDto = z
     status: ProjectStatus.optional(),
     expectedUpdatedAt: z.string(),
   })
-  .refine(
-    (v) =>
-      v.name !== undefined ||
-      v.description !== undefined ||
-      v.status !== undefined,
-    { message: '변경 항목이 없습니다' },
-  );
+  .refine((v) => v.name !== undefined || v.description !== undefined || v.status !== undefined, {
+    message: '변경 항목이 없습니다',
+  });
 export type UpdateProjectDto = z.infer<typeof UpdateProjectDto>;
 
 export const ProjectListItem = z.object({
@@ -259,7 +248,6 @@ export function projectLastModifiedAt(p: {
   return s > p.updatedAt ? s : p.updatedAt;
 }
 
-
 export const ProjectDetail = ProjectListItem.extend({
   createdById: z.string(),
 });
@@ -277,9 +265,7 @@ export const CloneProjectDto = z
     dateMode: z.enum(['KEEP', 'SHIFT', 'FIT']),
     newStartDate: IsoDate.optional(),
     newEndDate: IsoDate.optional(),
-    managerUserIds: z
-      .array(z.string().min(1))
-      .min(1, '최소 1명의 MANAGER 가 필요합니다'),
+    managerUserIds: z.array(z.string().min(1)).min(1, '최소 1명의 MANAGER 가 필요합니다'),
     memberUserIds: z.array(z.string().min(1)).default([]),
   })
   .superRefine((v, ctx) => {
@@ -478,7 +464,7 @@ export const CreateNodeDto = z
     description: z.string().max(4000).optional(),
     startAt: IsoDate.optional(), // ITEM 만 의미. GROUP 은 무시됨
     endAt: IsoDate.optional(),
-    progress: Progress.optional(),  // ITEM 만 의미. GROUP 은 무시됨
+    progress: Progress.optional(), // ITEM 만 의미. GROUP 은 무시됨
   })
   .refine(
     (v) => {
@@ -530,11 +516,11 @@ export const NodeTreeItem = z.object({
   kind: NodeKind,
   title: z.string(),
   description: z.string().nullable(),
-  startAt: z.string().nullable(),       // ITEM: 직접 입력값 / GROUP: null
+  startAt: z.string().nullable(), // ITEM: 직접 입력값 / GROUP: null
   endAt: z.string().nullable(),
   startAtEffective: z.string().nullable(), // GROUP: 자동집계, ITEM: startAt 동일
   endAtEffective: z.string().nullable(),
-  progress: z.number().int(),                    // ITEM: 직접 입력값 / GROUP: 0 (참고용, UI 는 progressEffective 사용)
+  progress: z.number().int(), // ITEM: 직접 입력값 / GROUP: 0 (참고용, UI 는 progressEffective 사용)
   progressEffective: z.number().int().nullable(), // ITEM: progress 동일 / GROUP: 자손 ITEM 단순평균(반올림). 자손 ITEM 0개면 null
   sortOrder: z.number().int(),
   depth: z.number().int(),
@@ -566,13 +552,13 @@ export type NodeCommentItem = z.infer<typeof NodeCommentItem>;
 // ─── 노드 히스토리 ─────────────────────────────────────────────────────────
 export const NodeHistoryItem = z.object({
   id: z.string(),
-  nodeIdSnapshot: z.string(),         // 원본 nodeId — 노드 삭제 후에도 유지
+  nodeIdSnapshot: z.string(), // 원본 nodeId — 노드 삭제 후에도 유지
   projectIdSnapshot: z.string(),
   actorId: z.string(),
   actorUsername: z.string(),
   actorDisplayName: z.string(),
   action: NodeAction,
-  diff: z.record(z.unknown()),        // { field: { from, to } } 또는 자유 형식
+  diff: z.record(z.unknown()), // { field: { from, to } } 또는 자유 형식
   occurredAt: z.string(),
 });
 export type NodeHistoryItem = z.infer<typeof NodeHistoryItem>;
@@ -608,10 +594,7 @@ export const UpdateAutocompleteTermDto = z.object({
 export type UpdateAutocompleteTermDto = z.infer<typeof UpdateAutocompleteTermDto>;
 
 // ─── 프로젝트 이력 조회 ─────────────────────────────────────────────────────
-import {
-  HISTORY_TOPICS,
-  HISTORY_RANGES,
-} from './history-utils';
+import { HISTORY_TOPICS, HISTORY_RANGES } from './history-utils';
 
 // history-utils 의 순수 함수·데이터 타입을 그대로 재노출 (백엔드·프론트 공용)
 export * from './history-utils';
@@ -664,5 +647,3 @@ export type ProjectHistoryResponse = z.infer<typeof ProjectHistoryResponse>;
 
 // 예상 진척률 (Expected Progress) 계산 유틸리티 재노출
 export * from './expected-progress';
-
-

@@ -64,11 +64,7 @@ export class MembersService {
   /**
    * 추가: MANAGER+ 또는 ADMIN 모드. 기존 멤버면 409.
    */
-  async add(
-    projectId: string,
-    body: AddMemberDto,
-    ctx: ActorContext,
-  ): Promise<ProjectMemberItem> {
+  async add(projectId: string, body: AddMemberDto, ctx: ActorContext): Promise<ProjectMemberItem> {
     await this.assertProjectExists(projectId);
     await this.assertWriteAccess(projectId, ctx);
 
@@ -219,11 +215,7 @@ export class MembersService {
   /**
    * 제거: MANAGER+ 또는 ADMIN 모드. 마지막 MANAGER 제거 거부.
    */
-  async remove(
-    projectId: string,
-    userId: string,
-    ctx: ActorContext,
-  ): Promise<void> {
+  async remove(projectId: string, userId: string, ctx: ActorContext): Promise<void> {
     await this.assertProjectExists(projectId);
     await this.assertWriteAccess(projectId, ctx);
 
@@ -412,10 +404,7 @@ export class MembersService {
     if (!exists) throw new NotFoundException({ error: 'PROJECT_NOT_FOUND' });
   }
 
-  private async assertWriteAccess(
-    projectId: string,
-    ctx: ActorContext,
-  ): Promise<void> {
+  private async assertWriteAccess(projectId: string, ctx: ActorContext): Promise<void> {
     if (ctx.globalRole === 'ADMIN' && ctx.adminMode) return;
     const m = await this.prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId, userId: ctx.actorId } },

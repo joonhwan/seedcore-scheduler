@@ -100,9 +100,7 @@ export default function ProjectNewPage() {
           </button>
           <button
             type="submit"
-            disabled={
-              create.isPending || drafts.filter((d) => d.role === 'MANAGER').length === 0
-            }
+            disabled={create.isPending || drafts.filter((d) => d.role === 'MANAGER').length === 0}
             className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
           >
             {create.isPending ? '생성 중…' : '생성'}

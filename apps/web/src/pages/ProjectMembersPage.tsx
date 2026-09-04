@@ -1,10 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import {
-  AddMemberDto,
-  type ProjectMemberItem,
-  type ProjectRole,
-} from '@sam/shared';
+import { AddMemberDto, type ProjectMemberItem, type ProjectRole } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
 import { useProject } from '../lib/projects';
@@ -113,7 +109,8 @@ function MemberRow({
 
   async function onRoleChange(newRole: ProjectRole) {
     if (newRole === member.role) return;
-    const actionText = newRole === 'MANAGER' ? 'MANAGER(매니저)로 승격' : 'MEMBER(일반 멤버)로 변경';
+    const actionText =
+      newRole === 'MANAGER' ? 'MANAGER(매니저)로 승격' : 'MEMBER(일반 멤버)로 변경';
     const ok = window.confirm(`"${member.displayName}" 님의 역할을 ${actionText}하시겠습니까?`);
     if (!ok) return;
     try {
@@ -156,9 +153,7 @@ function MemberRow({
               onChange={(e) => void onRoleChange(e.target.value as ProjectRole)}
               disabled={!canChangeRole || updateRole.isPending}
               title={
-                !canChangeRole && isSelf
-                  ? '자기 자신의 역할은 변경할 수 없습니다.'
-                  : undefined
+                !canChangeRole && isSelf ? '자기 자신의 역할은 변경할 수 없습니다.' : undefined
               }
               className={`rounded border px-2 py-1 text-xs font-semibold focus:outline-none transition-colors ${
                 member.role === 'MANAGER'
@@ -246,10 +241,7 @@ function AddMemberSection({
     return users.data.filter((u) => {
       if (existingIds.has(u.id)) return false;
       if (!q) return true;
-      return (
-        u.username.toLowerCase().includes(q) ||
-        u.displayName.toLowerCase().includes(q)
-      );
+      return u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q);
     });
   }, [users.data, search, existingIds]);
 
@@ -257,7 +249,11 @@ function AddMemberSection({
   // 한 화면 안에서 표시 규칙이 어긋난다. 그룹 조회는 ADMIN 전용이라 canUseGroups 로 막는다.
   const tree = useGroupTree(canUseGroups);
   const groupPaths = useMemo(
-    () => groupPathMapOf(tree.data, filtered.map((u) => u.id)),
+    () =>
+      groupPathMapOf(
+        tree.data,
+        filtered.map((u) => u.id),
+      ),
     [tree.data, filtered],
   );
 
@@ -301,26 +297,18 @@ function AddMemberSection({
         </label>
       </div>
 
-      {error && (
-        <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>
-      )}
+      {error && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
 
       <ul className="mt-3 max-h-72 divide-y divide-slate-100 overflow-auto rounded border border-slate-100 dark:divide-slate-800 dark:border-slate-800">
-        {users.isLoading && (
-          <li className="p-3 text-sm text-slate-500">로딩…</li>
-        )}
+        {users.isLoading && <li className="p-3 text-sm text-slate-500">로딩…</li>}
         {users.isError && (
           <li className="p-3 text-sm text-rose-600">{apiErrorMessage(users.error)}</li>
         )}
         {filtered.map((u) => (
-          <li
-            key={u.id}
-            className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
-          >
+          <li key={u.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
             <span className="flex items-center gap-1.5">
               <span>
-                {u.displayName}{' '}
-                <span className="text-xs text-slate-500">@{u.username}</span>
+                {u.displayName} <span className="text-xs text-slate-500">@{u.username}</span>
               </span>
               <UserGroupBadge path={groupPaths.get(u.id) ?? []} />
             </span>
@@ -349,10 +337,7 @@ function AddMemberSection({
         </button>
       )}
       {groupOpen && (
-        <GroupPickerDialog
-          onCancel={() => setGroupOpen(false)}
-          onPick={onPickFromGroups}
-        />
+        <GroupPickerDialog onCancel={() => setGroupOpen(false)} onPick={onPickFromGroups} />
       )}
     </section>
   );

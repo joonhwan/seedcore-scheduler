@@ -37,10 +37,7 @@ export default function GroupPickerDialog({
   const users = useUsers({ status: 'active' });
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
-  const rows = useMemo(
-    () => flattenGroupTree(tree.data?.groups ?? []),
-    [tree.data?.groups],
-  );
+  const rows = useMemo(() => flattenGroupTree(tree.data?.groups ?? []), [tree.data?.groups]);
 
   // 그룹 수가 수십 개 규모라 매번 다시 만들어도 무리가 없지만, 토글·행 렌더링·인원 계산이
   // 모두 이 형태를 쓰므로 목록 밖에서 한 번만 만들어 재사용한다.
@@ -54,15 +51,9 @@ export default function GroupPickerDialog({
     return directMembersOf(tree.data.memberships, [...picked]);
   }, [tree.data, picked]);
 
-  const activeIds = useMemo(
-    () => new Set((users.data ?? []).map((u) => u.id)),
-    [users.data],
-  );
+  const activeIds = useMemo(() => new Set((users.data ?? []).map((u) => u.id)), [users.data]);
 
-  const userIds = useMemo(
-    () => expanded.filter((id) => activeIds.has(id)),
-    [expanded, activeIds],
-  );
+  const userIds = useMemo(() => expanded.filter((id) => activeIds.has(id)), [expanded, activeIds]);
 
   const inactiveCount = expanded.length - userIds.length;
 
@@ -92,9 +83,9 @@ export default function GroupPickerDialog({
       <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
         <h2 className="text-base font-semibold">그룹으로 담기</h2>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          상위 그룹을 고르면 하위 그룹까지 함께 선택됩니다. 필요 없는 하위 그룹은 그 체크만
-          풀면 되고, 그때 상위 그룹은 반쯤 체크된 상태로 바뀝니다. 담긴 뒤에는 명단에서
-          사람마다 역할을 바꾸거나 뺄 수 있습니다.
+          상위 그룹을 고르면 하위 그룹까지 함께 선택됩니다. 필요 없는 하위 그룹은 그 체크만 풀면
+          되고, 그때 상위 그룹은 반쯤 체크된 상태로 바뀝니다. 담긴 뒤에는 명단에서 사람마다 역할을
+          바꾸거나 뺄 수 있습니다.
         </p>
 
         <div className="mt-3 max-h-72 overflow-auto rounded border border-slate-100 dark:border-slate-800">

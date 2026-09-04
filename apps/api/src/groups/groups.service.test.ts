@@ -127,15 +127,12 @@ function buildService(
           return filtered;
         },
       ),
-      count: vi.fn(async ({ where }: { where: { groupId: string } }) =>
-        members.filter((m) => m.groupId === where.groupId).length,
+      count: vi.fn(
+        async ({ where }: { where: { groupId: string } }) =>
+          members.filter((m) => m.groupId === where.groupId).length,
       ),
       findUnique: vi.fn(
-        async ({
-          where,
-        }: {
-          where: { groupId_userId: { groupId: string; userId: string } };
-        }) =>
+        async ({ where }: { where: { groupId_userId: { groupId: string; userId: string } } }) =>
           members.find(
             (m) =>
               m.groupId === where.groupId_userId.groupId &&
@@ -147,11 +144,7 @@ function buildService(
         return { count: data.length };
       }),
       deleteMany: vi.fn(
-        async ({
-          where,
-        }: {
-          where: { OR: Array<{ groupId: string; userId: string }> };
-        }) => {
+        async ({ where }: { where: { OR: Array<{ groupId: string; userId: string }> } }) => {
           let count = 0;
           for (const key of where.OR) {
             const i = members.findIndex(
@@ -166,11 +159,7 @@ function buildService(
         },
       ),
       delete: vi.fn(
-        async ({
-          where,
-        }: {
-          where: { groupId_userId: { groupId: string; userId: string } };
-        }) => {
+        async ({ where }: { where: { groupId_userId: { groupId: string; userId: string } } }) => {
           const i = members.findIndex(
             (m) =>
               m.groupId === where.groupId_userId.groupId &&
@@ -182,11 +171,7 @@ function buildService(
     },
     user: {
       findMany: vi.fn(
-        async ({
-          where,
-        }: {
-          where: { id: { in: string[] }; isActive?: boolean };
-        }) => {
+        async ({ where }: { where: { id: { in: string[] }; isActive?: boolean } }) => {
           // seed.users 를 주지 않은 시험은 요청받은 id 를 무조건 활성 사용자로 합성하던
           // 기존 동작을 유지한다(USER_NOT_FOUND 분기를 보지 않는 기존 시험들이 이걸 쓴다).
           if (users === undefined) {
@@ -231,7 +216,13 @@ function buildService(
   const audit = { log: vi.fn(async () => {}) } as unknown as AuditService;
   // prismaObject 를 그대로 함께 돌려준다. PrismaService 로 단언한 prisma 는 vi.fn 의
   // 호출 기록에 접근할 수 없기 때문이다.
-  return { service: new GroupsService(prisma, audit), audit, groups, members, prismaSpies: prismaObject };
+  return {
+    service: new GroupsService(prisma, audit),
+    audit,
+    groups,
+    members,
+    prismaSpies: prismaObject,
+  };
 }
 
 const CTX = { actorId: 'admin-1' };
@@ -298,14 +289,18 @@ describe('GroupsService.update', () => {
 
   it('자기 자신을 상위로 지정하면 GROUP_CYCLE', async () => {
     const { service } = buildService({ groups: [...SAMPLE] });
-    await expect(service.update('center', { parentId: 'center', expectedUpdatedAt: EXPECTED }, CTX)).rejects.toMatchObject({
+    await expect(
+      service.update('center', { parentId: 'center', expectedUpdatedAt: EXPECTED }, CTX),
+    ).rejects.toMatchObject({
       response: { error: 'GROUP_CYCLE' },
     });
   });
 
   it('자기 자손을 상위로 지정하면 GROUP_CYCLE', async () => {
     const { service } = buildService({ groups: [...SAMPLE] });
-    await expect(service.update('center', { parentId: 'mech', expectedUpdatedAt: EXPECTED }, CTX)).rejects.toMatchObject({
+    await expect(
+      service.update('center', { parentId: 'mech', expectedUpdatedAt: EXPECTED }, CTX),
+    ).rejects.toMatchObject({
       response: { error: 'GROUP_CYCLE' },
     });
   });
@@ -314,7 +309,9 @@ describe('GroupsService.update', () => {
     const chain = Array.from({ length: 8 }, (_, i) => group(`g${i}`, i === 0 ? null : `g${i - 1}`));
     chain.push(group('loose', null));
     const { service } = buildService({ groups: chain });
-    await expect(service.update('loose', { parentId: 'g7', expectedUpdatedAt: EXPECTED }, CTX)).rejects.toMatchObject({
+    await expect(
+      service.update('loose', { parentId: 'g7', expectedUpdatedAt: EXPECTED }, CTX),
+    ).rejects.toMatchObject({
       response: { error: 'GROUP_DEPTH_EXCEEDED' },
     });
   });
@@ -323,21 +320,29 @@ describe('GroupsService.update', () => {
     const { service } = buildService({
       groups: [...SAMPLE, group('dup', 'center', '구매팀')],
     });
-    await expect(service.update('purchase', { parentId: 'center', expectedUpdatedAt: EXPECTED }, CTX)).rejects.toMatchObject({
+    await expect(
+      service.update('purchase', { parentId: 'center', expectedUpdatedAt: EXPECTED }, CTX),
+    ).rejects.toMatchObject({
       response: { error: 'GROUP_NAME_DUPLICATE' },
     });
   });
 
   it('없는 그룹은 GROUP_NOT_FOUND', async () => {
     const { service } = buildService({ groups: [...SAMPLE] });
-    await expect(service.update('nope', { name: 'x', expectedUpdatedAt: EXPECTED }, CTX)).rejects.toMatchObject({
+    await expect(
+      service.update('nope', { name: 'x', expectedUpdatedAt: EXPECTED }, CTX),
+    ).rejects.toMatchObject({
       response: { error: 'GROUP_NOT_FOUND' },
     });
   });
 
   it('이름만 바꾸는 것은 통과한다', async () => {
     const { service } = buildService({ groups: [...SAMPLE] });
-    const updated = await service.update('mech', { name: '기구설계팀', expectedUpdatedAt: EXPECTED }, CTX);
+    const updated = await service.update(
+      'mech',
+      { name: '기구설계팀', expectedUpdatedAt: EXPECTED },
+      CTX,
+    );
     expect(updated.name).toBe('기구설계팀');
   });
 
@@ -351,7 +356,11 @@ describe('GroupsService.update', () => {
         { groupId: 'mech', userId: 'm1', addedById: 'admin-1', addedAt: T0 },
       ],
     });
-    const updated = await service.update('center', { name: '운영기술본부', expectedUpdatedAt: EXPECTED }, CTX);
+    const updated = await service.update(
+      'center',
+      { name: '운영기술본부', expectedUpdatedAt: EXPECTED },
+      CTX,
+    );
     expect(updated.directMemberCount).toBe(1);
     expect(updated.totalMemberCount).toBe(2);
   });

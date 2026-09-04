@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GroupProjectCoverage } from '@sam/shared';
-import {
-  buildAddSide,
-  buildRemoveSide,
-  markBlockedTargets,
-  syncUserIds,
-} from './groupSync';
+import { buildAddSide, buildRemoveSide, markBlockedTargets, syncUserIds } from './groupSync';
 
 function coverage(
   projectId: string,
@@ -58,9 +53,7 @@ describe('buildAddSide', () => {
 
 describe('markBlockedTargets', () => {
   const side = () =>
-    buildRemoveSide([
-      { groupName: '기구팀', coverage: [coverage('p1', [])], users: [U1, U2] },
-    ])!;
+    buildRemoveSide([{ groupName: '기구팀', coverage: [coverage('p1', [])], users: [U1, U2] }])!;
 
   it('남는 MANAGER 가 없으면 이유를 달아 막는다', () => {
     const marked = markBlockedTargets(side(), new Map([['p1', ['u1']]]));

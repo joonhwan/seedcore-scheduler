@@ -45,9 +45,7 @@ export class ProjectsService {
   async list(ctx: ActorContext): Promise<ProjectListItem[]> {
     const isAdminBrowsing = ctx.globalRole === 'ADMIN' && ctx.adminMode;
     const projects = await this.prisma.project.findMany({
-      where: isAdminBrowsing
-        ? {}
-        : { members: { some: { userId: ctx.actorId } } },
+      where: isAdminBrowsing ? {} : { members: { some: { userId: ctx.actorId } } },
       orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
       include: {
         members: {
@@ -63,9 +61,7 @@ export class ProjectsService {
       take: 500,
     });
 
-    const lastChanges = await this.lastScheduleChangeMap(
-      projects.map((p) => p.id),
-    );
+    const lastChanges = await this.lastScheduleChangeMap(projects.map((p) => p.id));
 
     return projects.map((p) => {
       const delaySummary = summarizeDelay(p.nodes, p._count.nodes);
@@ -73,9 +69,7 @@ export class ProjectsService {
         id: p.id,
         name: p.name,
         description: p.description,
-        status: (p.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE') as
-          | 'ACTIVE'
-          | 'ARCHIVED',
+        status: (p.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE') as 'ACTIVE' | 'ARCHIVED',
         myRole: roleOf(p.members[0]?.role ?? null),
         memberCount: p._count.members,
         createdAt: p.createdAt.toISOString(),
@@ -94,9 +88,7 @@ export class ProjectsService {
    * 제대로 잡힌다. 프로젝트마다 따로 묻지 않고 groupBy 한 번으로 끝내는 것은 목록이 최대
    * 500 개까지 올 수 있기 때문이다 ([projectIdSnapshot, occurredAt] 색인을 탄다).
    */
-  private async lastScheduleChangeMap(
-    projectIds: string[],
-  ): Promise<Map<string, string>> {
+  private async lastScheduleChangeMap(projectIds: string[]): Promise<Map<string, string>> {
     if (projectIds.length === 0) return new Map();
 
     const rows = await this.prisma.nodeHistory.groupBy({
@@ -149,9 +141,7 @@ export class ProjectsService {
       id: project.id,
       name: project.name,
       description: project.description,
-      status: (project.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE') as
-        | 'ACTIVE'
-        | 'ARCHIVED',
+      status: (project.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE') as 'ACTIVE' | 'ARCHIVED',
       myRole: roleOf(project.members[0]?.role ?? null),
       memberCount: project._count.members,
       createdAt: project.createdAt.toISOString(),
@@ -161,7 +151,6 @@ export class ProjectsService {
       delaySummary,
     };
   }
-
 
   async create(input: CreateProjectDto, ctx: ActorContext): Promise<ProjectDetail> {
     const uniqueIds = Array.from(new Set(input.managerUserIds));
@@ -185,9 +174,7 @@ export class ProjectsService {
     // MANAGER 로도 지정된 사람은 MEMBER 목록에서 뺀다. MANAGER 가 이긴다 — 화면의 명단
     // 편집기가 사람마다 역할을 하나만 고르게 하므로 겹치는 것은 호출 쪽 실수다.
     const managerSet = new Set(uniqueIds);
-    const memberIds = Array.from(new Set(input.memberUserIds)).filter(
-      (id) => !managerSet.has(id),
-    );
+    const memberIds = Array.from(new Set(input.memberUserIds)).filter((id) => !managerSet.has(id));
     if (memberIds.length > 0) {
       const foundMembers = await this.prisma.user.findMany({
         where: { id: { in: memberIds }, isActive: true },
@@ -282,11 +269,7 @@ export class ProjectsService {
     };
   }
 
-  async update(
-    id: string,
-    patch: UpdateProjectDto,
-    ctx: ActorContext,
-  ): Promise<ProjectDetail> {
+  async update(id: string, patch: UpdateProjectDto, ctx: ActorContext): Promise<ProjectDetail> {
     const target = await this.prisma.project.findUnique({ where: { id } });
     if (!target) throw new NotFoundException({ error: 'PROJECT_NOT_FOUND' });
 
@@ -319,8 +302,7 @@ export class ProjectsService {
     });
 
     if (patch.status !== undefined && previousStatus !== nextStatus) {
-      const action =
-        nextStatus === 'ARCHIVED' ? 'PROJECT_ARCHIVE' : 'PROJECT_RESTORE';
+      const action = nextStatus === 'ARCHIVED' ? 'PROJECT_ARCHIVE' : 'PROJECT_RESTORE';
       await this.audit.log({
         actorId: ctx.actorId,
         action,
@@ -339,9 +321,7 @@ export class ProjectsService {
         userAgent: ctx.userAgent,
         payload: {
           ...(patch.name !== undefined ? { name: patch.name } : {}),
-          ...(patch.description !== undefined
-            ? { description: patch.description }
-            : {}),
+          ...(patch.description !== undefined ? { description: patch.description } : {}),
         },
       });
     }
@@ -361,9 +341,7 @@ export class ProjectsService {
       id: updated.id,
       name: updated.name,
       description: updated.description,
-      status: (updated.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE') as
-        | 'ACTIVE'
-        | 'ARCHIVED',
+      status: (updated.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE') as 'ACTIVE' | 'ARCHIVED',
       myRole: roleOf(updated.members[0]?.role ?? null),
       memberCount: updated._count.members,
       createdAt: updated.createdAt.toISOString(),
@@ -435,9 +413,7 @@ export class ProjectsService {
     }
     // 같은 사람이 양쪽에 오면 MANAGER 를 우선한다 (project_members 의 복합 PK 중복 방지).
     const managerSet = new Set(managerIds);
-    const memberIds = Array.from(new Set(input.memberUserIds)).filter(
-      (id) => !managerSet.has(id),
-    );
+    const memberIds = Array.from(new Set(input.memberUserIds)).filter((id) => !managerSet.has(id));
 
     const allIds = [...managerIds, ...memberIds];
     const found = await this.prisma.user.findMany({

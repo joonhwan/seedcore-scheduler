@@ -39,7 +39,6 @@ function resolveStaticRoot(): string {
   return path.join(__dirname, 'public');
 }
 
-
 @Module({
   imports: [
     ServeStaticModule.forRoot({
@@ -65,4 +64,3 @@ function resolveStaticRoot(): string {
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}
-

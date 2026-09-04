@@ -79,10 +79,7 @@ export function expandGroupMembers(
  * expandGroupMembers 와 directMembersOf 가 이 순서 보장을 함께 하므로 한 곳에 둔다.
  * 두 함수의 차이는 targets 를 어떻게 만드는지 하나뿐이다.
  */
-function membersInGroupSet(
-  memberships: GroupMembership[],
-  targets: ReadonlySet<string>,
-): string[] {
+function membersInGroupSet(memberships: GroupMembership[], targets: ReadonlySet<string>): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const m of memberships) {
