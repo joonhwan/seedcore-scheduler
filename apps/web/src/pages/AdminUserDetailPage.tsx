@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   groupPathNames,
@@ -7,10 +7,18 @@ import {
   type UserGroupItem,
   type ProjectRole,
   type UserListItem,
+  type UserActivitySummary,
 } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import { useAdminMode } from '../lib/adminMode';
-import { useUsers, useUpdateUser } from '../lib/users';
+import {
+  useUsers,
+  useUpdateUser,
+  useUserActivity,
+  useRetireUser,
+  useUnretireUser,
+  useDeleteUser,
+} from '../lib/users';
 import { api } from '../lib/api';
 import { useGroupTree, groupsKey } from '../lib/groups';
 import { flattenGroupTree } from '../lib/groupTreeView';
@@ -26,6 +34,7 @@ import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import BusyOverlay from '../components/BusyOverlay';
 import GroupProjectSyncDialog from '../components/GroupProjectSyncDialog';
+import UserDeleteConfirmDialog from '../components/UserDeleteConfirmDialog';
 import {
   annotateBlockedTargets,
   buildAddSide,
@@ -86,6 +95,7 @@ export default function AdminUserDetailPage() {
           <AccountSection user={user} />
           <GroupSection userId={id} displayName={user.displayName} />
           <ProjectSection userId={id} />
+          <AccountCleanupSection user={user} />
         </>
       )}
     </main>
@@ -469,6 +479,184 @@ function ProjectSection({ userId }: { userId: string }) {
       )}
     </section>
   );
+}
+
+/**
+ * 계정 정리 — 퇴사 처리·복직과 완전 삭제.
+ *
+ * 삭제 버튼은 **활동이 한 건이라도 있으면 아예 보이지 않는다**(확정명세 §6-가). 대신 무엇이
+ * 남아 있어 지울 수 없는지 적는다. 집계를 "정리하면 없어지는 것"과 "지울 수 없는 것"으로 나눈
+ * 덕분에, 앞의 것만 남은 계정에는 위 섹션에서 빼면 지울 수 있다고 안내할 수 있다.
+ */
+function AccountCleanupSection({ user }: { user: UserListItem }) {
+  const navigate = useNavigate();
+  const activity = useUserActivity(user.id);
+  const retire = useRetireUser();
+  const unretire = useUnretireUser();
+  const remove = useDeleteUser();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const busy = retire.isPending || unretire.isPending || remove.isPending;
+  const isRetired = user.retiredAt !== null;
+
+  async function onRetire() {
+    const ok = window.confirm(
+      `${user.displayName} 님을 퇴사 처리하시겠습니까?\n\n` +
+        '· 로그인이 막히고 지금 접속 중인 세션이 즉시 끊어집니다\n' +
+        '· 사용자 목록 기본 화면에서 감춰집니다\n' +
+        '· 프로젝트 참여자와 그룹 인원 후보에서 빠집니다\n' +
+        '· 소속 그룹과 참여 중인 프로젝트는 그대로 남습니다\n' +
+        '· 나중에 복직 처리로 되돌릴 수 있습니다',
+    );
+    if (!ok) return;
+    try {
+      await retire.mutateAsync(user.id);
+      toast.success('퇴사 처리되었습니다.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    }
+  }
+
+  async function onUnretire() {
+    try {
+      await unretire.mutateAsync(user.id);
+      toast.success('복직 처리되었습니다. 다시 로그인할 수 있습니다.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    }
+  }
+
+  async function onDelete() {
+    try {
+      await remove.mutateAsync(user.id);
+      setDeleteOpen(false);
+      toast.success('계정이 삭제되었습니다.');
+      // 방금 지운 계정의 상세에 머무르면 다음 조회가 USER_NOT_FOUND 로 실패한다.
+      navigate('/admin/users');
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    }
+  }
+
+  return (
+    <section className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+      <h2 className="text-sm font-semibold">계정 정리</h2>
+
+      {isRetired && (
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+          {formatDay(user.retiredAt!)} 에 퇴사 처리되었습니다. 로그인이 막혀 있고 목록 기본
+          화면에서 감춰집니다. 소속 그룹과 참여 프로젝트는 그대로 남아 있습니다.
+        </p>
+      )}
+
+      <div className="mt-3 text-sm">
+        <h3 className="text-xs font-semibold text-slate-500">활동 기록</h3>
+        {activity.isLoading && <p className="mt-1 text-slate-500">세는 중…</p>}
+        {activity.isError && (
+          <p className="mt-1 text-rose-600">{apiErrorMessage(activity.error)}</p>
+        )}
+        {activity.data && <ActivityLines summary={activity.data} />}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {isRetired ? (
+          <button
+            type="button"
+            onClick={onUnretire}
+            disabled={busy}
+            className="rounded border border-emerald-300 px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950"
+          >
+            복직 처리
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onRetire}
+            disabled={busy}
+            className="rounded border border-amber-300 px-3 py-1.5 text-sm font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-950"
+          >
+            퇴사 처리
+          </button>
+        )}
+
+        {activity.data?.canDelete === true && (
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            disabled={busy}
+            className="rounded border border-rose-300 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950"
+          >
+            계정 삭제
+          </button>
+        )}
+      </div>
+
+      {deleteOpen && (
+        <UserDeleteConfirmDialog
+          username={user.username}
+          displayName={user.displayName}
+          busy={remove.isPending}
+          onConfirm={onDelete}
+          onClose={() => setDeleteOpen(false)}
+        />
+      )}
+    </section>
+  );
+}
+
+/**
+ * 집계를 사람이 읽는 문장으로 바꾼다.
+ *
+ * 두 갈래를 나눠 보여주는 이유는 관리자가 무엇을 하면 지울 수 있는지 알려 주기 위함이다.
+ * 지울 수 없는 것이 하나라도 있으면 정리해도 소용없으므로 그 사실을 먼저 말한다.
+ */
+function ActivityLines({ summary }: { summary: UserActivitySummary }) {
+  const { clearable, permanent } = summary;
+
+  const clearableParts: string[] = [];
+  if (clearable.projectMemberships > 0)
+    clearableParts.push(`참여 프로젝트 ${clearable.projectMemberships}건`);
+  if (clearable.groupMemberships > 0)
+    clearableParts.push(`그룹 소속 ${clearable.groupMemberships}건`);
+
+  const permanentParts: string[] = [];
+  if (permanent.createdProjects > 0)
+    permanentParts.push(`프로젝트 ${permanent.createdProjects}건 생성`);
+  if (permanent.nodesCreated > 0) permanentParts.push(`일정 ${permanent.nodesCreated}건 생성`);
+  if (permanent.nodesUpdated > 0) permanentParts.push(`일정 ${permanent.nodesUpdated}건 수정`);
+  if (permanent.comments > 0) permanentParts.push(`댓글 ${permanent.comments}건`);
+  if (permanent.history > 0) permanentParts.push(`변경 이력 ${permanent.history}건`);
+  if (permanent.membershipsAdded > 0)
+    permanentParts.push(`남을 프로젝트에 넣은 기록 ${permanent.membershipsAdded}건`);
+  if (permanent.groupMembersAdded > 0)
+    permanentParts.push(`남을 그룹에 넣은 기록 ${permanent.groupMembersAdded}건`);
+
+  if (summary.canDelete) {
+    return <p className="mt-1 text-slate-600 dark:text-slate-400">없습니다.</p>;
+  }
+
+  return (
+    <div className="mt-1 space-y-1">
+      {clearableParts.length > 0 && (
+        <p className="text-slate-600 dark:text-slate-400">{clearableParts.join(' · ')}</p>
+      )}
+      {permanentParts.length > 0 && (
+        <p className="text-slate-600 dark:text-slate-400">{permanentParts.join(' · ')}</p>
+      )}
+      <p className="pt-1 text-[13px] text-slate-500">
+        {permanentParts.length > 0
+          ? `이 계정은 ${permanentParts.join(', ')} 기록이 있어 삭제할 수 없습니다. 퇴사 처리를 이용하십시오.`
+          : '위 섹션에서 참여와 소속을 정리하면 이 계정을 삭제할 수 있습니다.'}
+      </p>
+    </div>
+  );
+}
+
+/** 퇴사 시각을 날짜까지만 보여준다. */
+function formatDay(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function AddProjectsDialog({
