@@ -21,7 +21,11 @@ SAM Scheduler는 외부 네트워크와 격리된 **폐쇄망(Air-gap) 환경**�
   - **하한은 22.13 입니다.** pnpm 11(`packageManager` 로 고정)이 `node:sqlite` 를 쓰기 때문에
     Node 20 에서는 `pnpm install` 이 `ERR_UNKNOWN_BUILTIN_MODULE` 로 죽습니다. CI(`ci.yml`)와
     도커 이미지(`Dockerfile.fly`, `apps/*/Dockerfile`)의 Node 버전도 이 이유로 22 입니다.
-- **Frontend**: React 18, Vite 5, Tailwind CSS, TanStack Query, Zustand
+- **Frontend**: React 18, Vite 5, Tailwind CSS, TanStack Query
+  - **전역 상태는 `apps/web/src/lib/store.ts` 의 자체 구현입니다.** `useSyncExternalStore` 위에 얹은
+    `createStore`·`useStore` 이며 `adminMode`·`theme`·`toast` 가 이 방식입니다. 이 문서는 오랫동안
+    Zustand 를 적어 두었으나 **설치된 적이 없습니다**(`apps/web/package.json` 에 없습니다).
+    전역 상태가 필요하면 새 라이브러리를 들이지 말고 이 구현을 쓰십시오.
 - **Shared**: `packages/shared` (Zod 기반 스키마 및 공통 유틸리티)
 - **Deploy**: Docker Compose, Nginx (정적 SPA 파일 서빙 및 API 리버스 프록시) / 또는 단일 exe 배포판
   - **현재 어떤 자체 배포도 HTTPS를 쓰지 않습니다.** `deploy/nginx.conf`는 `listen 80;`뿐이고
