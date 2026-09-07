@@ -79,24 +79,38 @@ export class ServerNoticesService {
       throw new BadRequestException({ error: 'SCHEDULED_AT_IN_PAST' });
     }
 
-    const current = await this.active();
-    if (current) {
-      throw new ConflictException({
-        error: 'NOTICE_ALREADY_ACTIVE',
-        currentNoticeId: current.id,
-      });
-    }
+    // 확인과 삽입을 한 트랜잭션으로 묶는다.
+    //
+    // 둘을 떼어 두면 두 관리자가 동시에 등록 버튼을 눌렀을 때 양쪽 다 "유효한 예고 없음"을
+    // 보고 각자 행을 남긴다. 그러면 active() 는 나중 것만 돌려주므로 앞의 한 건은 취소할
+    // 방법이 사라지고, 다음 기동 때 closeOpenNotices 가 치울 때까지 남는다. SQLite 는
+    // Writer 가 하나뿐이라 이 묶음만으로 순서가 확정된다.
+    const created = await this.prisma.$transaction(async (tx) => {
+      const open = (await tx.serverNotice.findMany({
+        where: { canceledAt: null },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      })) as Array<Pick<NoticeRowWithCreator, 'id'>>;
 
-    const created = (await this.prisma.serverNotice.create({
-      data: {
-        id: randomUUID(),
-        kind: input.kind,
-        message: input.message,
-        scheduledAt,
-        createdBy: ctx.actorId,
-      },
-      include: { creator: { select: { displayName: true } } },
-    })) as NoticeRowWithCreator;
+      const current = open[0];
+      if (current) {
+        throw new ConflictException({
+          error: 'NOTICE_ALREADY_ACTIVE',
+          currentNoticeId: current.id,
+        });
+      }
+
+      return (await tx.serverNotice.create({
+        data: {
+          id: randomUUID(),
+          kind: input.kind,
+          message: input.message,
+          scheduledAt,
+          createdBy: ctx.actorId,
+        },
+        include: { creator: { select: { displayName: true } } },
+      })) as NoticeRowWithCreator;
+    });
 
     await this.audit.log({
       actorId: ctx.actorId,
@@ -165,9 +179,14 @@ export class ServerNoticesService {
    * @returns 닫은 예고 수
    */
   async closeOpenNotices(now: Date): Promise<number> {
+    // 여기서는 creator 를 include 하지 않으므로 NoticeRowWithCreator 로 단언하면 거짓말이
+    // 된다. 지금은 id 와 scheduledAt 만 읽어 무해하지만, 누가 이 반복문에서 toView(t) 를
+    // 부르는 순간 displayName 이 undefined 인 채로 터진다. 실제로 조회하는 두 필드만
+    // 가져오고, 단언도 거기에 맞춘다.
     const targets = (await this.prisma.serverNotice.findMany({
       where: { canceledAt: null },
-    })) as NoticeRowWithCreator[];
+      select: { id: true, scheduledAt: true },
+    })) as Array<Pick<NoticeRowWithCreator, 'id' | 'scheduledAt'>>;
 
     for (const t of targets) {
       await this.prisma.serverNotice.update({

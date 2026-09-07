@@ -35,7 +35,7 @@ function notice(over: Partial<NoticeRow> = {}): NoticeRow {
 function buildService(seed: NoticeRow[] = [], now = T0) {
   const rows = [...seed];
 
-  const prisma = {
+  const prismaObject = {
     serverNotice: {
       findMany: vi.fn(async (args?: { where?: { canceledAt?: null }; take?: number }) => {
         let out = rows;
@@ -61,6 +61,13 @@ function buildService(seed: NoticeRow[] = [], now = T0) {
         return row;
       }),
     },
+  };
+
+  const prisma = {
+    ...prismaObject,
+    // SQLite 는 Writer 가 하나뿐이라 실제로도 이 묶음이 순서를 확정한다. 목은 그저 콜백을
+    // 그대로 불러 준다(members.service.test.ts 와 같은 방식).
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaObject)),
   } as unknown as PrismaService;
 
   const audit = { log: vi.fn(async () => undefined) } as unknown as AuditService;
@@ -116,6 +123,15 @@ describe('create', () => {
   it('유효한 예고가 이미 있으면 409 로 거절한다', async () => {
     const { service } = buildService([notice()]);
     await expect(service.create(input, ctx)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('확인과 삽입이 한 $transaction 안에서 일어난다', async () => {
+    // 둘을 떼어 두면 두 관리자가 동시에 등록했을 때 양쪽 다 "유효한 예고 없음" 을 보고
+    // 각자 행을 남긴다. 그러면 active() 는 나중 것만 돌려주므로 앞의 한 건은 취소할
+    // 방법이 사라진 채 다음 기동까지 남는다.
+    const { service, prisma } = buildService([]);
+    await service.create(input, ctx);
+    expect((prisma as unknown as { $transaction: unknown }).$transaction).toHaveBeenCalled();
   });
 
   it('지난 시각은 400 으로 거절한다', async () => {
