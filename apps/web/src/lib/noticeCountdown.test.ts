@@ -1,8 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { formatNoticeRemaining, minuteMark, shouldShowNotice } from './noticeCountdown';
+import {
+  formatNoticeRemaining,
+  isNoticeVisible,
+  minuteMark,
+  shouldShowNotice,
+} from './noticeCountdown';
 
 const MIN = 60 * 1000;
 const WARNING = 5 * MIN;
+
+describe('isNoticeVisible', () => {
+  it('5분보다 많이 남았으면 아직 표시 구간이 아니다', () => {
+    expect(isNoticeVisible(6 * MIN, WARNING)).toBe(false);
+  });
+
+  it('정확히 5분 남았으면 표시 구간이다', () => {
+    expect(isNoticeVisible(WARNING, WARNING)).toBe(true);
+  });
+
+  it('5분 안으로 들어오면 표시 구간이다', () => {
+    expect(isNoticeVisible(4 * MIN, WARNING)).toBe(true);
+  });
+
+  it('예정 시각이 지난 뒤에도 표시 구간이다', () => {
+    // 관리자 화면이 "지금 사용자에게 보이고 있다"를 판단하는 근거다. 경과 구간에서
+    // false 가 되면, 팝업은 계속 뜨고 있는데 관리자 화면만 아니라고 말한다.
+    expect(isNoticeVisible(-3 * MIN, WARNING)).toBe(true);
+  });
+
+  it('닫았는지와 무관하게 구간만 본다', () => {
+    // shouldShowNotice 와 다른 점이다. 사용자가 "확인"을 눌러 팝업이 감춰진 순간에도
+    // 관리자에게는 여전히 "표시되고 있는" 예고다.
+    expect(isNoticeVisible(4 * MIN, WARNING)).toBe(true);
+  });
+});
 
 describe('minuteMark', () => {
   it('4분 40초 남았으면 5분 구간이다', () => {

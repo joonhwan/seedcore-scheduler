@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { DEFAULT_RESTART_NOTICE_MESSAGE } from '@sam/shared';
+import { DEFAULT_RESTART_NOTICE_MESSAGE, SERVER_NOTICE_WARNING_MS } from '@sam/shared';
 import { useMe } from '../lib/auth';
 import {
   useActiveServerNotice,
@@ -16,7 +16,7 @@ import {
   useNoticeRemaining,
   useServerNoticeHistory,
 } from '../lib/serverNotice';
-import { formatNoticeRemaining } from '../lib/noticeCountdown';
+import { formatNoticeRemaining, isNoticeVisible } from '../lib/noticeCountdown';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 
@@ -119,6 +119,27 @@ export default function AdminServerPage() {
               )}
             </p>
             <p className="text-slate-600 dark:text-slate-400">{notice.message}</p>
+            {/*
+              사용자 쪽에 언제 보이는지 밝힌다. 예정 시각을 5분보다 멀리 잡으면 등록 직후
+              사용자 화면이 조용한데, 그것이 정상인지 결함인지 관리자가 알 방법이 없었다.
+            */}
+            {remaining &&
+              (isNoticeVisible(remaining.signedRemainingMs, SERVER_NOTICE_WARNING_MS) ? (
+                <p className="text-xs font-semibold text-sky-700 dark:text-sky-400">
+                  지금 사용자 화면에 표시되고 있습니다.
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  사용자 화면에는{' '}
+                  <strong>
+                    {new Date(
+                      Date.parse(notice.scheduledAt) - SERVER_NOTICE_WARNING_MS,
+                    ).toLocaleTimeString()}
+                    부터
+                  </strong>{' '}
+                  표시됩니다.
+                </p>
+              ))}
             <p className="text-xs text-slate-500">
               {notice.createdByName} 이(가) {new Date(notice.createdAt).toLocaleString()} 에 등록
             </p>
@@ -176,6 +197,11 @@ export default function AdminServerPage() {
             >
               {create.isPending ? '등록하는 중…' : '예고 등록'}
             </button>
+            {/* 등록하기 전에 동작을 알린다. 확정명세 ⑤ 의 사용자 쪽 사양 그대로다. */}
+            <p className="text-xs leading-relaxed text-slate-500">
+              사용자 화면에는 <strong>예정 시각 5분 전부터</strong> 팝업이 표시됩니다.
+              "확인"으로 닫아도 1분마다 다시 뜨고, 예정 시각이 지나도 계속 표시됩니다.
+            </p>
           </div>
         )}
       </section>

@@ -14,6 +14,17 @@ export function minuteMark(signedRemainingMs: number): number {
 }
 
 /**
+ * 지금이 팝업이 뜨는 구간인가. 사용자가 닫았는지는 보지 않는다.
+ *
+ * 두 곳이 이 판정을 쓴다. 사용자 쪽 팝업(shouldShowNotice 가 여기에 "닫았는지"를 덧붙인다)과,
+ * 관리자 화면이 "지금 사용자에게 보이고 있다"를 알리는 문구다. 관리자에게는 사용자가 확인을
+ * 눌러 팝업이 감춰진 순간에도 여전히 "표시되고 있는" 예고이므로, 구간 판정만 따로 필요하다.
+ */
+export function isNoticeVisible(signedRemainingMs: number, warningMs: number): boolean {
+  return signedRemainingMs <= warningMs;
+}
+
+/**
  * 지금 팝업을 띄워야 하는가.
  *
  * @param dismissedMark 사용자가 "확인"을 눌러 닫았을 때의 분 표지. 닫은 적이 없으면 null.
@@ -23,7 +34,7 @@ export function shouldShowNotice(args: {
   warningMs: number;
   dismissedMark: number | null;
 }): boolean {
-  if (args.signedRemainingMs > args.warningMs) return false;
+  if (!isNoticeVisible(args.signedRemainingMs, args.warningMs)) return false;
   if (args.dismissedMark === null) return true;
   // 닫은 구간을 벗어났으면 다시 알린다.
   return minuteMark(args.signedRemainingMs) !== args.dismissedMark;
