@@ -41,6 +41,7 @@ model User {
   sessions           Session[]
   groupMemberships   UserGroupMember[] @relation("GroupMemberUser")
   groupMembersAdded  UserGroupMember[] @relation("GroupMemberAddedBy")
+  serverNotices      ServerNotice[]    @relation("ServerNoticeCreatedBy")
 
   @@map("users")
 }
@@ -220,5 +221,24 @@ model UserGroupMember {
   @@id([groupId, userId])
   @@index([userId])
   @@map("user_group_members")
+}
+
+/// 서버 공지. 지금은 재시작 예고(kind='RESTART') 하나만 쓴다.
+///
+/// 유효한 예고는 "canceled_at 이 비어 있는 것 중 created_at 이 가장 나중인 것" 하나다.
+/// 예정 시각이 지나도 유효한 상태로 남는다 — 재시작이 몇 분 늦어지는 사이에 팝업이 사라지면
+/// 사용자가 편집을 다시 시작해 작업을 잃기 때문이다(설계 문서 §4.3).
+model ServerNotice {
+  id          String    @id
+  kind        String // 'RESTART' — SQLite 는 enum 이 없어 CHECK 로 제한한다
+  message     String
+  scheduledAt DateTime  @map("scheduled_at")
+  createdBy   String    @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  canceledAt  DateTime? @map("canceled_at")
+
+  creator User @relation("ServerNoticeCreatedBy", fields: [createdBy], references: [id])
+
+  @@map("server_notices")
 }
 
