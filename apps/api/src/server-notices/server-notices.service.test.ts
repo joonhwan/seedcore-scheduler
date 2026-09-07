@@ -37,12 +37,21 @@ function buildService(seed: NoticeRow[] = [], now = T0) {
 
   const prisma = {
     serverNotice: {
-      findMany: vi.fn(async (args?: { where?: { canceledAt?: null }; take?: number }) => {
-        let out = rows;
-        if (args?.where?.canceledAt === null) out = out.filter((r) => r.canceledAt === null);
-        out = [...out].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-        return args?.take ? out.slice(0, args.take) : out;
-      }),
+      findMany: vi.fn(
+        async (args?: {
+          where?: { canceledAt?: null; scheduledAt?: { lte: Date } };
+          take?: number;
+        }) => {
+          let out = rows;
+          if (args?.where?.canceledAt === null) out = out.filter((r) => r.canceledAt === null);
+          // closePastNotices 가 쓰는 조건. 흉내 내지 않으면 미래 예고까지 닫히는 것을
+          // 시험이 잡지 못한다.
+          const lte = args?.where?.scheduledAt?.lte;
+          if (lte) out = out.filter((r) => r.scheduledAt.getTime() <= lte.getTime());
+          out = [...out].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+          return args?.take ? out.slice(0, args.take) : out;
+        },
+      ),
       findUnique: vi.fn(async (args: { where: { id: string } }) =>
         rows.find((r) => r.id === args.where.id) ?? null,
       ),
@@ -144,5 +153,52 @@ describe('cancel', () => {
   it('이미 취소된 예고를 또 취소하면 409 다', async () => {
     const { service } = buildService([notice({ canceledAt: T0 })]);
     await expect(service.cancel('n1', ctx)).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe('closePastNotices', () => {
+  // 서버가 다시 떴다는 것은 재시작이 끝났다는 뜻이다. 이 정리가 없으면 예정 시각이 지난
+  // 예고가 DB 에 유효한 채로 남아, 재시작이 이미 끝났는데도 "곧 재시작됩니다" 가 사용자
+  // 화면에 영원히 뜬다(관리자가 손으로 취소할 때까지).
+  const NOW = later(60);
+
+  it('예정 시각이 지난 예고를 닫는다', async () => {
+    const { service, rows } = buildService([notice({ scheduledAt: later(30) })]);
+    await expect(service.closePastNotices(NOW)).resolves.toBe(1);
+    expect(rows[0]!.canceledAt).toEqual(NOW);
+  });
+
+  it('닫을 때 감사로그를 사람이 아닌 자동 처리로 남긴다', async () => {
+    const { service, audit } = buildService([notice({ scheduledAt: later(30) })]);
+    await service.closePastNotices(NOW);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'SERVER_NOTICE_CANCEL',
+        actorId: null,
+        payload: expect.objectContaining({ reason: 'SERVER_RESTARTED' }),
+      }),
+    );
+  });
+
+  it('예정 시각이 아직 오지 않은 예고는 남긴다', async () => {
+    // "내일 새벽 2시" 로 예약해 둔 예고가 오늘 배포 때문에 사라지면 안 된다.
+    const { service, rows } = buildService([notice({ scheduledAt: later(120) })]);
+    await expect(service.closePastNotices(NOW)).resolves.toBe(0);
+    expect(rows[0]!.canceledAt).toBeNull();
+  });
+
+  it('이미 취소된 예고는 건드리지 않는다', async () => {
+    const { service, rows, audit } = buildService([
+      notice({ scheduledAt: later(30), canceledAt: T0 }),
+    ]);
+    await expect(service.closePastNotices(NOW)).resolves.toBe(0);
+    expect(rows[0]!.canceledAt).toEqual(T0);
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  it('닫을 것이 없으면 아무것도 하지 않는다', async () => {
+    const { service, audit } = buildService([]);
+    await expect(service.closePastNotices(NOW)).resolves.toBe(0);
+    expect(audit.log).not.toHaveBeenCalled();
   });
 });

@@ -142,6 +142,48 @@ export class ServerNoticesService {
     return this.toView(updated);
   }
 
+  /**
+   * 서버가 기동할 때 부른다 — 예정 시각이 이미 지난 유효 예고를 닫는다.
+   *
+   * 서버가 다시 떴다는 것은 재시작이 끝났다는 뜻이다. 이 정리가 없으면 그 예고가 유효한
+   * 채로 남아, 재시작이 이미 끝났는데도 "곧 재시작됩니다" 가 사용자 화면에 계속 뜬다
+   * (관리자가 손으로 취소할 때까지). 설계는 "서버가 꺼질 때까지 유지"를 뜻했으나, 서버가
+   * 다시 켜지면 화면도 다시 붙는다는 것을 놓쳤다.
+   *
+   * **예정 시각이 아직 오지 않은 예고는 건드리지 않는다.** "내일 새벽 2시" 로 예약해 둔
+   * 예고가 오늘 배포 때문에 사라지면 안 된다.
+   *
+   * 감사로그는 사람이 취소한 것과 같은 액션을 쓰되 actorId 를 비우고 이유를 남긴다.
+   * 그 기록이 곧 "서버가 실제로 언제 재시작되었는가" 이므로 확정명세 ⑤ 의 추적 목적에
+   * 오히려 보탬이 된다.
+   *
+   * @returns 닫은 예고 수
+   */
+  async closePastNotices(now: Date): Promise<number> {
+    const targets = (await this.prisma.serverNotice.findMany({
+      where: { canceledAt: null, scheduledAt: { lte: now } },
+    })) as NoticeRowWithCreator[];
+
+    for (const t of targets) {
+      await this.prisma.serverNotice.update({
+        where: { id: t.id },
+        data: { canceledAt: now },
+      });
+      await this.audit.log({
+        actorId: null,
+        action: 'SERVER_NOTICE_CANCEL',
+        targetType: 'server_notice',
+        targetId: t.id,
+        payload: {
+          reason: 'SERVER_RESTARTED',
+          scheduledAt: t.scheduledAt.toISOString(),
+        },
+      });
+    }
+
+    return targets.length;
+  }
+
   private toView(row: NoticeRowWithCreator): ServerNoticeView {
     return {
       id: row.id,

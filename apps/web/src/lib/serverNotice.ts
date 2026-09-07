@@ -48,11 +48,18 @@ export function useNoticeRemaining(): {
   notice: ServerNoticeView;
   signedRemainingMs: number;
 } | null {
+  const me = useMe();
   const q = useActiveServerNotice();
   const [now, setNow] = useState(() => Date.now());
 
   const data = q.data;
-  const notice = data?.notice ?? null;
+  // 로그인 상태가 아니면 예고를 알리지 않는다.
+  //
+  // useActiveServerNotice 의 enabled 는 새 요청만 막고 이미 받아 둔 캐시는 남긴다. 그래서
+  // 이 확인이 없으면 로그아웃한 뒤에도 캐시에 남은 예고로 팝업이 계속 떠, 로그인 화면 위에
+  // "서버가 곧 재시작됩니다" 가 뜬다. 세션이 만료돼 자동 로그아웃된 경우도 마찬가지다.
+  // 여기 한 곳에서 막으면 로그아웃·만료·비로그인 세 경로가 함께 닫힌다.
+  const notice = me.data ? (data?.notice ?? null) : null;
   const serverNow = data?.serverNow ?? null;
 
   const signed =
