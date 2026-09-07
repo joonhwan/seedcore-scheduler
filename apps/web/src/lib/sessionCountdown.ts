@@ -47,7 +47,15 @@ export function signedRemainingMsFrom(clock: TargetClock, nowLocalMs: number): n
   if (!Number.isFinite(target) || !Number.isFinite(server)) return 0;
 
   const atResponse = target - server;
-  const elapsed = nowLocalMs - clock.receivedAtLocalMs;
+  // 경과 시간을 0 에서 자르는 것은 방어가 아니라 계산의 전제다. 응답을 받기 전으로
+  // 거슬러 올라간 "지금"은 있을 수 없다.
+  //
+  // 화면이 tick 으로 갱신하는 nowLocalMs 는 응답을 받은 시점보다 뒤처져 있을 수 있다.
+  // 예고 카운트다운은 예고가 없는 동안 tick 을 돌리지 않으므로(serverNotice.ts 의
+  // useNoticeRemaining), 첫 예고가 도착하는 순간의 nowLocalMs 는 화면을 띄운 시각에
+  // 멈춰 있다. 자르지 않으면 그 정체된 시간이 남은 시간에 그대로 더해져, 세 시간 켜 둔
+  // 탭에서는 30분 뒤 재시작이 3시간 30분 뒤로 계산되고 팝업이 아예 뜨지 않는다.
+  const elapsed = Math.max(0, nowLocalMs - clock.receivedAtLocalMs);
   return atResponse - elapsed;
 }
 
