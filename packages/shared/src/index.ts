@@ -104,6 +104,22 @@ export const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12시간
 /** 만료 몇 분 전부터 연장 창을 띄울지. */
 export const SESSION_EXPIRY_WARNING_MS = 10 * 60 * 1000; // 10분
 
+/**
+ * 재시작 예고 팝업이 뜨기 시작하는 시점 (예정 시각까지 남은 시간).
+ * 확정명세 ⑤ 가 "재시작 5분 전부터"로 정했다.
+ */
+export const SERVER_NOTICE_WARNING_MS = 5 * 60 * 1000; // 5분
+
+/**
+ * 접속 중으로 볼 마지막 활동 시각의 창.
+ * 서버는 브라우저가 닫혔는지 알 수 없으므로, 그냥 닫은 사람은 최대 이 시간만큼 목록에 남는다(㉳ 회신).
+ */
+export const ACTIVE_SESSION_WINDOW_MS = 5 * 60 * 1000; // 5분
+
+/** 예고 등록 화면이 미리 채워 두는 안내 문구. 관리자가 그대로 등록해도 되게 한다. */
+export const DEFAULT_RESTART_NOTICE_MESSAGE =
+  '시스템 점검을 위해 서버를 재시작합니다. 작업 중인 내용을 저장해 주십시오.';
+
 // ─── 사용자 관리 (ADMIN) DTO ───────────────────────────────────────────────
 export const CreateUserDto = z.object({
   username: Username,
@@ -211,6 +227,8 @@ export const AuditAction = z.enum([
   'AUTOCOMPLETE_CREATE',
   'AUTOCOMPLETE_UPDATE',
   'AUTOCOMPLETE_DELETE',
+  'SERVER_NOTICE_CREATE',
+  'SERVER_NOTICE_CANCEL',
 ]);
 export type AuditAction = z.infer<typeof AuditAction>;
 
@@ -678,6 +696,58 @@ export const ProjectHistoryResponse = z.object({
   truncated: z.boolean(),
 });
 export type ProjectHistoryResponse = z.infer<typeof ProjectHistoryResponse>;
+
+// ─── 서버 공지(재시작 예고) ─────────────────────────────────────────────────
+export const ServerNoticeKind = z.enum(['RESTART']);
+export type ServerNoticeKind = z.infer<typeof ServerNoticeKind>;
+
+export const CreateServerNoticeDto = z.object({
+  kind: ServerNoticeKind,
+  message: z.string().min(1).max(500),
+  scheduledAt: z.string().datetime(),
+});
+export type CreateServerNoticeDto = z.infer<typeof CreateServerNoticeDto>;
+
+export const ServerNoticeView = z.object({
+  id: z.string(),
+  kind: ServerNoticeKind,
+  message: z.string(),
+  scheduledAt: z.string(),
+  createdBy: z.string(),
+  createdByName: z.string(),
+  createdAt: z.string(),
+  canceledAt: z.string().nullable(),
+});
+export type ServerNoticeView = z.infer<typeof ServerNoticeView>;
+
+/**
+ * 사용자 화면이 폴링으로 받는 응답.
+ *
+ * serverNow 를 함께 내려주는 이유는 세션 만료 창과 같다 — scheduledAt 만 주고 브라우저 시계로
+ * 빼면, 사내 PC 시계가 3분 빠를 때 재시작 2분 뒤에야 팝업을 보게 된다. 두 시각 모두 서버
+ * 것이어야 오차가 상쇄된다(apps/web/src/lib/sessionCountdown.ts 주석 참고).
+ */
+export const ActiveServerNoticeResponse = z.object({
+  notice: ServerNoticeView.nullable(),
+  serverNow: z.string(),
+});
+export type ActiveServerNoticeResponse = z.infer<typeof ActiveServerNoticeResponse>;
+
+/** 접속자 목록의 한 사람. 같은 사람이 창을 여럿 열었으면 IP 가 여러 개일 수 있다. */
+export const ActiveUserView = z.object({
+  userId: z.string(),
+  username: z.string(),
+  displayName: z.string(),
+  lastSeenAt: z.string(),
+  ips: z.array(z.string()),
+});
+export type ActiveUserView = z.infer<typeof ActiveUserView>;
+
+export const ActiveSessionsResponse = z.object({
+  users: z.array(ActiveUserView),
+  serverNow: z.string(),
+});
+export type ActiveSessionsResponse = z.infer<typeof ActiveSessionsResponse>;
 
 // 예상 진척률 (Expected Progress) 계산 유틸리티 재노출
 export * from './expected-progress';
