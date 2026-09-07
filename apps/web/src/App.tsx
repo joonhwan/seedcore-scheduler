@@ -7,6 +7,7 @@ import { APP_VERSION_LABEL } from './version';
 import ToastViewport from './components/ToastViewport';
 import SessionCountdownBadge from './components/SessionCountdownBadge';
 import SessionExpiryDialog from './components/SessionExpiryDialog';
+import ServerNoticeDialog from './components/ServerNoticeDialog';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProjectsPage from './pages/ProjectsPage';
@@ -846,6 +847,7 @@ export default function App() {
         로그인 전에는 스스로 아무것도 그리지 않는다.
       */}
       <SessionExpiryDialog />
+      <ServerNoticeDialog />
     </div>
   );
 }
