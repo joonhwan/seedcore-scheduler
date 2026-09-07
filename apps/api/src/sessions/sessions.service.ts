@@ -92,6 +92,41 @@ export class SessionsService {
   }
 
   /**
+   * touch 와 같은 판정을 하되 lastSeenAt 을 갱신하지 않는다 (@NoSessionTouch 라우트용).
+   *
+   * 예고 폴링처럼 사용자가 조작하지 않았는데도 주기적으로 오는 요청이 있다. 그런 요청이
+   * lastSeenAt 을 올리면 브라우저만 켜 두고 자리를 비운 사람도 영원히 접속 중으로 남아,
+   * 관리자 화면의 접속자 목록이 근거를 잃는다.
+   *
+   * 만료된 세션과 비활성 사용자를 걸러내는 처리는 touch 와 똑같이 한다.
+   */
+  async peek(sid: string): Promise<SessionWithUser | null> {
+    const session = await this.prisma.session.findUnique({
+      where: { sid },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+            globalRole: true,
+            passwordMustChange: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+    if (!session) return null;
+
+    if (new Date() >= session.expiresAt || !session.user.isActive) {
+      await this.prisma.session.delete({ where: { sid } }).catch(() => undefined);
+      return null;
+    }
+
+    return session;
+  }
+
+  /**
    * 세션 수명을 지금부터 다시 SESSION_TTL_MS 만큼 늘린다 (연장 창의 "로그인 연장").
    *
    * 이미 만료됐거나 사라진 세션은 되살리지 않고 null 을 돌려준다. 연장 요청은 인증 가드를

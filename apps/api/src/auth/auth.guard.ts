@@ -35,6 +35,16 @@ export const ADMIN_ONLY_KEY = 'auth:adminOnly';
 export const AdminOnly = (): MethodDecorator & ClassDecorator =>
   SetMetadata(ADMIN_ONLY_KEY, true);
 
+/**
+ * 라우트에 @NoSessionTouch() 를 달면 인증은 그대로 하되 lastSeenAt 을 갱신하지 않음.
+ *
+ * 예고 폴링처럼 사용자가 조작하지 않았는데도 주기적으로 오는 요청에 붙인다. 그런 요청까지
+ * 활동으로 기록하면 관리자 화면의 접속자 목록이 "브라우저를 켜 둔 사람 전부"가 되어 버린다.
+ */
+export const NO_SESSION_TOUCH_KEY = 'auth:noSessionTouch';
+export const NoSessionTouch = (): MethodDecorator & ClassDecorator =>
+  SetMetadata(NO_SESSION_TOUCH_KEY, true);
+
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -56,7 +66,12 @@ export class AuthGuard implements CanActivate {
     const sid = req.cookies?.[SESSION_COOKIE_NAME] as string | undefined;
     if (!sid) throw new UnauthorizedException({ error: 'NO_SESSION' });
 
-    const session = await this.sessions.touch(sid);
+    const noTouch =
+      this.reflector.getAllAndOverride<boolean>(NO_SESSION_TOUCH_KEY, [handler, cls]) ??
+      false;
+    const session = noTouch
+      ? await this.sessions.peek(sid)
+      : await this.sessions.touch(sid);
     if (!session) throw new UnauthorizedException({ error: 'SESSION_EXPIRED' });
 
     req.user = {
