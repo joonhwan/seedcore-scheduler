@@ -16,7 +16,7 @@ import {
   useNoticeRemaining,
   useServerNoticeHistory,
 } from '../lib/serverNotice';
-import { formatNoticeRemaining, isNoticeVisible } from '../lib/noticeCountdown';
+import { formatNoticeRemaining, isNoticeVisible, noticeStatusLabel } from '../lib/noticeCountdown';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 
@@ -261,7 +261,15 @@ export default function AdminServerPage() {
         )}
       </section>
 
-      {/* 3. 지난 예고 기록 */}
+      {/*
+        3. 지난 예고 기록
+        예고가 닫히는 경로는 두 가지다 — 관리자가 취소 버튼을 누른 경우와, 서버가 기동할 때
+        CloseNoticesBootstrap 이 정리한 경우. 두 경로가 canceled_at 한 컬럼을 함께 쓰므로
+        예전에는 화면에서 가를 수 없었고, 근거 없는 "취소됨" 은 관리자에게 "누가 내 예고를
+        취소했다" 로 읽혔다. 지금은 서버가 감사로그를 근거로 canceledReason 을 채워 주므로
+        일어난 일을 그대로 적는다. 자동 정리를 "적용됨" 이라고 적지 않는 것은 예고와 무관한
+        재기동으로도 닫히기 때문이다(noticeStatusLabel 주석 참고).
+      */}
       <section className="mt-5 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
         <button
           type="button"
@@ -278,7 +286,7 @@ export default function AdminServerPage() {
               <li key={n.id} className="border-t border-slate-100 pt-2 dark:border-slate-700">
                 <span className="tabular-nums">{new Date(n.scheduledAt).toLocaleString()}</span>
                 <span className="ml-2 text-slate-500">
-                  {n.canceledAt ? '취소됨' : '적용됨'} · {n.createdByName}
+                  {noticeStatusLabel(n)} · {n.createdByName}
                 </span>
                 <p className="mt-0.5 text-slate-600 dark:text-slate-400">{n.message}</p>
               </li>

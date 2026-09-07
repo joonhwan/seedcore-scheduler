@@ -56,7 +56,7 @@ export class ServerNoticesService {
     })) as NoticeRowWithCreator[];
 
     const row = rows[0];
-    return row ? this.toView(row) : null;
+    return row ? this.toView(row, null) : null;
   }
 
   async list(): Promise<ServerNoticeView[]> {
@@ -66,7 +66,34 @@ export class ServerNoticesService {
       include: { creator: { select: { displayName: true } } },
     })) as NoticeRowWithCreator[];
 
-    return rows.map((r) => this.toView(r));
+    const autoClosed = await this.autoClosedIds(rows);
+    return rows.map((r) =>
+      this.toView(r, r.canceledAt === null ? null : autoClosed.has(r.id) ? 'SERVER_RESTART' : 'ADMIN'),
+    );
+  }
+
+  /**
+   * 이 가운데 서버가 스스로 닫은 예고의 id.
+   *
+   * 근거는 감사로그다. closeOpenNotices 는 사람이 누른 취소와 같은 액션을 쓰되 actorId 를
+   * 비우므로, 그 한 가지로 두 경로가 갈린다(payload 의 reason 까지 볼 필요는 없다).
+   * 감사로그를 지우는 경로는 이 저장소에 없어서 지난 기록도 그대로 갈린다.
+   */
+  private async autoClosedIds(rows: NoticeRowWithCreator[]): Promise<Set<string>> {
+    const ids = rows.filter((r) => r.canceledAt !== null).map((r) => r.id);
+    if (ids.length === 0) return new Set();
+
+    const logs = await this.prisma.auditLog.findMany({
+      where: {
+        action: 'SERVER_NOTICE_CANCEL',
+        targetType: 'server_notice',
+        targetId: { in: ids },
+        actorId: null,
+      },
+      select: { targetId: true },
+    });
+
+    return new Set(logs.map((l) => l.targetId).filter((id): id is string => id !== null));
   }
 
   async create(
@@ -122,7 +149,7 @@ export class ServerNoticesService {
       payload: { kind: created.kind, scheduledAt: created.scheduledAt.toISOString() },
     });
 
-    return this.toView(created);
+    return this.toView(created, null);
   }
 
   async cancel(id: string, ctx: NoticeActorContext): Promise<ServerNoticeView> {
@@ -153,7 +180,7 @@ export class ServerNoticesService {
       payload: { scheduledAt: updated.scheduledAt.toISOString() },
     });
 
-    return this.toView(updated);
+    return this.toView(updated, 'ADMIN');
   }
 
   /**
@@ -208,7 +235,10 @@ export class ServerNoticesService {
     return targets.length;
   }
 
-  private toView(row: NoticeRowWithCreator): ServerNoticeView {
+  private toView(
+    row: NoticeRowWithCreator,
+    canceledReason: ServerNoticeView['canceledReason'],
+  ): ServerNoticeView {
     return {
       id: row.id,
       kind: row.kind as ServerNoticeView['kind'],
@@ -218,6 +248,8 @@ export class ServerNoticesService {
       createdByName: row.creator.displayName,
       createdAt: row.createdAt.toISOString(),
       canceledAt: row.canceledAt === null ? null : row.canceledAt.toISOString(),
+      // 닫히지 않은 예고에 사유가 붙는 일은 없다. 부르는 쪽이 실수해도 여기서 걸러진다.
+      canceledReason: row.canceledAt === null ? null : canceledReason,
     };
   }
 }

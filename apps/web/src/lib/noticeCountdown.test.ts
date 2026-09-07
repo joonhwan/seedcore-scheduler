@@ -3,6 +3,7 @@ import {
   formatNoticeRemaining,
   isNoticeVisible,
   minuteMark,
+  noticeStatusLabel,
   shouldShowNotice,
 } from './noticeCountdown';
 
@@ -102,5 +103,22 @@ describe('formatNoticeRemaining', () => {
 
   it('지났으면 그 사실을 알린다', () => {
     expect(formatNoticeRemaining(-1000)).toBe('곧 재시작됩니다');
+  });
+});
+
+describe('noticeStatusLabel', () => {
+  it('아직 닫히지 않았으면 진행 중이다', () => {
+    expect(noticeStatusLabel({ canceledAt: null, canceledReason: null })).toBe('진행 중');
+  });
+
+  it('관리자가 취소한 것과 서버가 닫은 것을 구분해서 적는다', () => {
+    // 자동 정리를 "취소됨" 으로 적으면 관리자는 그것을 "누가 내 예고를 취소했다" 로 읽고,
+    // "적용됨" 으로 적으면 예고와 무관한 재기동까지 재시작으로 둔갑한다.
+    expect(noticeStatusLabel({ canceledAt: '2026-09-07T09:00:00.000Z', canceledReason: 'ADMIN' })).toBe(
+      '관리자 취소',
+    );
+    expect(
+      noticeStatusLabel({ canceledAt: '2026-09-07T09:00:00.000Z', canceledReason: 'SERVER_RESTART' }),
+    ).toBe('서버 재시작으로 종료');
   });
 });

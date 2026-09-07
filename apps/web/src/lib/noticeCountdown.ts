@@ -40,6 +40,21 @@ export function shouldShowNotice(args: {
   return minuteMark(args.signedRemainingMs) !== args.dismissedMark;
 }
 
+/**
+ * 지난 기록 한 줄에 적을 상태.
+ *
+ * 서버가 스스로 닫은 것을 "취소됨" 으로 적으면 관리자는 그것을 "누가 내 예고를 취소했다"
+ * 로 읽는다. 자동 정리는 예고와 무관한 재기동으로도 일어나므로 "적용됨" 도 근거가 없다.
+ * 그래서 일어난 일을 그대로 적는다.
+ */
+export function noticeStatusLabel(notice: {
+  canceledAt: string | null;
+  canceledReason: 'ADMIN' | 'SERVER_RESTART' | null;
+}): string {
+  if (notice.canceledAt === null) return '진행 중';
+  return notice.canceledReason === 'SERVER_RESTART' ? '서버 재시작으로 종료' : '관리자 취소';
+}
+
 /** 팝업에 보여줄 남은 시간. 예정 시각을 지나면 카운트다운 대신 사실을 알린다. */
 export function formatNoticeRemaining(signedRemainingMs: number): string {
   if (signedRemainingMs <= 0) return '곧 재시작됩니다';

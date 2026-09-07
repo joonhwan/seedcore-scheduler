@@ -32,8 +32,17 @@ function notice(over: Partial<NoticeRow> = {}): NoticeRow {
 }
 
 /** 실제 DB 를 띄우는 통합 시험은 이 저장소에 없다(groups.service.test.ts 와 같은 방침). */
+interface AuditRow {
+  actorId: string | null;
+  action: string;
+  targetId: string;
+}
+
 function buildService(seed: NoticeRow[] = [], now = T0) {
   const rows = [...seed];
+  // 감사로그도 함께 쌓는다. list() 가 "서버가 스스로 닫은 것" 을 이 기록으로 가리므로,
+  // 목이 그것을 흉내내지 않으면 두 경로가 갈리는지 시험할 수 없다.
+  const auditRows: AuditRow[] = [];
 
   const prismaObject = {
     serverNotice: {
@@ -61,6 +70,17 @@ function buildService(seed: NoticeRow[] = [], now = T0) {
         return row;
       }),
     },
+    auditLog: {
+      findMany: vi.fn(
+        async (args: { where: { targetId: { in: string[] }; actorId: string | null } }) =>
+          auditRows
+            .filter(
+              (a) =>
+                a.actorId === args.where.actorId && args.where.targetId.in.includes(a.targetId),
+            )
+            .map((a) => ({ targetId: a.targetId })),
+      ),
+    },
   };
 
   const prisma = {
@@ -70,7 +90,16 @@ function buildService(seed: NoticeRow[] = [], now = T0) {
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaObject)),
   } as unknown as PrismaService;
 
-  const audit = { log: vi.fn(async () => undefined) } as unknown as AuditService;
+  const audit = {
+    log: vi.fn(async (entry: { actorId: string | null; action: string; targetId?: string }) => {
+      auditRows.push({
+        actorId: entry.actorId,
+        action: entry.action,
+        targetId: entry.targetId ?? '',
+      });
+    }),
+  } as unknown as AuditService;
+
   return { service: new ServerNoticesService(prisma, audit), prisma, audit, rows };
 }
 
@@ -160,6 +189,29 @@ describe('cancel', () => {
   it('이미 취소된 예고를 또 취소하면 409 다', async () => {
     const { service } = buildService([notice({ canceledAt: T0 })]);
     await expect(service.cancel('n1', ctx)).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe('list 의 canceledReason', () => {
+  it('유효한 예고에는 사유가 없다', async () => {
+    const { service } = buildService([notice()]);
+    const out = await service.list();
+    expect(out[0]!.canceledReason).toBeNull();
+  });
+
+  it('관리자가 취소한 것은 ADMIN 이다', async () => {
+    const { service } = buildService([notice()]);
+    await service.cancel('n1', ctx);
+    const out = await service.list();
+    expect(out[0]!.canceledReason).toBe('ADMIN');
+  });
+
+  it('서버가 기동하며 닫은 것은 SERVER_RESTART 다', async () => {
+    // 이 구분이 없으면 관리자는 지난 기록의 "취소됨" 을 "누가 내 예고를 취소했다" 로 읽는다.
+    const { service } = buildService([notice()]);
+    await service.closeOpenNotices(later(60));
+    const out = await service.list();
+    expect(out[0]!.canceledReason).toBe('SERVER_RESTART');
   });
 });
 

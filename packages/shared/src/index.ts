@@ -719,6 +719,17 @@ export const ServerNoticeView = z.object({
   createdByName: z.string(),
   createdAt: z.string(),
   canceledAt: z.string().nullable(),
+  /**
+   * 예고가 닫힌 경로. 아직 유효하면 null.
+   *
+   *  - 'ADMIN': 관리자가 취소 버튼을 눌렀다.
+   *  - 'SERVER_RESTART': 서버가 다시 뜨면서 CloseNoticesBootstrap 이 정리했다.
+   *
+   * canceled_at 한 컬럼만으로는 두 경로를 구분할 수 없다. 그래서 서버가 감사로그를 근거로
+   * 채워 준다(actorId 가 비어 있는 SERVER_NOTICE_CANCEL 이 자동 정리다). 구분이 없으면
+   * 관리자는 지난 기록의 "취소됨"을 "누가 내 예고를 취소했다"로 읽는다.
+   */
+  canceledReason: z.enum(['ADMIN', 'SERVER_RESTART']).nullable(),
 });
 export type ServerNoticeView = z.infer<typeof ServerNoticeView>;
 
