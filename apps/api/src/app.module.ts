@@ -18,6 +18,7 @@ import { NodesModule } from './nodes/nodes.module';
 import { BackupModule } from './backup/backup.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
 import { AutocompleteModule } from './autocomplete/autocomplete.module';
+import { ServerNoticesModule } from './server-notices/server-notices.module';
 import { AuthGuard } from './auth/auth.guard';
 
 function resolveStaticRoot(): string {
@@ -60,6 +61,7 @@ function resolveStaticRoot(): string {
     BackupModule,
     BootstrapModule,
     AutocompleteModule,
+    ServerNoticesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
 })
