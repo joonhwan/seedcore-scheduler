@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { Session } from '@prisma/client';
 import { SESSION_TTL_MS } from '@sam/shared';
+import type { ActiveUserView } from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { selectActiveUsers, type SessionRowForActive } from './active-sessions';
 
 export interface SessionWithUser extends Session {
   user: {
@@ -92,6 +94,41 @@ export class SessionsService {
   }
 
   /**
+   * touch 와 같은 판정을 하되 lastSeenAt 을 갱신하지 않는다 (@NoSessionTouch 라우트용).
+   *
+   * 예고 폴링처럼 사용자가 조작하지 않았는데도 주기적으로 오는 요청이 있다. 그런 요청이
+   * lastSeenAt 을 올리면 브라우저만 켜 두고 자리를 비운 사람도 영원히 접속 중으로 남아,
+   * 관리자 화면의 접속자 목록이 근거를 잃는다.
+   *
+   * 만료된 세션과 비활성 사용자를 걸러내는 처리는 touch 와 똑같이 한다.
+   */
+  async peek(sid: string): Promise<SessionWithUser | null> {
+    const session = await this.prisma.session.findUnique({
+      where: { sid },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+            globalRole: true,
+            passwordMustChange: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+    if (!session) return null;
+
+    if (new Date() >= session.expiresAt || !session.user.isActive) {
+      await this.prisma.session.delete({ where: { sid } }).catch(() => undefined);
+      return null;
+    }
+
+    return session;
+  }
+
+  /**
    * 세션 수명을 지금부터 다시 SESSION_TTL_MS 만큼 늘린다 (연장 창의 "로그인 연장").
    *
    * 이미 만료됐거나 사라진 세션은 되살리지 않고 null 을 돌려준다. 연장 요청은 인증 가드를
@@ -127,5 +164,30 @@ export class SessionsService {
       where: { userId, expiresAt: { lt: new Date() } },
     });
     return r.count;
+  }
+
+  /**
+   * 접속 중인 사람 목록 (관리자 화면용).
+   *
+   * 판정 자체는 active-sessions.ts 의 순수 함수가 한다. 여기서는 창 안에 들 수 있는 행만
+   * 좁혀 읽는다. lastSeenAt 에 색인이 없지만 150명 규모에서 세션 행은 많아야 수백 개라
+   * 전체 훑기로 충분하다.
+   */
+  async listActiveUsers(now: Date, windowMs: number): Promise<ActiveUserView[]> {
+    const rows = await this.prisma.session.findMany({
+      where: {
+        lastSeenAt: { gte: new Date(now.getTime() - windowMs) },
+        expiresAt: { gt: now },
+      },
+      select: {
+        userId: true,
+        lastSeenAt: true,
+        expiresAt: true,
+        ip: true,
+        user: { select: { username: true, displayName: true } },
+      },
+    });
+
+    return selectActiveUsers(rows as SessionRowForActive[], now, windowMs);
   }
 }

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   formatRemaining,
   remainingMs,
+  remainingMsFrom,
+  signedRemainingMsFrom,
   tickIntervalMs,
   type SessionClock,
 } from './sessionCountdown';
@@ -81,5 +83,51 @@ describe('tickIntervalMs', () => {
 
   it('여유가 있을 때는 느슨하게 돈다', () => {
     expect(tickIntervalMs(11 * 60 * 60 * 1000)).toBe(30_000);
+  });
+});
+
+describe('remainingMsFrom (목표 시각 일반형)', () => {
+  const base = {
+    serverNow: '2026-09-01T09:00:00.000Z',
+    receivedAtLocalMs: 1_000_000,
+  };
+  const target = (ms: number) => ({
+    ...base,
+    targetAt: new Date(Date.parse(base.serverNow) + ms).toISOString(),
+  });
+
+  it('세션이든 예고든 같은 계산을 쓴다', () => {
+    const c = target(5 * 60 * 1000);
+    expect(remainingMsFrom(c, c.receivedAtLocalMs + 60 * 1000)).toBe(4 * 60 * 1000);
+  });
+
+  it('목표 시각을 지나면 0 으로 멈춘다', () => {
+    const c = target(60 * 1000);
+    expect(remainingMsFrom(c, c.receivedAtLocalMs + 3 * 60 * 1000)).toBe(0);
+  });
+
+  it('signed 형은 지난 만큼 음수로 이어진다', () => {
+    // 재시작 예고는 예정 시각이 지난 뒤에도 "몇 분 지났는가"를 알아야 한다(설계 문서 §4.3).
+    const c = target(60 * 1000);
+    expect(signedRemainingMsFrom(c, c.receivedAtLocalMs + 3 * 60 * 1000)).toBe(-2 * 60 * 1000);
+  });
+
+  it('응답을 받은 시점보다 이른 "지금"을 줘도 남은 시간이 부풀지 않는다', () => {
+    // 예고 카운트다운은 예고가 없는 동안 tick 을 돌리지 않아, 첫 예고가 도착하는 순간의
+    // "지금"이 화면을 띄운 시각에 멈춰 있다. 자르지 않으면 그 정체된 시간이 남은 시간에
+    // 더해져, 세 시간 켜 둔 탭에서는 5분 뒤 재시작이 3시간 5분 뒤로 계산되고 팝업이
+    // 뜨지 않는다.
+    const c = target(5 * 60 * 1000);
+    const stale = c.receivedAtLocalMs - 3 * 60 * 60 * 1000;
+    expect(signedRemainingMsFrom(c, stale)).toBe(5 * 60 * 1000);
+    expect(remainingMsFrom(c, stale)).toBe(5 * 60 * 1000);
+  });
+
+  it('브라우저 시계가 어긋나 있어도 흔들리지 않는다', () => {
+    const c = target(5 * 60 * 1000);
+    const a = remainingMsFrom(c, c.receivedAtLocalMs + 60 * 1000);
+    const skewed = { ...c, receivedAtLocalMs: c.receivedAtLocalMs + 3600 * 1000 };
+    const b = remainingMsFrom(skewed, skewed.receivedAtLocalMs + 60 * 1000);
+    expect(a).toBe(b);
   });
 });

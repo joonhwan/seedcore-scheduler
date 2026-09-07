@@ -7,6 +7,7 @@ import { APP_VERSION_LABEL } from './version';
 import ToastViewport from './components/ToastViewport';
 import SessionCountdownBadge from './components/SessionCountdownBadge';
 import SessionExpiryDialog from './components/SessionExpiryDialog';
+import ServerNoticeDialog from './components/ServerNoticeDialog';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProjectsPage from './pages/ProjectsPage';
@@ -19,6 +20,7 @@ import AdminUsersPage from './pages/AdminUsersPage';
 import AdminGroupsPage from './pages/AdminGroupsPage';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
 import AdminAutocompletePage from './pages/AdminAutocompletePage';
+import AdminServerPage from './pages/AdminServerPage';
 import UserGuidePage from './pages/UserGuidePage';
 import { useParams } from 'react-router-dom';
 
@@ -53,6 +55,39 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (me.isLoading) {
     return <div className="p-6 text-sm text-slate-500">로딩…</div>;
+  }
+  // 서버에 물어보지 못한 것과 로그아웃이 확인된 것을 구분한다.
+  //
+  // 둘을 섞으면, 서버가 재시작되는 동안 새로고침한 사용자가 로그인 화면으로 밀려난다.
+  // 세션과 쿠키는 멀쩡한데도 다시 로그인해야 하는 것처럼 보이고, 재시작 예고를 보고
+  // 기다린 사용자에게 특히 아프다. useMe 는 401 일 때만 data 를 null 로 두고 그 밖의
+  // 실패는 isError 로 남긴다(lib/auth.ts 주석 참고).
+  //
+  // 캐시가 남아 있으면(me.data) 이 화면을 띄우지 않고 보고 있던 화면을 그대로 둔다.
+  // 실패한 재요청도 isError 를 세우므로, data 를 함께 보지 않으면 502 한 번에 작성 중이던
+  // 편집 폼까지 통째로 언마운트되어 저장하지 않은 입력이 사라진다. 아래 안내가 약속하는
+  // "보고 있던 화면으로 되돌아간다"는 라우트에만 해당하지 컴포넌트 상태까지 되살리지는
+  // 못한다. 3초마다 다시 물어보는 재시도는 그동안에도 계속 돈다(lib/auth.ts).
+  if (me.isError && !me.data) {
+    return (
+      <main className="mx-auto max-w-md p-6">
+        <h1 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+          서버에 연결할 수 없습니다
+        </h1>
+        <p className="mt-3 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+          서버가 재시작되는 중일 수 있습니다. <strong>로그인은 그대로 유지되며</strong>,
+          연결이 돌아오면 보고 있던 화면으로 저절로 되돌아갑니다.
+        </p>
+        <button
+          type="button"
+          onClick={() => void me.refetch()}
+          disabled={me.isFetching}
+          className="mt-4 rounded bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+        >
+          {me.isFetching ? '연결하는 중…' : '지금 다시 시도'}
+        </button>
+      </main>
+    );
   }
   if (!me.data) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
@@ -203,6 +238,28 @@ function Header() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     d="M9.813 15.904L9 21m0 0l-.813-5.096L3 15.187m6 5.813a2 2 0 100-4 2 2 0 000 4zM19.071 4.929a10 10 0 11-14.142 14.142 10 10 0 0114.142-14.142z"
+                  />
+                </svg>
+              </Link>
+            )}
+            {isAdmin && (
+              <Link
+                to="/admin/server"
+                className="p-1 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+                title="서버 관리"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21.75 17.25v-.228a4.5 4.5 0 00-.12-1.03l-2.268-9.64a3.375 3.375 0 00-3.285-2.602H7.923a3.375 3.375 0 00-3.285 2.602l-2.268 9.64a4.5 4.5 0 00-.12 1.03v.228m19.5 0a3 3 0 01-3 3H5.25a3 3 0 01-3-3m19.5 0a3 3 0 00-3-3H5.25a3 3 0 00-3 3m16.5 0h.008v.008h-.008v-.008zm-3 0h.008v.008h-.008v-.008z"
                   />
                 </svg>
               </Link>
@@ -817,6 +874,14 @@ export default function App() {
             }
           />
           <Route
+            path="/admin/server"
+            element={
+              <RequireAuth>
+                <AdminServerPage />
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/help"
             element={
               <RequireAuth>
@@ -846,6 +911,7 @@ export default function App() {
         로그인 전에는 스스로 아무것도 그리지 않는다.
       */}
       <SessionExpiryDialog />
+      <ServerNoticeDialog />
     </div>
   );
 }

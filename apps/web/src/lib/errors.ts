@@ -43,6 +43,10 @@ const KNOWN: Record<string, string> = {
   GROUP_MEMBER_NOT_FOUND: '해당 사용자는 이 그룹의 소속이 아닙니다.',
   NO_DATED_ITEMS:
     '원본 프로젝트에 날짜가 지정된 일정이 없어 일정을 옮길 수 없습니다. 원본 일정 유지로 복제하십시오.',
+  SCHEDULED_AT_IN_PAST: '지난 시각으로는 재시작 예고를 등록할 수 없습니다. 앞으로의 시각을 선택하십시오.',
+  NOTICE_ALREADY_ACTIVE:
+    '이미 유효한 재시작 예고가 있습니다. 먼저 취소한 뒤 다시 등록하십시오.',
+  NOTICE_ALREADY_CANCELED: '이미 취소된 예고입니다.',
 };
 
 export function apiErrorMessage(err: unknown, fallback?: string): string {

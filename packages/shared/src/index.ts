@@ -104,6 +104,22 @@ export const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12시간
 /** 만료 몇 분 전부터 연장 창을 띄울지. */
 export const SESSION_EXPIRY_WARNING_MS = 10 * 60 * 1000; // 10분
 
+/**
+ * 재시작 예고 팝업이 뜨기 시작하는 시점 (예정 시각까지 남은 시간).
+ * 확정명세 ⑤ 가 "재시작 5분 전부터"로 정했다.
+ */
+export const SERVER_NOTICE_WARNING_MS = 5 * 60 * 1000; // 5분
+
+/**
+ * 접속 중으로 볼 마지막 활동 시각의 창.
+ * 서버는 브라우저가 닫혔는지 알 수 없으므로, 그냥 닫은 사람은 최대 이 시간만큼 목록에 남는다(㉳ 회신).
+ */
+export const ACTIVE_SESSION_WINDOW_MS = 5 * 60 * 1000; // 5분
+
+/** 예고 등록 화면이 미리 채워 두는 안내 문구. 관리자가 그대로 등록해도 되게 한다. */
+export const DEFAULT_RESTART_NOTICE_MESSAGE =
+  '시스템 점검을 위해 서버를 재시작합니다. 작업 중인 내용을 저장해 주십시오.';
+
 // ─── 사용자 관리 (ADMIN) DTO ───────────────────────────────────────────────
 export const CreateUserDto = z.object({
   username: Username,
@@ -147,12 +163,12 @@ export type ResetPasswordResponse = z.infer<typeof ResetPasswordResponse>;
  * 계정 하나가 남긴 활동의 집계. 완전 삭제가 가능한지 판단하는 근거다.
  *
  * `clearable` 과 `permanent` 로 나눈 이유는 관리자가 무엇을 하면 지울 수 있는지 알려 주기
- * 위함이다. 앞의 둘은 화면에서 빼면 0 이 되지만, 뒤의 일곱은 영구히 남으므로 그 계정은
+ * 위함이다. 앞의 둘은 화면에서 빼면 0 이 되지만, 뒤의 여덟은 영구히 남으므로 그 계정은
  * 퇴사 처리만 할 수 있다. 화면이 "일정 47건을 수정하고 댓글 5건을 남긴" 같은 문구를 만들 수
  * 있도록 합계가 아니라 항목별 건수를 그대로 내린다.
  */
 export const UserActivitySummary = z.object({
-  /** 아래 아홉 갈래가 모두 0 인가. */
+  /** 아래 열 갈래가 모두 0 인가. */
   canDelete: z.boolean(),
   /** 관리자가 정리하면 없어지는 것. */
   clearable: z.object({
@@ -168,6 +184,8 @@ export const UserActivitySummary = z.object({
     history: z.number().int(),
     membershipsAdded: z.number().int(),
     groupMembersAdded: z.number().int(),
+    /** 서버 재시작 예고를 등록한 건수. FK 가 ON DELETE RESTRICT 라 하나라도 있으면 삭제가 막힌다. */
+    serverNoticesCreated: z.number().int(),
   }),
 });
 export type UserActivitySummary = z.infer<typeof UserActivitySummary>;
@@ -211,6 +229,8 @@ export const AuditAction = z.enum([
   'AUTOCOMPLETE_CREATE',
   'AUTOCOMPLETE_UPDATE',
   'AUTOCOMPLETE_DELETE',
+  'SERVER_NOTICE_CREATE',
+  'SERVER_NOTICE_CANCEL',
 ]);
 export type AuditAction = z.infer<typeof AuditAction>;
 
@@ -678,6 +698,69 @@ export const ProjectHistoryResponse = z.object({
   truncated: z.boolean(),
 });
 export type ProjectHistoryResponse = z.infer<typeof ProjectHistoryResponse>;
+
+// ─── 서버 공지(재시작 예고) ─────────────────────────────────────────────────
+export const ServerNoticeKind = z.enum(['RESTART']);
+export type ServerNoticeKind = z.infer<typeof ServerNoticeKind>;
+
+export const CreateServerNoticeDto = z.object({
+  kind: ServerNoticeKind,
+  message: z.string().min(1).max(500),
+  scheduledAt: z.string().datetime(),
+});
+export type CreateServerNoticeDto = z.infer<typeof CreateServerNoticeDto>;
+
+export const ServerNoticeView = z.object({
+  id: z.string(),
+  kind: ServerNoticeKind,
+  message: z.string(),
+  scheduledAt: z.string(),
+  createdBy: z.string(),
+  createdByName: z.string(),
+  createdAt: z.string(),
+  canceledAt: z.string().nullable(),
+  /**
+   * 예고가 닫힌 경로. 아직 유효하면 null.
+   *
+   *  - 'ADMIN': 관리자가 취소 버튼을 눌렀다.
+   *  - 'SERVER_RESTART': 서버가 다시 뜨면서 CloseNoticesBootstrap 이 정리했다.
+   *
+   * canceled_at 한 컬럼만으로는 두 경로를 구분할 수 없다. 그래서 서버가 감사로그를 근거로
+   * 채워 준다(actorId 가 비어 있는 SERVER_NOTICE_CANCEL 이 자동 정리다). 구분이 없으면
+   * 관리자는 지난 기록의 "취소됨"을 "누가 내 예고를 취소했다"로 읽는다.
+   */
+  canceledReason: z.enum(['ADMIN', 'SERVER_RESTART']).nullable(),
+});
+export type ServerNoticeView = z.infer<typeof ServerNoticeView>;
+
+/**
+ * 사용자 화면이 폴링으로 받는 응답.
+ *
+ * serverNow 를 함께 내려주는 이유는 세션 만료 창과 같다 — scheduledAt 만 주고 브라우저 시계로
+ * 빼면, 사내 PC 시계가 3분 빠를 때 재시작 2분 뒤에야 팝업을 보게 된다. 두 시각 모두 서버
+ * 것이어야 오차가 상쇄된다(apps/web/src/lib/sessionCountdown.ts 주석 참고).
+ */
+export const ActiveServerNoticeResponse = z.object({
+  notice: ServerNoticeView.nullable(),
+  serverNow: z.string(),
+});
+export type ActiveServerNoticeResponse = z.infer<typeof ActiveServerNoticeResponse>;
+
+/** 접속자 목록의 한 사람. 같은 사람이 창을 여럿 열었으면 IP 가 여러 개일 수 있다. */
+export const ActiveUserView = z.object({
+  userId: z.string(),
+  username: z.string(),
+  displayName: z.string(),
+  lastSeenAt: z.string(),
+  ips: z.array(z.string()),
+});
+export type ActiveUserView = z.infer<typeof ActiveUserView>;
+
+export const ActiveSessionsResponse = z.object({
+  users: z.array(ActiveUserView),
+  serverNow: z.string(),
+});
+export type ActiveSessionsResponse = z.infer<typeof ActiveSessionsResponse>;
 
 // 예상 진척률 (Expected Progress) 계산 유틸리티 재노출
 export * from './expected-progress';
