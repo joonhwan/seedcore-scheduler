@@ -21,19 +21,56 @@ export interface SessionClock {
 }
 
 /**
+ * 목표 시각 하나를 향한 카운트다운의 기준점.
+ *
+ * 세션 만료와 재시작 예고가 같은 계산을 쓴다. 이름만 다른 두 벌을 두면 시계 어긋남을 다루는
+ * 방식이 한쪽에서만 지켜지는 일이 생긴다.
+ */
+export interface TargetClock {
+  /** 서버가 알려준 목표 시각 (ISO 8601). */
+  targetAt: string;
+  /** 그 응답을 만든 서버 시각 (ISO 8601). */
+  serverNow: string;
+  /** 응답을 받은 시점의 브라우저 시각 (밀리초). */
+  receivedAtLocalMs: number;
+}
+
+/**
+ * 목표 시각까지 남은 시간(밀리초). 지났으면 음수로 이어진다.
+ *
+ * 재시작 예고는 예정 시각이 지난 뒤에도 "몇 분 지났는가"를 알아야 하므로 자르지 않은 값이
+ * 필요하다(설계 문서 §4.3).
+ */
+export function signedRemainingMsFrom(clock: TargetClock, nowLocalMs: number): number {
+  const target = Date.parse(clock.targetAt);
+  const server = Date.parse(clock.serverNow);
+  if (!Number.isFinite(target) || !Number.isFinite(server)) return 0;
+
+  const atResponse = target - server;
+  const elapsed = nowLocalMs - clock.receivedAtLocalMs;
+  return atResponse - elapsed;
+}
+
+/** 위와 같되 0 에서 자른다. 세션 만료처럼 "지났다"가 곧 끝인 경우에 쓴다. */
+export function remainingMsFrom(clock: TargetClock, nowLocalMs: number): number {
+  const left = signedRemainingMsFrom(clock, nowLocalMs);
+  return left > 0 ? left : 0;
+}
+
+/**
  * 지금 시점의 남은 시간(밀리초). 이미 지났으면 0.
  *
  * @param nowLocalMs 지금의 브라우저 시각(밀리초)
  */
 export function remainingMs(clock: SessionClock, nowLocalMs: number): number {
-  const expires = Date.parse(clock.sessionExpiresAt);
-  const server = Date.parse(clock.serverNow);
-  if (!Number.isFinite(expires) || !Number.isFinite(server)) return 0;
-
-  const atResponse = expires - server;
-  const elapsed = nowLocalMs - clock.receivedAtLocalMs;
-  const left = atResponse - elapsed;
-  return left > 0 ? left : 0;
+  return remainingMsFrom(
+    {
+      targetAt: clock.sessionExpiresAt,
+      serverNow: clock.serverNow,
+      receivedAtLocalMs: clock.receivedAtLocalMs,
+    },
+    nowLocalMs,
+  );
 }
 
 /**
