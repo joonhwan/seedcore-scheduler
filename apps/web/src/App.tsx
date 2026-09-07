@@ -56,6 +56,33 @@ function RequireAuth({ children }: { children: ReactNode }) {
   if (me.isLoading) {
     return <div className="p-6 text-sm text-slate-500">로딩…</div>;
   }
+  // 서버에 물어보지 못한 것과 로그아웃이 확인된 것을 구분한다.
+  //
+  // 둘을 섞으면, 서버가 재시작되는 동안 새로고침한 사용자가 로그인 화면으로 밀려난다.
+  // 세션과 쿠키는 멀쩡한데도 다시 로그인해야 하는 것처럼 보이고, 재시작 예고를 보고
+  // 기다린 사용자에게 특히 아프다. useMe 는 401 일 때만 data 를 null 로 두고 그 밖의
+  // 실패는 isError 로 남긴다(lib/auth.ts 주석 참고).
+  if (me.isError) {
+    return (
+      <main className="mx-auto max-w-md p-6">
+        <h1 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+          서버에 연결할 수 없습니다
+        </h1>
+        <p className="mt-3 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+          서버가 재시작되는 중일 수 있습니다. <strong>로그인은 그대로 유지되며</strong>,
+          연결이 돌아오면 보고 있던 화면으로 저절로 되돌아갑니다.
+        </p>
+        <button
+          type="button"
+          onClick={() => void me.refetch()}
+          disabled={me.isFetching}
+          className="mt-4 rounded bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+        >
+          {me.isFetching ? '연결하는 중…' : '지금 다시 시도'}
+        </button>
+      </main>
+    );
+  }
   if (!me.data) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
