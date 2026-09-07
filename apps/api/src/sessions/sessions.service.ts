@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { Session } from '@prisma/client';
 import { SESSION_TTL_MS } from '@sam/shared';
+import type { ActiveUserView } from '@sam/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { selectActiveUsers, type SessionRowForActive } from './active-sessions';
 
 export interface SessionWithUser extends Session {
   user: {
@@ -162,5 +164,30 @@ export class SessionsService {
       where: { userId, expiresAt: { lt: new Date() } },
     });
     return r.count;
+  }
+
+  /**
+   * 접속 중인 사람 목록 (관리자 화면용).
+   *
+   * 판정 자체는 active-sessions.ts 의 순수 함수가 한다. 여기서는 창 안에 들 수 있는 행만
+   * 좁혀 읽는다. lastSeenAt 에 색인이 없지만 150명 규모에서 세션 행은 많아야 수백 개라
+   * 전체 훑기로 충분하다.
+   */
+  async listActiveUsers(now: Date, windowMs: number): Promise<ActiveUserView[]> {
+    const rows = await this.prisma.session.findMany({
+      where: {
+        lastSeenAt: { gte: new Date(now.getTime() - windowMs) },
+        expiresAt: { gt: now },
+      },
+      select: {
+        userId: true,
+        lastSeenAt: true,
+        expiresAt: true,
+        ip: true,
+        user: { select: { username: true, displayName: true } },
+      },
+    });
+
+    return selectActiveUsers(rows as SessionRowForActive[], now, windowMs);
   }
 }
