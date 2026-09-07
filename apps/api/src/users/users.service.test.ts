@@ -44,7 +44,7 @@ function userRow(over: Partial<UserRow> & { id: string }): UserRow {
 }
 
 /**
- * 아홉 갈래의 건수를 통째로 받아 대역을 만든다. 키를 빠뜨리면 0 으로 본다.
+ * 열 갈래의 건수를 통째로 받아 대역을 만든다. 키를 빠뜨리면 0 으로 본다.
  */
 interface Counts {
   projectMemberships?: number;
@@ -56,6 +56,7 @@ interface Counts {
   history?: number;
   membershipsAdded?: number;
   groupMembersAdded?: number;
+  serverNoticesCreated?: number;
 }
 
 function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
@@ -124,6 +125,7 @@ function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
     },
     nodeComment: { count: vi.fn(async () => c.comments ?? 0) },
     nodeHistory: { count: vi.fn(async () => c.history ?? 0) },
+    serverNotice: { count: vi.fn(async () => c.serverNoticesCreated ?? 0) },
     auditLog: {
       updateMany: vi.fn(async () => {
         auditRows.push({ actorId: null });
@@ -179,7 +181,7 @@ describe('UsersService.list()', () => {
 });
 
 describe('UsersService.activity()', () => {
-  it('아홉 갈래가 모두 0 이면 삭제할 수 있다', async () => {
+  it('열 갈래가 모두 0 이면 삭제할 수 있다', async () => {
     const { service } = buildService();
     const result = await service.activity('u1');
     expect(result.canDelete).toBe(true);
@@ -207,6 +209,16 @@ describe('UsersService.activity()', () => {
     const result = await service.activity('u1');
     expect(result.permanent.nodesCreated).toBe(7);
     expect(result.permanent.nodesUpdated).toBe(47);
+  });
+
+  // FK 가 ON DELETE RESTRICT 라(20260907001706_server_notices), 재시작 예고만 등록하고
+  // 다른 활동이 없는 계정도 이 집계에 잡히지 않으면 canDelete: true 가 나온 뒤 실제
+  // 삭제 트랜잭션이 FK 제약으로 500 을 던진다. 그 회귀를 여기서 잡는다.
+  it('재시작 예고만 등록한 계정은 삭제할 수 없다', async () => {
+    const { service } = buildService({ counts: { serverNoticesCreated: 1 } });
+    const result = await service.activity('u1');
+    expect(result.canDelete).toBe(false);
+    expect(result.permanent.serverNoticesCreated).toBe(1);
   });
 
   it('없는 사용자는 USER_NOT_FOUND 다', async () => {
@@ -377,7 +389,7 @@ describe('UsersService.remove()', () => {
   it('지우기 직전에 집계를 다시 센다', async () => {
     const { service, prismaObject } = buildService();
     await service.remove('u1', CTX);
-    // 트랜잭션 안에서 아홉 번 센다 (projectMember 2, userGroupMember 2, scheduleNode 2, 나머지 3)
+    // 트랜잭션 안에서 열 번 센다 (projectMember 2, userGroupMember 2, scheduleNode 2, 나머지 4)
     expect(prismaObject.projectMember.count).toHaveBeenCalledTimes(2);
     expect(prismaObject.scheduleNode.count).toHaveBeenCalledTimes(2);
   });

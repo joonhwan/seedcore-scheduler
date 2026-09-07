@@ -242,7 +242,7 @@ export class UsersService {
    * 시점과 삭제 시점 사이에 그 사람이 프로젝트에 추가될 수 있으므로, 지우기 직전에 같은
    * 기준으로 한 번 더 센다(설계 문서 §5.3).
    *
-   * 세는 것은 아홉 갈래다. `sessions` 는 계정을 지우면 Cascade 로 함께 사라지고,
+   * 세는 것은 열 갈래다. `sessions` 는 계정을 지우면 Cascade 로 함께 사라지고,
    * `audit_logs` 는 행을 남긴 채 행위자만 비우므로 둘 다 세지 않는다(설계 문서 §5.1).
    */
   private async countActivity(
@@ -259,6 +259,7 @@ export class UsersService {
       history,
       membershipsAdded,
       groupMembersAdded,
+      serverNoticesCreated,
     ] = await Promise.all([
       client.projectMember.count({ where: { userId: id } }),
       client.userGroupMember.count({ where: { userId: id } }),
@@ -269,6 +270,7 @@ export class UsersService {
       client.nodeHistory.count({ where: { actorId: id } }),
       client.projectMember.count({ where: { addedById: id } }),
       client.userGroupMember.count({ where: { addedById: id } }),
+      client.serverNotice.count({ where: { createdBy: id } }),
     ]);
 
     const clearable = { projectMemberships, groupMemberships };
@@ -280,6 +282,7 @@ export class UsersService {
       history,
       membershipsAdded,
       groupMembersAdded,
+      serverNoticesCreated,
     };
     const total =
       Object.values(clearable).reduce((a, b) => a + b, 0) +

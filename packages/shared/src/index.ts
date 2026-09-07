@@ -163,12 +163,12 @@ export type ResetPasswordResponse = z.infer<typeof ResetPasswordResponse>;
  * 계정 하나가 남긴 활동의 집계. 완전 삭제가 가능한지 판단하는 근거다.
  *
  * `clearable` 과 `permanent` 로 나눈 이유는 관리자가 무엇을 하면 지울 수 있는지 알려 주기
- * 위함이다. 앞의 둘은 화면에서 빼면 0 이 되지만, 뒤의 일곱은 영구히 남으므로 그 계정은
+ * 위함이다. 앞의 둘은 화면에서 빼면 0 이 되지만, 뒤의 여덟은 영구히 남으므로 그 계정은
  * 퇴사 처리만 할 수 있다. 화면이 "일정 47건을 수정하고 댓글 5건을 남긴" 같은 문구를 만들 수
  * 있도록 합계가 아니라 항목별 건수를 그대로 내린다.
  */
 export const UserActivitySummary = z.object({
-  /** 아래 아홉 갈래가 모두 0 인가. */
+  /** 아래 열 갈래가 모두 0 인가. */
   canDelete: z.boolean(),
   /** 관리자가 정리하면 없어지는 것. */
   clearable: z.object({
@@ -184,6 +184,8 @@ export const UserActivitySummary = z.object({
     history: z.number().int(),
     membershipsAdded: z.number().int(),
     groupMembersAdded: z.number().int(),
+    /** 서버 재시작 예고를 등록한 건수. FK 가 ON DELETE RESTRICT 라 하나라도 있으면 삭제가 막힌다. */
+    serverNoticesCreated: z.number().int(),
   }),
 });
 export type UserActivitySummary = z.infer<typeof UserActivitySummary>;

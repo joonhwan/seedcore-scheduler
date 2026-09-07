@@ -652,6 +652,8 @@ function ActivityLines({ summary }: { summary: UserActivitySummary }) {
     permanentParts.push(`남을 프로젝트에 넣은 기록 ${permanent.membershipsAdded}건`);
   if (permanent.groupMembersAdded > 0)
     permanentParts.push(`남을 그룹에 넣은 기록 ${permanent.groupMembersAdded}건`);
+  if (permanent.serverNoticesCreated > 0)
+    permanentParts.push(`서버 재시작 예고 ${permanent.serverNoticesCreated}건 등록`);
 
   if (summary.canDelete) {
     return <p className="mt-1 text-slate-600 dark:text-slate-400">없습니다.</p>;
