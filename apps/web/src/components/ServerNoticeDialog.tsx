@@ -7,13 +7,26 @@
  *
  * 저장 안내는 편집 중인지 보지 않고 항상 붙인다. 편집 상태를 아는 화면이 프로젝트 상세
  * 하나뿐이라, 조건을 걸면 나머지 화면에서 조용해져 안내가 반쪽이 된다(설계 문서 §4.4).
+ *
+ * 예외가 하나 있다. 관리자가 예고 관리 화면(/admin/server)에 있는 동안에는 이 창을 띄우지
+ * 않는다. 재알림 규칙은 1분마다 다시 뜨는 것이고 닫는 길은 서버가 예고를 닫는 것뿐이라,
+ * 재시작을 접기로 한 관리자가 정작 "예고 취소" 버튼에 닿지 못한 채 자기 팝업에 갇힌다.
+ * 그 화면은 남은 시간과 사용자에게 보이는 상태를 이미 카드로 보여주므로 알림이 겹칠 뿐이고,
+ * 다른 화면으로 나가면 예고가 살아 있는 한 창은 그대로 다시 뜬다.
  */
 import { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { SERVER_NOTICE_WARNING_MS } from '@sam/shared';
+import { useMe } from '../lib/auth';
 import { useNoticeRemaining } from '../lib/serverNotice';
 import { formatNoticeRemaining, minuteMark, shouldShowNotice } from '../lib/noticeCountdown';
 
+/** 예고를 걸고 취소하는 화면. 이 경로에서는 창을 띄우지 않는다. */
+const NOTICE_ADMIN_PATH = '/admin/server';
+
 export default function ServerNoticeDialog() {
+  const me = useMe();
+  const location = useLocation();
   const state = useNoticeRemaining();
   // 어느 예고를 어느 구간에서 닫았는지. 예고가 바뀌면 id 가 달라져 저절로 초기화된다.
   const [dismissed, setDismissed] = useState<{ id: string; mark: number } | null>(null);
@@ -24,6 +37,9 @@ export default function ServerNoticeDialog() {
   }, [noticeId]);
 
   if (!state) return null;
+
+  const isAdmin = me.data?.globalRole === 'ADMIN';
+  if (isAdmin && location.pathname === NOTICE_ADMIN_PATH) return null;
 
   const { notice, signedRemainingMs } = state;
   const dismissedMark = dismissed && dismissed.id === notice.id ? dismissed.mark : null;
@@ -65,7 +81,15 @@ export default function ServerNoticeDialog() {
           저장하지 않은 변경이 있으면 지금 저장해 주십시오.
         </p>
 
-        <div className="mt-5 flex justify-end">
+        <div className="mt-5 flex items-center justify-end gap-3">
+          {isAdmin && (
+            <Link
+              to={NOTICE_ADMIN_PATH}
+              className="text-xs font-semibold text-sky-700 underline underline-offset-2 hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-300"
+            >
+              예고 관리
+            </Link>
+          )}
           <button
             type="button"
             onClick={onConfirm}
