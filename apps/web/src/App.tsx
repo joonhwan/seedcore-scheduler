@@ -62,7 +62,13 @@ function RequireAuth({ children }: { children: ReactNode }) {
   // 세션과 쿠키는 멀쩡한데도 다시 로그인해야 하는 것처럼 보이고, 재시작 예고를 보고
   // 기다린 사용자에게 특히 아프다. useMe 는 401 일 때만 data 를 null 로 두고 그 밖의
   // 실패는 isError 로 남긴다(lib/auth.ts 주석 참고).
-  if (me.isError) {
+  //
+  // 캐시가 남아 있으면(me.data) 이 화면을 띄우지 않고 보고 있던 화면을 그대로 둔다.
+  // 실패한 재요청도 isError 를 세우므로, data 를 함께 보지 않으면 502 한 번에 작성 중이던
+  // 편집 폼까지 통째로 언마운트되어 저장하지 않은 입력이 사라진다. 아래 안내가 약속하는
+  // "보고 있던 화면으로 되돌아간다"는 라우트에만 해당하지 컴포넌트 상태까지 되살리지는
+  // 못한다. 3초마다 다시 물어보는 재시도는 그동안에도 계속 돈다(lib/auth.ts).
+  if (me.isError && !me.data) {
     return (
       <main className="mx-auto max-w-md p-6">
         <h1 className="text-sm font-bold text-slate-800 dark:text-slate-100">
