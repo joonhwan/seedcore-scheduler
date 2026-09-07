@@ -20,6 +20,7 @@ import AdminUsersPage from './pages/AdminUsersPage';
 import AdminGroupsPage from './pages/AdminGroupsPage';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
 import AdminAutocompletePage from './pages/AdminAutocompletePage';
+import AdminServerPage from './pages/AdminServerPage';
 import UserGuidePage from './pages/UserGuidePage';
 import { useParams } from 'react-router-dom';
 
@@ -204,6 +205,28 @@ function Header() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     d="M9.813 15.904L9 21m0 0l-.813-5.096L3 15.187m6 5.813a2 2 0 100-4 2 2 0 000 4zM19.071 4.929a10 10 0 11-14.142 14.142 10 10 0 0114.142-14.142z"
+                  />
+                </svg>
+              </Link>
+            )}
+            {isAdmin && (
+              <Link
+                to="/admin/server"
+                className="p-1 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+                title="서버 관리"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21.75 17.25v-.228a4.5 4.5 0 00-.12-1.03l-2.268-9.64a3.375 3.375 0 00-3.285-2.602H7.923a3.375 3.375 0 00-3.285 2.602l-2.268 9.64a4.5 4.5 0 00-.12 1.03v.228m19.5 0a3 3 0 01-3 3H5.25a3 3 0 01-3-3m19.5 0a3 3 0 00-3-3H5.25a3 3 0 00-3 3m16.5 0h.008v.008h-.008v-.008zm-3 0h.008v.008h-.008v-.008z"
                   />
                 </svg>
               </Link>
@@ -814,6 +837,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <AdminAutocompletePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/server"
+            element={
+              <RequireAuth>
+                <AdminServerPage />
               </RequireAuth>
             }
           />
