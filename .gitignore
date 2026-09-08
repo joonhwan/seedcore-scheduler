@@ -64,3 +64,6 @@ coverage/
 
 # 세션 이관 노트 (개인 작업 메모)
 .remember/
+
+# exe 테스트 디렉토리 
+.local-exe-test/
