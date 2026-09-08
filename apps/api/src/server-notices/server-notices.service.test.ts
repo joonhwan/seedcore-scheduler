@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServerNoticesService } from './server-notices.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { AuditService } from '../audit/audit.service';
@@ -139,6 +139,19 @@ describe('create', () => {
     message: '점검합니다',
     scheduledAt: later(30).toISOString(),
   };
+
+  // create() 만 실제 시계를 본다(scheduledAt > Date.now() 검사). 시계를 T0 에 고정하지
+  // 않으면 T0 가 지난 다음 날부터 later(30) 이 과거가 되어 세 시험이 SCHEDULED_AT_IN_PAST
+  // 로 깨진다. 시각만 가짜로 두고 타이머는 그대로 둔다 — prisma 대역의 비동기가 멈추면
+  // 시험이 끝나지 않는다.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('유효한 예고가 없으면 등록한다', async () => {
     const { service, audit } = buildService([]);

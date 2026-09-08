@@ -233,7 +233,10 @@ export default function ProjectDetailPage() {
     };
   }, []);
 
-  // Ctrl 단축키 처리 (Ctrl-Enter: 편집, Ctrl-I: 추가, Ctrl-D: 삭제)
+  // 트리 단축키 처리 (Enter: 편집 — Ctrl 없이, Ctrl-I: 추가, Ctrl-D: 삭제)
+  //
+  // Enter 는 고른 일정이 있을 때만, Ctrl-I·Ctrl-D 는 각각 canCreateNodes·canDeleteNodes
+  // 권한이 있을 때만 동작한다. 안내 문구는 App.tsx 의 SHORTCUT_GROUPS 한 곳에 있다.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 상세 편집 모달·막대 확인 모달·선택 모드이거나 포커스가 입력 필드에 있을 때는 단축키 처리 제외

@@ -333,6 +333,166 @@ function Header() {
   );
 }
 
+/**
+ * 단축키 안내의 단일 원천.
+ *
+ * 예전에는 푸터의 호버 팝업과 모달이 같은 목록을 각각 손으로 적어 두었다. 그래서 한쪽만
+ * 고치면 조용히 어긋났고, 실제로 확대 키 `=` 가 두 곳에서 빠져 있었다(도구막대 툴팁과
+ * 사용설명서는 밝히고 있었다). 두 화면이 이 배열 하나를 읽는다.
+ *
+ * 각 항목은 실제 핸들러와 대조해 적었다 — Timeline.tsx(화살표·확대·축소·드래그 취소),
+ * ProjectDetailPage.tsx(Enter·Ctrl+I·Ctrl+D), NodeDetail.tsx(진척율), NodeFormDialog.tsx
+ * (종류 전환·ESC), 이 파일의 Footer(?·h). 단축키를 더하거나 고칠 때 여기도 함께 고친다.
+ */
+type ShortcutKey = { k: string; tag?: string };
+
+type ShortcutRow = {
+  label: string;
+  keys: ShortcutKey[];
+  /** 키 사이에 넣을 말. 기본은 '/'. */
+  sep?: string;
+  /** 키 뒤에 붙일 말 (예: '화살표 키'). */
+  suffix?: string;
+  /** 조건이나 주의. 라벨 아래 작은 글씨로 붙는다. */
+  note?: string;
+  /** 매니저·관리자만 쓸 수 있는 것. 권한이 없으면 눌러도 아무 일이 없다. */
+  managerOnly?: boolean;
+};
+
+type ShortcutGroup = { title: string; rows: ShortcutRow[]; footnote?: string };
+
+const SHORTCUT_GROUPS: ShortcutGroup[] = [
+  {
+    title: '🌐 어느 화면에서나',
+    rows: [
+      {
+        label: '단축키 창 열기·닫기',
+        keys: [{ k: '?' }, { k: 'h' }],
+        sep: '또는',
+        note: '로그인 화면에서도 열립니다.',
+      },
+    ],
+  },
+  {
+    title: '📌 일정 트리 · 간트 (프로젝트 상세)',
+    rows: [
+      { label: '위 / 아래 탐색', keys: [{ k: '↑' }, { k: '↓' }], suffix: '화살표 키' },
+      { label: '그룹 접기 / 펴기', keys: [{ k: '←' }, { k: '→' }], suffix: '화살표 키' },
+      {
+        label: '상세 편집 창 열기',
+        keys: [{ k: 'Enter' }, { k: '더블클릭' }],
+        sep: '또는',
+        note: 'Enter 는 일정을 고른 뒤에만 열립니다.',
+      },
+      { label: '새 일정 추가', keys: [{ k: 'Ctrl + I' }], managerOnly: true },
+      {
+        label: '선택 일정 삭제',
+        keys: [{ k: 'Ctrl + D' }],
+        managerOnly: true,
+        note: '고른 일정이 있을 때만 동작합니다.',
+      },
+      {
+        // Timeline.tsx 는 '+' 와 '=' 를 함께 받는다. '+' 는 Shift 를 눌러야 나오므로
+        // 실제로는 '=' 가 더 편하다.
+        label: '간트 축소 / 확대',
+        keys: [{ k: '-' }, { k: '+' }, { k: '=' }],
+      },
+    ],
+    footnote:
+      '체크박스로 여러 일정을 고르는 중에는 위 단축키가 모두 멈춥니다. 입력 칸에 커서가 있을 때도 동작하지 않습니다.',
+  },
+  {
+    title: '📝 상세 편집 창 (모달 / 폼 내부)',
+    rows: [
+      {
+        label: '진척율 조절 (일정)',
+        keys: [
+          { k: 'Ctrl + ,', tag: '-10%' },
+          { k: 'Ctrl + .', tag: '+10%' },
+          { k: 'Ctrl + /', tag: '100%' },
+        ],
+        sep: '',
+      },
+      {
+        label: '노드 종류 전환',
+        keys: [
+          { k: 'Alt + 1', tag: '일정' },
+          { k: 'Alt + 2', tag: '그룹' },
+        ],
+      },
+      { label: '창 닫기 / 취소', keys: [{ k: 'ESC' }] },
+    ],
+  },
+  {
+    title: '🖱️ 드래그 도중',
+    rows: [
+      {
+        label: '드래그 취소',
+        keys: [{ k: 'ESC' }],
+        note: '간트 막대는 곧바로 원래대로 돌아가고, 트리 행은 이동이 취소됩니다.',
+      },
+    ],
+  },
+];
+
+/** 단축키 목록을 그린다. 호버 팝업과 모달이 크기만 달리해 같은 데이터를 쓴다. */
+function ShortcutList({ compact }: { compact?: boolean }) {
+  const kbd = compact
+    ? 'px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200'
+    : 'px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono';
+  const head = compact
+    ? 'font-semibold text-slate-800 dark:text-slate-200 text-[11px] mb-1.5 flex items-center gap-1 bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded'
+    : 'font-semibold text-slate-800 dark:text-slate-200 text-xs mb-2 flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700';
+
+  return (
+    <div className={compact ? 'space-y-3' : 'space-y-4'}>
+      {SHORTCUT_GROUPS.map((g) => (
+        <div key={g.title}>
+          <div className={head}>
+            <span>{g.title}</span>
+          </div>
+          <div className={compact ? 'space-y-1 pl-1' : 'space-y-1.5 pl-1'}>
+            {g.rows.map((r) => (
+              <div key={r.label} className="grid grid-cols-3 gap-2 items-start">
+                <div className={compact ? 'text-slate-600 dark:text-slate-400' : 'font-medium text-slate-800 dark:text-slate-200'}>
+                  {r.label}
+                  {r.managerOnly && (
+                    <span className="ml-1 text-amber-700 dark:text-amber-300" title="매니저 또는 관리자만 사용할 수 있습니다">
+                      🔒
+                    </span>
+                  )}
+                </div>
+                <div className="col-span-2 flex flex-wrap items-center gap-x-1 gap-y-0.5">
+                  {r.keys.map((key, i) => (
+                    // 키와 그 뒤의 태그는 한 덩어리로 움직여야 한다. 묶지 않으면 좁은
+                    // 팝업에서 "Ctrl + /" 와 "(100%)" 가 서로 다른 줄로 갈린다.
+                    <span key={key.k} className="whitespace-nowrap">
+                      {i > 0 && <span className="mr-1">{r.sep ?? '/'}</span>}
+                      <kbd className={kbd}>{key.k}</kbd>
+                      {key.tag && <span className="ml-0.5 text-[10px]">({key.tag})</span>}
+                    </span>
+                  ))}
+                  {r.suffix && <span className="whitespace-nowrap">{r.suffix}</span>}
+                  {r.note && (
+                    <div className="w-full text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                      {r.note}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          {g.footnote && (
+            <p className="mt-1.5 pl-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+              {g.footnote}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Footer() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -396,125 +556,8 @@ function Footer() {
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono">단축키: ? / h</span>
               </div>
-              <div className="space-y-3 text-[11px] leading-tight text-slate-600 dark:text-slate-300">
-                {/* 범주 1: 메인 화면 (트리 & 간트 탐색) */}
-                <div>
-                  <div className="font-semibold text-slate-800 dark:text-slate-200 text-[11px] mb-1.5 flex items-center gap-1 bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded">
-                    <span>📌 메인 화면 (트리노드 & 간트차트 탐색)</span>
-                  </div>
-                  <div className="space-y-1 pl-1">
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <span className="text-slate-600 dark:text-slate-400">위/아래 탐색</span>
-                      <div className="col-span-2">
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          ↑
-                        </kbd>{' '}
-                        /{' '}
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          ↓
-                        </kbd>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <span className="text-slate-600 dark:text-slate-400">그룹 접기/펴기</span>
-                      <div className="col-span-2">
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          ←
-                        </kbd>{' '}
-                        /{' '}
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          →
-                        </kbd>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <span className="text-slate-600 dark:text-slate-400">상세 편집 창 열기</span>
-                      <div className="col-span-2">
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          Enter
-                        </kbd>{' '}
-                        /{' '}
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          더블클릭
-                        </kbd>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <span className="text-slate-600 dark:text-slate-400">
-                        새 일정 추가 / 삭제
-                      </span>
-                      <div className="col-span-2">
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          Ctrl+I
-                        </kbd>{' '}
-                        /{' '}
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          Ctrl+D
-                        </kbd>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <span className="text-slate-600 dark:text-slate-400">간트 축소/확대</span>
-                      <div className="col-span-2 font-mono text-[10px]">
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
-                          -
-                        </kbd>{' '}
-                        /{' '}
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
-                          +
-                        </kbd>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 범주 2: 상세 편집 창 내부 */}
-                <div>
-                  <div className="font-semibold text-slate-800 dark:text-slate-200 text-[11px] mb-1.5 flex items-center gap-1 bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded">
-                    <span>📝 상세 편집 창 (모달 / 폼 내부)</span>
-                  </div>
-                  <div className="space-y-1 pl-1">
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <span className="text-slate-600 dark:text-slate-400">진척율 조절</span>
-                      <div className="col-span-2 font-mono text-[10px]">
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
-                          Ctrl+,
-                        </kbd>
-                        (-10%){' '}
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
-                          Ctrl+.
-                        </kbd>
-                        (+10%){' '}
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
-                          Ctrl+/
-                        </kbd>
-                        (100%)
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <span className="text-slate-600 dark:text-slate-400">노드 종류 전환</span>
-                      <div className="col-span-2 font-mono text-[10px]">
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
-                          Alt+1
-                        </kbd>
-                        (일정) /{' '}
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-700">
-                          Alt+2
-                        </kbd>
-                        (그룹)
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <span className="text-slate-600 dark:text-slate-400">창 닫기</span>
-                      <div className="col-span-2">
-                        <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50 font-mono text-[10px] text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                          ESC
-                        </kbd>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <div className="text-[11px] leading-tight text-slate-600 dark:text-slate-300">
+                <ShortcutList compact />
               </div>
               {/* 말풍선 화살표 */}
               <div className="absolute top-full left-4 -mt-px border-4 border-transparent border-t-white dark:border-t-slate-800"></div>
@@ -590,161 +633,8 @@ function Footer() {
               </svg>
               키보드 단축키 안내
             </h3>
-            <div className="mt-4 space-y-4 text-xs text-slate-600 dark:text-slate-400 font-normal">
-              {/* 범주 1: 메인 화면 (트리 & 간트 탐색) */}
-              <div>
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 text-xs mb-2 flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700">
-                  📌 메인 화면 (트리노드 & 간트차트 탐색)
-                </h4>
-                <div className="space-y-1.5 pl-1">
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">
-                      위 / 아래 탐색
-                    </div>
-                    <div className="col-span-2">
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        ↑
-                      </kbd>{' '}
-                      /{' '}
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        ↓
-                      </kbd>{' '}
-                      화살표 키
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">
-                      그룹 접기 / 펴기
-                    </div>
-                    <div className="col-span-2">
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        ←
-                      </kbd>{' '}
-                      /{' '}
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        →
-                      </kbd>{' '}
-                      화살표 키
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">
-                      상세 편집 창 열기
-                    </div>
-                    <div className="col-span-2">
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        Enter
-                      </kbd>{' '}
-                      또는{' '}
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        더블클릭
-                      </kbd>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">
-                      새 일정 추가
-                    </div>
-                    <div className="col-span-2">
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        Ctrl + I
-                      </kbd>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">
-                      선택 일정 삭제
-                    </div>
-                    <div className="col-span-2">
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        Ctrl + D
-                      </kbd>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">
-                      간트 축소 / 확대
-                    </div>
-                    <div className="col-span-2">
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">
-                        -
-                      </kbd>{' '}
-                      /{' '}
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px] font-mono">
-                        +
-                      </kbd>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">
-                      단축키 창 열기
-                    </div>
-                    <div className="col-span-2">
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        ?
-                      </kbd>{' '}
-                      또는{' '}
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        h
-                      </kbd>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 범주 2: 상세 편집 창 내부 */}
-              <div>
-                <h4 className="font-semibold text-slate-800 dark:text-slate-200 text-xs mb-2 flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700">
-                  📝 상세 편집 창 (모달 / 폼 내부)
-                </h4>
-                <div className="space-y-1.5 pl-1">
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">
-                      진척율 조절 (일정)
-                    </div>
-                    <div className="col-span-2 font-mono text-[10px]">
-                      <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">
-                        Ctrl+,
-                      </kbd>
-                      (-10%){' '}
-                      <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">
-                        Ctrl+.
-                      </kbd>
-                      (+10%){' '}
-                      <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">
-                        Ctrl+/
-                      </kbd>
-                      (100%)
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">
-                      노드 종류 전환
-                    </div>
-                    <div className="col-span-2 font-mono text-[10px]">
-                      <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">
-                        Alt+1
-                      </kbd>
-                      (일정) /{' '}
-                      <kbd className="px-1 py-0.5 rounded border bg-slate-50 dark:bg-slate-800">
-                        Alt+2
-                      </kbd>
-                      (그룹)
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">
-                      창 닫기 / 취소
-                    </div>
-                    <div className="col-span-2">
-                      <kbd className="px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-[10px]">
-                        ESC
-                      </kbd>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="mt-4 text-xs text-slate-600 dark:text-slate-400 font-normal">
+              <ShortcutList />
             </div>
             <div className="mt-6 flex items-center justify-between">
               <Link
