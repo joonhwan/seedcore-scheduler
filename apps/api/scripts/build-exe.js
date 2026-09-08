@@ -240,6 +240,14 @@ async function main() {
   cleanPreviousBuildOutputs();
 
   log('1/7. 공유 패키지 및 프론트엔드/백엔드 빌드 수행');
+  // .prisma/client 는 pnpm install 이 복원해 주는 게 아니라 postinstall 이 만드는 생성물이다
+  // (apps/api/scripts/postinstall.js 주석 참고). 스키마가 바뀐 뒤 install 없이 여기까지 오면
+  // 낡은 클라이언트로 빌드된다. 코드가 새 필드를 이미 쓰고 있으면 nest build 가 TS 에러로
+  // 죽어 주지만, 아직 쓰지 않는 필드라면 아무 에러 없이 낡은 클라이언트가 exe 에 박혀
+  // 고객 서버에서 터진다. 그래서 릴리스 빌드는 매번 직접 생성한다 (몇 초).
+  // 주의: dev 서버가 켜져 있으면 query_engine-windows.dll.node 가 잠겨 EPERM 으로 죽는다 —
+  // build-exe.cmd 의 NOTE 대로 dev 서버를 먼저 끄고 실행해야 한다.
+  run('pnpm -F @sam/api prisma:generate');
   run('pnpm -F @sam/shared build');
   run('pnpm -F @sam/web build');
   run('pnpm -F @sam/api build');
