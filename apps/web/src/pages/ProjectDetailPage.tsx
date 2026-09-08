@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useIsMutating } from '@tanstack/react-query';
 import { MAX_TREE_DEPTH, calculateProjectDelaySummary, type NodeTreeItem, type ProjectDetail, type ProjectStatus } from '@sam/shared';
 import { useMe } from '../lib/auth';
@@ -38,6 +38,7 @@ import { siblingsExcluding } from '../lib/treeDnd';
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const me = useMe();
   const { on: adminMode } = useAdminMode();
   const { theme } = useTheme();
@@ -90,6 +91,30 @@ export default function ProjectDetailPage() {
   const commentsRef = useRef<CommentInputFormRef>(null);
   const isSaveAndCloseActionRef = useRef(false);
   const timelineRef = useRef<TimelineHandle>(null);
+
+  /**
+   * 이력 조회 화면이 `?node=<id>` 로 넘겨준 일정을 화면에 드러낸다.
+   *
+   * 일정 목록이 도착해야 조상을 펼칠 수 있으므로 nodes.data 를 기다린다. 한 번 처리한
+   * 뒤에는 쿼리스트링을 지워(replace) 뒤로가기 이력을 더럽히지 않고, 목록이 갱신될 때마다
+   * 스크롤이 되풀이되지 않게 한다.
+   */
+  useEffect(() => {
+    const wanted = searchParams.get('node');
+    if (!wanted) return;
+    // 두 조회가 끝나기 전에는 아래에서 로딩 화면을 반환하므로 간트가 렌더되지 않는다.
+    // 그 사이에 쿼리스트링을 지워 버리면 요청이 사라지므로, 핸들이 붙을 때까지 기다린다.
+    if (!nodes.data || !project.data) return;
+    const timeline = timelineRef.current;
+    if (!timeline) return;
+
+    setSearchParams({}, { replace: true });
+    if (!timeline.revealNode(wanted)) {
+      toast.error('해당 일정을 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.');
+      return;
+    }
+    setSelectedId(wanted);
+  }, [searchParams, nodes.data, project.data, setSearchParams]);
 
   const handleSelectNode = (nodeId: string | null) => {
     setSelectedId(nodeId);
@@ -629,6 +654,7 @@ export default function ProjectDetailPage() {
                 <CommentInputForm
                   ref={commentsRef}
                   nodeId={selected.id}
+                  projectId={id}
                   canPost={canEditNodes}
                   onDirtyChange={setIsCommentDirty}
                   onSaveAndClose={handleSaveAndClose}
@@ -636,7 +662,7 @@ export default function ProjectDetailPage() {
               </div>
               {/* 우측 열: 통합 피드 & 변경 이력 */}
               <div className="space-y-6 md:pl-6 pt-6 md:pt-0">
-                <ActivityFeedPanel nodeId={selected.id} canEdit={canEditNodes} />
+                <ActivityFeedPanel nodeId={selected.id} projectId={id} canEdit={canEditNodes} />
               </div>
             </div>
 

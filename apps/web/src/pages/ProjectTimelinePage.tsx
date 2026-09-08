@@ -106,7 +106,7 @@ export default function ProjectTimelinePage() {
           {selected ? (
             <div className="space-y-6">
               <NodeDetail projectId={id} node={selected} canEdit={canEditNodes} />
-              <NodeCommentsPanel nodeId={selected.id} canPost={canEditNodes} />
+              <NodeCommentsPanel nodeId={selected.id} projectId={id} canPost={canEditNodes} />
               <NodeHistoryPanel nodeId={selected.id} />
             </div>
           ) : (

@@ -821,6 +821,9 @@ export default function UserGuidePage() {
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 기간 필터(1주/1달/직접 지정) 및 주제 필터(진행률 낮춤, 삭제됨, 기간 변경, 댓글)를 조합하여 투명하게 감사를 진행할 수 있습니다.
               </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                각 이력의 윗줄에는 그 일정이 속한 <strong className="font-semibold">상위 경로</strong>가 표시되므로, 서로 다른 그룹 밑에 있는 같은 이름의 일정을 구분할 수 있습니다. 이력을 클릭하면 프로젝트 화면으로 이동해 해당 일정이 선택된 채로 보입니다. 이미 삭제된 일정은 경로가 남지 않으며 클릭해도 이동하지 않습니다.
+              </p>
             </div>
           </section>
 

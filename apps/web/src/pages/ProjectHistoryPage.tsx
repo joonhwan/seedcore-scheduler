@@ -78,6 +78,11 @@ export default function ProjectHistoryPage() {
         <p className="text-xs text-slate-500">시작일과 종료일을 올바르게 선택하세요.</p>
       )}
       {q.isLoading && <p className="text-sm text-slate-500">불러오는 중…</p>}
+      {/* 캐시가 있으면 옛 목록을 먼저 그리고 뒤에서 다시 받아온다. 그 사이에 방금 남긴 댓글이
+          아직 안 보일 수 있으므로, 목록이 확정 전임을 드러낸다. */}
+      {!q.isLoading && q.isFetching && (
+        <p className="mb-2 text-xs text-slate-400">최신 내역을 불러오는 중…</p>
+      )}
       {q.isError && <p className="text-sm text-rose-600">{apiErrorMessage(q.error)}</p>}
 
       {q.data && (
@@ -92,7 +97,7 @@ export default function ProjectHistoryPage() {
           ) : (
             <ul className="space-y-1.5">
               {q.data.items.map((item) => (
-                <Row key={`${item.type}-${item.id}`} item={item} />
+                <Row key={`${item.type}-${item.id}`} item={item} projectId={id} />
               ))}
             </ul>
           )}
@@ -102,13 +107,14 @@ export default function ProjectHistoryPage() {
   );
 }
 
-function Row({ item }: { item: ProjectHistoryEntry }) {
+function Row({ item, projectId }: { item: ProjectHistoryEntry; projectId: string | undefined }) {
   let icon: string;
   let strip: string;
   let text: string;
   let label: string;
   let who: string;
   let when: string;
+  let nodeId: string;
 
   if (item.type === 'COMMENT') {
     icon = '💬';
@@ -117,6 +123,7 @@ function Row({ item }: { item: ProjectHistoryEntry }) {
     label = item.body;
     who = item.authorDisplayName;
     when = item.createdAt;
+    nodeId = item.nodeId;
   } else {
     const s = KIND_STYLE[classifyChange(item.action, item.diff)];
     icon = s.icon;
@@ -125,12 +132,22 @@ function Row({ item }: { item: ProjectHistoryEntry }) {
     label = historyLabelText(item.action, item.diff);
     who = item.actorDisplayName;
     when = item.occurredAt;
+    // 삭제된 노드는 nodeId 가 SetNull 되므로 스냅샷 쪽을 쓴다 (AGENTS.md 4.7).
+    nodeId = item.nodeIdSnapshot;
   }
 
-  return (
-    <li className="flex items-stretch overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40">
-      <span className={`w-1 shrink-0 ${strip}`} aria-hidden />
-      <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-base">
+  const path = item.parentPath.join(' / ');
+
+  const body = (
+    <>
+      {/* 서로 다른 부모 밑의 동명 일정을 구분하기 위한 경로. 루트 일정과 삭제된 일정은 경로가
+          비어 있으므로 줄 자체를 그리지 않아 목록 높이가 불필요하게 늘지 않는다. */}
+      {path !== '' && (
+        <p className="truncate text-xs text-slate-400 dark:text-slate-500" title={path}>
+          {path}
+        </p>
+      )}
+      <div className="flex min-w-0 items-center gap-2 text-base">
         {/* 항목 제목을 맨 앞으로. 폭은 내용 폭 그대로(고정 컬럼 두지 않음). */}
         <span
           className={`shrink-0 font-medium ${
@@ -150,6 +167,26 @@ function Row({ item }: { item: ProjectHistoryEntry }) {
           {who} · {formatDateTime(when)}
         </span>
       </div>
+    </>
+  );
+
+  // 살아있는 일정만 프로젝트 화면으로 이동한다. 삭제된 일정은 옮겨 갈 대상이 없다.
+  const linkable = !item.nodeDeleted && !!projectId;
+
+  return (
+    <li className="flex items-stretch overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40">
+      <span className={`w-1 shrink-0 ${strip}`} aria-hidden />
+      {linkable ? (
+        <Link
+          to={`/projects/${projectId}?node=${encodeURIComponent(nodeId)}`}
+          className="min-w-0 flex-1 px-3 py-2 transition-colors hover:bg-sky-50 dark:hover:bg-sky-950/30"
+          title="이 일정을 프로젝트 화면에서 보기"
+        >
+          {body}
+        </Link>
+      ) : (
+        <div className="min-w-0 flex-1 px-3 py-2">{body}</div>
+      )}
     </li>
   );
 }

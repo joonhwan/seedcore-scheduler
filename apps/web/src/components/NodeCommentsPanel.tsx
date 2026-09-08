@@ -8,6 +8,8 @@ import { toast } from '../lib/toast';
 
 interface Props {
   nodeId: string;
+  /** 댓글을 달거나 지운 뒤 프로젝트 이력 화면을 함께 갱신하기 위해 필요하다. */
+  projectId: string;
   canPost: boolean;
   onDirtyChange?: (dirty: boolean) => void;
   onSaveAndClose?: () => void;
@@ -19,12 +21,12 @@ export interface NodeCommentsRef {
 }
 
 export const NodeCommentsPanel = forwardRef<NodeCommentsRef, Props>(function NodeCommentsPanel(
-  { nodeId, canPost, onDirtyChange, onSaveAndClose },
+  { nodeId, projectId, canPost, onDirtyChange, onSaveAndClose },
   ref
 ) {
   const comments = useComments(nodeId);
-  const add = useAddComment(nodeId);
-  const remove = useDeleteComment(nodeId);
+  const add = useAddComment(nodeId, projectId);
+  const remove = useDeleteComment(nodeId, projectId);
   const me = useMe();
   const { on: adminMode } = useAdminMode();
   const isAdmin = me.data?.globalRole === 'ADMIN';

@@ -15,6 +15,8 @@ import {
 
 interface Props {
   nodeId: string;
+  /** 댓글을 지운 뒤 프로젝트 이력 화면을 함께 갱신하기 위해 필요하다. */
+  projectId: string;
   canEdit: boolean;
 }
 
@@ -22,11 +24,11 @@ type FeedItem =
   | { type: 'COMMENT'; timestamp: string; data: NodeCommentItem }
   | { type: 'HISTORY'; timestamp: string; data: NodeHistoryItem };
 
-export default function ActivityFeedPanel({ nodeId, canEdit }: Props) {
+export default function ActivityFeedPanel({ nodeId, projectId, canEdit }: Props) {
   const [commentsOnly, setCommentsOnly] = useState(false);
   const comments = useComments(nodeId);
   const history = useNodeHistory(nodeId);
-  const removeComment = useDeleteComment(nodeId);
+  const removeComment = useDeleteComment(nodeId, projectId);
   const me = useMe();
   const { on: adminMode } = useAdminMode();
   const isAdmin = me.data?.globalRole === 'ADMIN';

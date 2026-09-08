@@ -6,6 +6,7 @@ import {
   classifyChange,
   selectHistoryByTopic,
   buildProjectHistory,
+  buildParentPaths,
   type RawHistoryRow,
   type RawCommentRow,
   type NodeMeta,
@@ -139,8 +140,8 @@ describe('selectHistoryByTopic', () => {
 
 describe('buildProjectHistory', () => {
   const meta = new Map<string, NodeMeta>([
-    ['n1', { title: '살아있는 일정', deleted: false }],
-    ['n2', { title: '지워진 일정', deleted: true }],
+    ['n1', { title: '살아있는 일정', deleted: false, parentPath: ['설계', '회로'] }],
+    ['n2', { title: '지워진 일정', deleted: true, parentPath: [] }],
   ]);
 
   it('ALL 은 이력과 댓글을 시간 역순으로 병합', () => {
@@ -176,6 +177,31 @@ describe('buildProjectHistory', () => {
       limit: 500,
     });
     expect(res.items[0]).toMatchObject({ type: 'HISTORY', nodeDeleted: true, nodeTitle: '지워진 일정' });
+  });
+
+  it('meta 의 parentPath 를 항목에 그대로 싣는다', () => {
+    const res = buildProjectHistory({
+      history: [hist({ id: 'a', nodeIdSnapshot: 'n1' })],
+      comments: [cmt({ id: 'c1', nodeId: 'n1' })],
+      meta,
+      topic: 'ALL',
+      limit: 500,
+    });
+    expect(res.items).toHaveLength(2);
+    for (const item of res.items) {
+      expect(item.parentPath).toEqual(['설계', '회로']);
+    }
+  });
+
+  it('meta 에 없는 노드의 parentPath 는 빈 배열', () => {
+    const res = buildProjectHistory({
+      history: [hist({ id: 'a', nodeIdSnapshot: 'nX' })],
+      comments: [],
+      meta,
+      topic: 'ALL',
+      limit: 500,
+    });
+    expect(res.items[0]!.parentPath).toEqual([]);
   });
 
   it('meta 에 없는 노드는 nodeDeleted=true + 기본 제목', () => {
@@ -220,5 +246,36 @@ describe('ProjectHistoryQuery', () => {
   });
   it('알 수 없는 topic 은 실패', () => {
     expect(ProjectHistoryQuery.safeParse({ topic: 'NOPE' }).success).toBe(false);
+  });
+});
+
+describe('buildParentPaths', () => {
+  const rows = [
+    { id: 'root', title: '설계', parentId: null },
+    { id: 'mid', title: '상세설계', parentId: 'root' },
+    { id: 'leaf', title: '검토', parentId: 'mid' },
+  ];
+
+  it('루트 노드의 경로는 빈 배열', () => {
+    expect(buildParentPaths(rows).get('root')).toEqual([]);
+  });
+
+  it('중첩 노드는 루트부터 바로 위 부모까지 순서대로', () => {
+    expect(buildParentPaths(rows).get('leaf')).toEqual(['설계', '상세설계']);
+  });
+
+  it('부모가 목록에 없으면 찾을 수 있는 데까지만 담는다', () => {
+    const orphan = [{ id: 'x', title: '고아', parentId: 'missing' }];
+    expect(buildParentPaths(orphan).get('x')).toEqual([]);
+  });
+
+  it('부모 관계가 순환해도 멈춘다', () => {
+    const cyclic = [
+      { id: 'a', title: 'A', parentId: 'b' },
+      { id: 'b', title: 'B', parentId: 'a' },
+    ];
+    const paths = buildParentPaths(cyclic);
+    expect(paths.get('a')).toEqual(['B']);
+    expect(paths.get('b')).toEqual(['A']);
   });
 });

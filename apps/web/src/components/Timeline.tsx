@@ -80,6 +80,12 @@ export interface TimelineHandle {
   fitToScreen: () => void;
   // 슬라이더가 끌린 자리의 배율을 직접 지정한다 (요청 6번).
   setZoomPercent: (percent: number) => void;
+  /**
+   * 특정 일정을 화면에 드러낸다. 접혀 있는 조상 그룹을 모두 펼치고 그 행이 보이도록
+   * 가로·세로로 스크롤한다. 그 id 의 일정이 목록에 없으면 false 를 돌려준다.
+   * (이력 화면에서 `?node=` 로 넘어온 일정을 찾아 보여줄 때 쓴다.)
+   */
+  revealNode: (nodeId: string) => boolean;
 }
 
 function TimelineComponent({
@@ -868,12 +874,80 @@ function TimelineComponent({
     applyPpd(zoomPpd(ppd, zoomIn));
   };
 
+  /**
+   * revealNode 가 지목한 일정. 조상을 펼치는 setState 가 반영된 **뒤에** 행 번호를 세야
+   * 하므로, 스크롤은 여기 담아 두고 아래 useLayoutEffect 가 다음 렌더에서 처리한다.
+   */
+  const pendingRevealRef = useRef<string | null>(null);
+  // 조상이 이미 다 펼쳐져 있으면 collapsedIds 가 그대로라 다시 렌더링되지 않는다.
+  // 그때도 이펙트가 돌도록 렌더를 한 번 강제하는 카운터.
+  const [revealTick, setRevealTick] = useState(0);
+
+  const revealNode = (nodeId: string): boolean => {
+    const target = items.find((n) => n.id === nodeId);
+    if (!target) return false;
+
+    // 조상 사슬을 거슬러 올라가며 접힘 해제 대상을 모은다. 자기 자신은 접힌 채로 두어도
+    // 행 자체는 보이므로 건드리지 않는다.
+    const byId = new Map(items.map((n) => [n.id, n]));
+    const ancestors: string[] = [];
+    const seen = new Set<string>([nodeId]);
+    let parentId = target.parentId;
+    while (parentId && !seen.has(parentId)) {
+      seen.add(parentId);
+      ancestors.push(parentId);
+      parentId = byId.get(parentId)?.parentId ?? null;
+    }
+
+    if (ancestors.length > 0) {
+      setCollapsedIds((prev) => {
+        if (!ancestors.some((id) => prev.has(id))) return prev;
+        const next = new Set(prev);
+        for (const id of ancestors) next.delete(id);
+        return next;
+      });
+    }
+    pendingRevealRef.current = nodeId;
+    setRevealTick((t) => t + 1);
+    return true;
+  };
+
+  useLayoutEffect(() => {
+    const nodeId = pendingRevealRef.current;
+    if (nodeId === null) return;
+    // 최초 화면맞춤(fitToScreen)이 끝나기를 기다린다. 그쪽은 setPpd 로 렌더를 한 번 더
+    // 돌린 뒤 pendingScrollLeftRef 로 가로 스크롤을 덮어쓰므로, 먼저 이동해 두면 곧바로
+    // 원위치된다. 실제로 이 순서를 지키지 않아 세로·가로 이동이 모두 무효가 됐었다.
+    if (!hasFitOnLoad) return;
+    const scroller = scrollerRef.current;
+    if (!scroller || !range) return;
+    const index = flat.findIndex((n) => n.id === nodeId);
+    if (index < 0) return;
+    pendingRevealRef.current = null;
+
+    // 세로: 상단 헤더가 sticky 로 덮는 만큼을 빼고, 남은 영역 한가운데에 그 행을 둔다.
+    const viewportH = Math.max(scroller.clientHeight - HEADER_HEIGHT, ROW_HEIGHT);
+    const top = index * ROW_HEIGHT - (viewportH - ROW_HEIGHT) / 2;
+
+    // 가로: 그 일정의 시작일이 화면 가운데 오도록. 날짜가 비어 있으면 가로는 그대로 둔다.
+    const node = flat[index]!;
+    const startStr = node.kind === 'GROUP' ? node.startAtEffective : node.startAt;
+    let left = scroller.scrollLeft;
+    if (startStr) {
+      const offsetDays = dayDiff(parseYmd(startStr), range.start);
+      left = offsetDays * ppd - scroller.clientWidth / 2 + labelWidth / 2;
+    }
+
+    scroller.scrollTo({ top: Math.max(0, top), left: Math.max(0, left) });
+  }, [revealTick, flat, range, ppd, labelWidth, hasFitOnLoad]);
+
   // 헤더 툴바가 호출하는 줌/화면맞춤 제어 노출
   useImperativeHandle(ref, () => ({
     zoomIn: () => handleZoom(true),
     zoomOut: () => handleZoom(false),
     fitToScreen,
     setZoomPercent: (percent: number) => applyPpd(percentToPpd(percent)),
+    revealNode,
   }));
 
   // 키보드 수평 줌: +/= 확대, - 축소 (입력 필드 포커스 시 제외)

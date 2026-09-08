@@ -684,11 +684,14 @@ export const ProjectHistoryEntry = z.discriminatedUnion('type', [
     type: z.literal('HISTORY'),
     nodeTitle: z.string(),
     nodeDeleted: z.boolean(),
+    // 루트부터 바로 위 부모까지의 제목. 서로 다른 부모 밑의 동명 일정을 화면에서 구분하기 위한 값.
+    parentPath: z.array(z.string()),
   }),
   NodeCommentItem.extend({
     type: z.literal('COMMENT'),
     nodeTitle: z.string(),
     nodeDeleted: z.boolean(),
+    parentPath: z.array(z.string()),
   }),
 ]);
 export type ProjectHistoryEntry = z.infer<typeof ProjectHistoryEntry>;

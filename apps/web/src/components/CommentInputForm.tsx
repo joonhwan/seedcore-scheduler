@@ -5,6 +5,8 @@ import { apiErrorMessage } from '../lib/errors';
 
 interface Props {
   nodeId: string;
+  /** 댓글을 단 뒤 프로젝트 이력 화면을 함께 갱신하기 위해 필요하다. */
+  projectId: string;
   canPost: boolean;
   onDirtyChange?: (dirty: boolean) => void;
   onSaveAndClose?: () => void;
@@ -16,10 +18,10 @@ export interface CommentInputFormRef {
 }
 
 export const CommentInputForm = forwardRef<CommentInputFormRef, Props>(function CommentInputForm(
-  { nodeId, canPost, onDirtyChange, onSaveAndClose },
+  { nodeId, projectId, canPost, onDirtyChange, onSaveAndClose },
   ref
 ) {
-  const add = useAddComment(nodeId);
+  const add = useAddComment(nodeId, projectId);
   const [body, setBody] = useState('');
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

@@ -103,6 +103,42 @@ export interface RawCommentRow {
 export interface NodeMeta {
   title: string;
   deleted: boolean;
+  /** 루트부터 바로 위 부모까지의 제목. 루트 노드와 삭제된 노드는 빈 배열. */
+  parentPath: string[];
+}
+
+/** buildParentPaths 가 필요로 하는 최소 노드 정보. */
+export interface NodePathRow {
+  id: string;
+  title: string;
+  parentId: string | null;
+}
+
+/**
+ * 프로젝트의 노드 목록 전체를 받아 노드 id -> 조상 제목 배열(루트가 앞) 맵을 만든다.
+ *
+ * 이력 화면이 서로 다른 부모 밑의 동명 일정을 구분하기 위해 쓴다. 부모가 목록에 없거나
+ * (부분 목록을 넘긴 경우) 부모 관계가 순환하더라도 멈추도록 방문 집합으로 방어한다.
+ */
+export function buildParentPaths(rows: NodePathRow[]): Map<string, string[]> {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const cache = new Map<string, string[]>();
+
+  for (const row of rows) {
+    if (cache.has(row.id)) continue;
+    const seen = new Set<string>([row.id]);
+    const reversed: string[] = []; // 바로 위 부모부터 위로
+    let parentId = row.parentId;
+    while (parentId && !seen.has(parentId)) {
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      seen.add(parentId);
+      reversed.push(parent.title);
+      parentId = parent.parentId;
+    }
+    cache.set(row.id, reversed.reverse());
+  }
+  return cache;
 }
 
 export interface HistoryEntryData {
@@ -118,6 +154,7 @@ export interface HistoryEntryData {
   occurredAt: string;
   nodeTitle: string;
   nodeDeleted: boolean;
+  parentPath: string[];
 }
 
 export interface CommentEntryData {
@@ -132,6 +169,7 @@ export interface CommentEntryData {
   updatedAt: string;
   nodeTitle: string;
   nodeDeleted: boolean;
+  parentPath: string[];
 }
 
 export type ProjectHistoryEntryData = HistoryEntryData | CommentEntryData;
@@ -185,6 +223,7 @@ export function buildProjectHistory(input: BuildProjectHistoryInput): AggregateR
         occurredAt: r.occurredAt,
         nodeTitle: m?.title ?? '(제목 없음)',
         nodeDeleted: m?.deleted ?? true,
+        parentPath: m?.parentPath ?? [],
       });
     }
   }
@@ -204,6 +243,7 @@ export function buildProjectHistory(input: BuildProjectHistoryInput): AggregateR
         updatedAt: c.updatedAt,
         nodeTitle: m?.title ?? '(제목 없음)',
         nodeDeleted: m?.deleted ?? false,
+        parentPath: m?.parentPath ?? [],
       });
     }
   }
