@@ -78,10 +78,13 @@ export default function ProjectHistoryPage() {
         <p className="text-xs text-slate-500">시작일과 종료일을 올바르게 선택하세요.</p>
       )}
       {q.isLoading && <p className="text-sm text-slate-500">불러오는 중…</p>}
-      {/* 캐시가 있으면 옛 목록을 먼저 그리고 뒤에서 다시 받아온다. 그 사이에 방금 남긴 댓글이
-          아직 안 보일 수 있으므로, 목록이 확정 전임을 드러낸다. */}
+      {/* 내가 만든 변경은 캐시를 지우므로 위의 isLoading 으로 걸린다. 남이 만든 변경까지는
+          알 수 없어 캐시된 옛 목록이 먼저 그려지는데, 그 목록을 최신으로 오해하지 않도록
+          다시 받아오는 동안임을 띠로 드러내고 목록도 흐리게 둔다. */}
       {!q.isLoading && q.isFetching && (
-        <p className="mb-2 text-xs text-slate-400">최신 내역을 불러오는 중…</p>
+        <p className="mb-2 rounded-md bg-sky-50 px-3 py-2 text-xs text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
+          최신 내역을 불러오는 중입니다. 아래 목록은 아직 갱신 전입니다.
+        </p>
       )}
       {q.isError && <p className="text-sm text-rose-600">{apiErrorMessage(q.error)}</p>}
 
@@ -95,7 +98,7 @@ export default function ProjectHistoryPage() {
           {q.data.items.length === 0 ? (
             <p className="py-10 text-center text-sm text-slate-500">이 기간에 해당하는 이력이 없습니다.</p>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className={`space-y-1.5 transition-opacity ${q.isFetching ? 'opacity-50' : ''}`}>
               {q.data.items.map((item) => (
                 <Row key={`${item.type}-${item.id}`} item={item} projectId={id} />
               ))}

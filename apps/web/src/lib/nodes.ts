@@ -7,6 +7,7 @@ import type {
 } from '@sam/shared';
 import { api } from './api';
 import { projectKey, projectsKey } from './projects';
+import { dropProjectHistoryCache } from './projectHistory';
 
 export const nodesKey = (projectId: string) =>
   ['projects', projectId, 'nodes'] as const;
@@ -30,6 +31,11 @@ function invalidateProject(qc: ReturnType<typeof useQueryClient>, projectId: str
   // 이미 받아둔 목록이 캐시에 그대로 남아, 일정을 고쳐도 옛 수정일이 계속 보인다
   // (창 포커스로는 다시 받지 않는다 — main.tsx 의 refetchOnWindowFocus: false).
   qc.invalidateQueries({ queryKey: projectsKey });
+
+  // 이력 화면은 무효화가 아니라 캐시 제거다. 위의 projectKey 무효화로도 접두가 걸리기는
+  // 하지만, 무효화는 "다음에 볼 때 다시 받아라"일 뿐이라 옛 목록이 먼저 그려진다.
+  // 방금 고친 일정이 빠진 목록을 보게 되므로 아예 지운다(dropProjectHistoryCache 주석 참고).
+  dropProjectHistoryCache(qc, projectId);
 }
 
 export function useCreateNode(projectId: string) {
