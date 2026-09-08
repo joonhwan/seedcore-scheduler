@@ -74,7 +74,7 @@ export function classifyChange(action: string, diff: DiffMap): ChangeKind {
 export const HISTORY_TOPICS = ['ALL', 'PROGRESS_DOWN', 'DELETED', 'PERIOD_CHANGE', 'COMMENTS'] as const;
 export type HistoryTopicValue = (typeof HISTORY_TOPICS)[number];
 
-export const HISTORY_RANGES = ['1w', '1m', 'custom'] as const;
+export const HISTORY_RANGES = ['1w', '1m', '3m', '6m', 'custom'] as const;
 export type HistoryRangeValue = (typeof HISTORY_RANGES)[number];
 
 export interface RawHistoryRow {

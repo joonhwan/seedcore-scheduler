@@ -23,6 +23,8 @@ const TOPICS: { value: HistoryTopic; label: string }[] = [
 const RANGES: { value: HistoryRange; label: string }[] = [
   { value: '1w', label: '지난 1주' },
   { value: '1m', label: '지난 1달' },
+  { value: '3m', label: '지난 3달' },
+  { value: '6m', label: '지난 6달' },
   { value: 'custom', label: '직접 범위' },
 ];
 

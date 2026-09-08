@@ -145,6 +145,14 @@ export class ProjectHistoryService {
   }
 }
 
+/** 상대 범위 프리셋을 일수로 환산한다. 한 달은 30일로 근사한다. */
+const RANGE_DAYS: Partial<Record<ProjectHistoryQuery['range'], number>> = {
+  '1w': 7,
+  '1m': 30,
+  '3m': 90,
+  '6m': 180,
+};
+
 /** range 를 실제 [from, to] Date 창으로 바꾼다. */
 function resolveWindow(q: ProjectHistoryQuery): { from: Date; to: Date } {
   const now = new Date();
@@ -154,7 +162,7 @@ function resolveWindow(q: ProjectHistoryQuery): { from: Date; to: Date } {
       to: new Date(`${q.to}T23:59:59.999`),
     };
   }
-  const days = q.range === '1w' ? 7 : 30;
+  const days = RANGE_DAYS[q.range] ?? 30;
   return { from: new Date(now.getTime() - days * 24 * 60 * 60 * 1000), to: now };
 }
 
