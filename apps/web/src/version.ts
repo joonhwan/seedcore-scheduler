@@ -9,5 +9,5 @@ import { version } from '../package.json';
  */
 export const APP_VERSION = version;
 
-/** 헤더·사용설명서 배지에 쓰는 짧은 표기 (`1.6.0` → `v1.6`). */
-export const APP_VERSION_LABEL = `v${version.split('.').slice(0, 2).join('.')}`;
+/** 헤더·사용설명서 배지에 쓰는 표기 (`1.7.1` → `v1.7.1`). */
+export const APP_VERSION_LABEL = `v${version}`;
