@@ -63,7 +63,7 @@ export default function LoginPage() {
         </button>
       </form>
       <footer className="mt-6 border-t border-slate-200 pt-4 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-        <div>&quot;Club 300&quot; all right reserverd (c) 2029</div>
+        <div>&quot;Club 300&quot; All rights reserved (c) 2026</div>
         <div className="mt-1">
           문의: <a href="mailto:joonhwan.lee@gmail.com" className="text-sky-600 hover:underline dark:text-sky-400 font-mono">joonhwan.lee@gmail.com</a>
         </div>
