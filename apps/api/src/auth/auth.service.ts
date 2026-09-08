@@ -55,7 +55,19 @@ function loadArgon2(): typeof Argon2 | null {
 
 const FAILED_LOCK_THRESHOLD = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15분
-const LOGIN_RATE_LIMIT = 10;
+/**
+ * IP 하나가 60초 동안 로그인을 실패할 수 있는 횟수. **성공은 세지 않는다** — 아래 login() 이
+ * 인증에 성공하면 그 IP 의 통을 비운다.
+ *
+ * 20 인 이유: 비밀번호 정책과 계정 잠금이 모두 비활성이라 이 제한이 온라인 비밀번호 추측을
+ * 늦추는 유일한 장치이지만(AGENTS.md §4.4), 사람이 60초에 20번을 틀리는 일은 사실상 없으므로
+ * 정상 사용자는 만나지 않는 선이다. 예전 값 10 은 기억나는 비밀번호 몇 개를 번갈아 시도하는
+ * 사람이 닿을 수 있는 수치였다.
+ *
+ * 더 올리는 것은 권하지 않는다. bcrypt 검증이 46ms(실측)이고 로그인은 인증 없이 누구나
+ * 두드릴 수 있는 경로라, 한도가 곧 이 경로가 먹을 수 있는 CPU 의 상한이다.
+ */
+const LOGIN_RATE_LIMIT = 20;
 const LOGIN_RATE_WINDOW_MS = 60 * 1000;
 
 export interface LoginContext {
@@ -113,8 +125,25 @@ export class AuthService {
     ctx: LoginContext,
   ): Promise<LoginResult> {
     const ipKey = `login:ip:${ctx.ip ?? 'unknown'}`;
-    if (!this.rateLimit.check(ipKey, LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW_MS)) {
-      throw new UnauthorizedException({ error: 'RATE_LIMITED' });
+    const gate = this.rateLimit.check(ipKey, LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW_MS);
+    if (!gate.allowed) {
+      const retryAfterSeconds = Math.ceil(gate.retryAfterMs / 1000);
+      // **여기서 로그를 남기지 않으면 이 거부는 서버 어디에도 흔적이 없다.** 감사로그는
+      // 아래 audit.log 호출부터 시작이라 이 지점을 지나지 못하고, 요청 단위 로그를 남기는
+      // 미들웨어도 이 프로젝트에는 없다. 그래서 "로그인이 안 된다" 는 문의가 와도 관리자가
+      // 확인할 방법이 브라우저 개발자 도구뿐이었다.
+      //
+      // 감사로그(DB)가 아니라 파일 로그를 쓰는 이유: 제한에 걸리는 상황은 곧 요청이 몰리는
+      // 상황이라, 거기서 DB 쓰기를 늘리면 SQLite 단일 Writer 경합을 오히려 키운다.
+      //
+      // username 을 그대로 적어도 로그 위조(개행 주입)는 되지 않는다. 컨트롤러의
+      // ZodValidationPipe 가 Username 스키마(영문/숫자/_-. 3~64자)로 이미 걸러 준다.
+      this.logger.warn(
+        `로그인 제한: ip=${ctx.ip ?? 'unknown'} username=${username} ` +
+          `${LOGIN_RATE_WINDOW_MS / 1000}초에 ${LOGIN_RATE_LIMIT}회를 넘겼습니다. ` +
+          `${retryAfterSeconds}초 뒤에 다시 시도할 수 있습니다.`,
+      );
+      throw new UnauthorizedException({ error: 'RATE_LIMITED', retryAfterSeconds });
     }
 
     const user = await this.prisma.user.findUnique({ where: { username } });
@@ -159,6 +188,12 @@ export class AuthService {
       throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS' });
     }
 
+    // 인증에 성공했으니 이 IP 의 통을 비운다. 제한의 목적은 비밀번호 추측을 늦추는 것이므로
+    // 실패만 누적하면 충분하다. 성공까지 세면 같은 IP 를 쓰는 다른 사람의 정상 로그인 때문에
+    // 내가 막힌다 — 통 키가 IP 뿐이고 계정을 구분하지 않기 때문이다.
+    // (scripts/seed-test-users.mjs 가 계정마다 로그인하는 동안 브라우저 로그인이 분당 한 번밖에
+    //  통과하지 못했던 것이 그 사례다.)
+    this.rateLimit.reset(ipKey);
 
     // 옛 argon2 해시로 로그인했다면 이 기회에 bcrypt 로 갈아둔다. 평문 비밀번호를 알 수 있는
     // 시점은 지금뿐이라, 로그인 순간을 놓치면 사용자에게 새 비밀번호를 받는 수밖에 없다.

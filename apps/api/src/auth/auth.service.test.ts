@@ -52,12 +52,16 @@ function buildService(row: FakeUserRow) {
     }),
   } as unknown as AuditService;
 
-  const rateLimit = { check: vi.fn().mockReturnValue(true) } as unknown as RateLimitService;
+  const rateLimit = {
+    check: vi.fn().mockReturnValue({ allowed: true, retryAfterMs: 0 }),
+    reset: vi.fn(),
+  } as unknown as RateLimitService;
 
   return {
     service: new AuthService(prisma, sessions, audit, rateLimit),
     updates,
     auditEntries,
+    rateLimit,
   };
 }
 
@@ -142,5 +146,45 @@ describe('AuthService.changePassword — 옛 해시 사용자도 비밀번호를
     expect(updates).toHaveLength(1);
     expect(updates[0]!['passwordHash'] as string).toMatch(/^\$2[aby]\$/);
     expect(updates[0]!['passwordMustChange']).toBe(false);
+  });
+});
+
+/**
+ * 통 키가 IP 뿐이라 같은 IP 를 쓰는 사람들이 한도를 공유한다. 성공한 로그인까지 한도에 넣으면
+ * 남의 정상 로그인 때문에 내가 막히므로, 성공한 순간 통을 비운다.
+ */
+describe('AuthService.login — 로그인 제한', () => {
+  it('인증에 성공하면 그 IP 의 통을 비운다', async () => {
+    const bcryptHash = await bcrypt.hash(PASSWORD, 10);
+    const { service, rateLimit } = buildService(makeRow(bcryptHash));
+
+    await service.login('admin', PASSWORD, { ip: '10.0.0.7' });
+
+    expect(rateLimit.reset).toHaveBeenCalledWith('login:ip:10.0.0.7');
+  });
+
+  it('비밀번호가 틀리면 통을 비우지 않는다', async () => {
+    const bcryptHash = await bcrypt.hash(PASSWORD, 10);
+    const { service, rateLimit } = buildService(makeRow(bcryptHash));
+
+    await expect(
+      service.login('admin', 'WrongPassword!1', { ip: '10.0.0.7' }),
+    ).rejects.toThrow();
+
+    expect(rateLimit.reset).not.toHaveBeenCalled();
+  });
+
+  it('한도를 넘기면 남은 대기 시간을 초 단위로 담아 거부한다', async () => {
+    const bcryptHash = await bcrypt.hash(PASSWORD, 10);
+    const { service, rateLimit, auditEntries } = buildService(makeRow(bcryptHash));
+    vi.mocked(rateLimit.check).mockReturnValue({ allowed: false, retryAfterMs: 12_300 });
+
+    // 화면이 "몇 초 뒤에 가능" 이라고 안내할 수 있으려면 응답 본문에 남은 시간이 있어야 한다.
+    await expect(service.login('admin', PASSWORD, { ip: '10.0.0.7' })).rejects.toMatchObject({
+      response: { error: 'RATE_LIMITED', retryAfterSeconds: 13 },
+    });
+
+    // 제한에 걸린 요청은 DB 를 건드리지 않는다 (요청이 몰리는 상황에서 쓰기를 늘리지 않는다).
+    expect(auditEntries).toHaveLength(0);
   });
 });

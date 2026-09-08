@@ -12,6 +12,12 @@ primary_region = "nrt" # 도쿄 리전 (한국과 가까운 무료 권장 리전
   DATABASE_URL = "file:/var/seedcore-scheduler/data/app.db"
   BACKUP_DIR = "/var/seedcore-scheduler/backup/daily"
   WEB_ORIGIN = "https://seedcore-scheduler.fly.dev"
+  # 접속자 IP 를 X-Forwarded-For 의 몇 번째에서 읽을지 정한다
+  # (apps/api/src/common/trust-proxy.ts). 이 배포는 중계가 둘이다 —
+  # 브라우저 → Fly 엣지 → 컨테이너 안의 nginx(deploy/nginx.fly.conf) → api.
+  # 이 값이 없으면 접속자 전원이 nginx 의 127.0.0.1 하나로 묶여 로그인 제한 통을
+  # 함께 쓰고, 감사로그의 ip 도 전부 127.0.0.1 로 남는다.
+  TRUSTED_PROXY_HOPS = "2"
   # 컨테이너의 로컬 시각. 지정하지 않으면 UTC 다. BackupService 의 cron 은 Asia/Seoul 기준으로
   # 04:00 에 발화하는데(backup.service.ts 의 TIMEZONE) 백업 폴더 이름을 만드는 formatDay() 는
   # 로컬 시각을 쓰므로, TZ 가 없으면 04:00 KST 백업이 전날 날짜 폴더에 들어간다. 급하게 사본을

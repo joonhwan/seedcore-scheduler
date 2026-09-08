@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import * as os from 'os';
@@ -9,6 +10,7 @@ import { bindPrismaQueryEngine, resolveDatabaseUrl } from './common/db-path';
 import { appendPlainLog } from './common/plain-daily-log';
 import { removeLock } from './common/process-lock';
 import { describeCookieSecure } from './common/cookie-security';
+import { describeTrustedProxy, resolveTrustedProxyHops } from './common/trust-proxy';
 import { acquireLock } from './prisma/lock-decision';
 
 
@@ -126,11 +128,16 @@ async function bootstrap() {
   }
 
   const dailyLogger = new DailyLoggerService();
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: dailyLogger,
   });
   app.useLogger(dailyLogger);
   app.setGlobalPrefix('api/v1');
+
+  // 접속자 IP 를 어디서 읽을지 정한다. 이 값이 로그인 제한의 통을 가르는 열쇠이자 감사로그에
+  // 남는 값이라, 기본값은 "아무도 믿지 않음" 이다. 배포별로 넣어야 하는 값과 그 이유는
+  // common/trust-proxy.ts 의 주석에 정리해 두었다.
+  app.set('trust proxy', resolveTrustedProxyHops());
 
   // 이 서버는 사내망에서 평문 HTTP 로 직접 서비스된다. sp-server.exe 는 물론이고
   // deploy/nginx.conf 도 `listen 80;` 뿐으로 TLS 종단이 없다. 그런데 helmet 의 기본값은
@@ -189,6 +196,10 @@ async function bootstrap() {
   // http 로 찍혀 있으면 그것이 원인이다 — 브라우저가 세션 쿠키를 조용히 버린다.
   // eslint-disable-next-line no-console
   console.log(`  - ${describeCookieSecure()}`);
+  // 로그인 제한("요청이 너무 많습니다")이 엉뚱하게 걸리거나 감사로그의 IP 가 전부 같을 때
+  // 볼 줄이다. 프록시 뒤인데 "신뢰 안 함" 이면 접속자 전원이 통 하나를 나눠 쓰고 있다는 뜻이다.
+  // eslint-disable-next-line no-console
+  console.log(`  - ${describeTrustedProxy()}`);
   // eslint-disable-next-line no-console
   console.log('====================================================');
 }

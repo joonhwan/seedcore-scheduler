@@ -24,12 +24,12 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export function getClientIp(req: Request): string | undefined {
-  // Trust proxy 설정이 없으면 req.ip 가 직접 연결의 IP. 운영 nginx 뒤에서는
-  // X-Forwarded-For 의 첫 번째 항목을 우선 사용.
-  const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string' && xff.length > 0) {
-    return xff.split(',')[0]?.trim();
-  }
+  // X-Forwarded-For 를 직접 파싱하지 않는다. Express 의 `trust proxy` 설정(main.ts 에서
+  // TRUSTED_PROXY_HOPS 로 정한다)에 따라 req.ip 가 이미 올바른 값을 준다.
+  //
+  // 예전에는 이 함수가 X-Forwarded-For 의 첫 항목을 조건 없이 썼는데, 그 헤더는 클라이언트가
+  // 직접 채워 보낼 수 있어서 로그인 제한의 통과 감사로그의 ip 를 모두 위조할 수 있었다.
+  // 왜 홉 수로 판정해야 하는지는 common/trust-proxy.ts 의 주석에 적어 두었다.
   return req.ip ?? undefined;
 }
 

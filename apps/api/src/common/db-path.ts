@@ -63,9 +63,24 @@ function readDotEnvDatabaseUrl(): string | undefined {
  * 두 exe 가 서로 다른 파일을 열면 조용히 어긋난다.
  *
  * 순서: 1) process.env.DATABASE_URL  2) `.env` 파일의 DATABASE_URL  3) 폴백(cwd/data/sam.db).
- * 2번이 필요한 이유: Prisma CLI(`prisma migrate dev`)는 `.env` 를 읽지만 Prisma Client 는
- * 읽지 않는다. 이 분기가 없으면 `prisma migrate dev` 와 실행 중인 앱이 서로 다른 DB 파일을
- * 열게 되어 마이그레이션 이력이 어긋난다 — 이 분기를 "불필요한 우회로"로 보고 지우면 안 된다.
+ *
+ * **2번이 필요한 이유는 exe 배포다.** 이 프로젝트에는 `dotenv` 의존성이 없어 `.env` 를 읽는
+ * 코드가 아래 readDotEnvDatabaseUrl() 하나뿐이고, 그것은 이 키만 꺼낸다. 즉 exe 옆에 `.env` 를
+ * 두고 DB 경로를 지정하는 길은 이 분기가 유일하다. 이 분기를 "불필요한 우회로"로 보고 지우면
+ * 안 된다.
+ *
+ * 개발 환경에서 `.env` 의 다른 값들(WEB_ORIGIN 등)까지 반영되는 것은 이 함수와 무관하며,
+ * `@prisma/client` 를 불러올 때 그쪽이 `.env` 를 통째로 process.env 에 싣는 부수 효과다
+ * (Prisma 5.22 에서 실측: require 전 undefined → require 후 파일의 값). 그래서 개발 환경에서는
+ * 1번에서 이미 걸리고 2번까지 내려오지 않는다.
+ *
+ * **exe 에서는 그 부수 효과가 일어나지 않는다.** ncc 번들에 그 로딩 경로가 남지 않기 때문이다
+ * (실측: dist-exe 옆에 WEB_ORIGIN 을 적은 `.env` 를 두고 띄우면 부팅 로그에 `WEB_ORIGIN=(없음)`
+ * 으로 나온다). 그러므로 exe 에서 `.env` 로 지정할 수 있는 것은 DATABASE_URL 뿐이며, 나머지
+ * 환경변수는 OS 환경변수로 넘겨야 한다.
+ *
+ * 이 주석은 원래 "Prisma CLI 는 `.env` 를 읽지만 Prisma Client 는 읽지 않는다" 고 적혀 있었다.
+ * 결론(2번 분기가 필요하다)은 그대로 유효하지만 근거가 사실과 달라 바로잡았다.
  * `.env` 값은 읽은 그대로 돌려준다: Prisma 는 상대 `file:` 경로를 schema.prisma 위치 기준으로
  * 해석하므로, 여기서 process.cwd() 기준으로 절대화하면 CLI 와 다른 파일을 가리키게 된다.
  */
