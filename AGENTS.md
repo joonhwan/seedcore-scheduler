@@ -154,7 +154,8 @@ pnpm -F @sam/api prisma:migrate:dev
 
 > 상세 원인 분석과 해결 절차는 **`sam-troubleshooting` 스킬**에 있습니다. 아래는 미리 알고 있어야 하는 요약입니다.
 > 다루는 문제: SQLite `database is locked`, TypeScript incremental 캐시로 인한 옛날 빌드 실행,
-> `@sam/shared` 임포트 실패, shared 새 export 추가 후 빈 화면.
+> `@sam/shared` 임포트 실패, shared 새 export 추가 후 빈 화면,
+> 낡은 Prisma Client 로 인한 api TS 에러 수십 건.
 
 - **`prisma migrate dev`는 개발 서버를 끄고 돌린다.** SQLite는 단일 Writer라 `pnpm dev`가 DB 핸들을 쥐고 있으면 락이 걸립니다.
 - **`shared` 에 새 export(새 이름)를 추가하면 `apps/web/node_modules/.vite` 를 지우고 dev 서버를 재시작한다.**
@@ -162,6 +163,17 @@ pnpm -F @sam/api prisma:migrate:dev
   (기존 함수 내용만 바꾼 경우는 `pnpm -F @sam/shared build` 로 충분)
   → `pnpm dev` 로 띄우면 `scripts/dev.mjs` 가 매번 캐시를 지우므로 이 함정에 걸리지 않습니다.
   dev 서버를 다른 방법으로 띄울 때만 손으로 챙기면 됩니다.
+- **api 에 TS 에러가 수십 개 쏟아지고 죄다 같은 필드 이름이면 Prisma Client 가 낡은 것이다.**
+  `pnpm -F @sam/api prisma:generate` 로 고칩니다. `node_modules/.prisma/client` 는 `pnpm install` 이
+  복원해 주는 게 아니라 `apps/api/scripts/postinstall.js` 가 만드는 **생성물**이라, 스키마가 바뀐 뒤
+  install 을 다시 돌려도 **락파일이 최신이면 pnpm 이 postinstall 을 건너뛰어 갱신되지 않습니다.**
+  CI 는 깨끗한 러너에서 매번 install 하므로 통과하고 **로컬만 깨집니다** — "CI 는 되는데 내 빌드만
+  안 된다" 의 전형적인 형태입니다. 범인의 경로는 에러 메시지가 찍어 줍니다
+  (`node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/client/index.d.ts` — 새 필드 이름으로
+  grep 해서 0 이면 확정).
+  (2026-09-08: `users.retired_at` 을 모른다는 TS 에러 65건으로 `build:exe` 가 1/7 단계에서 죽었습니다.
+  릴리스 빌드는 커밋 `6291e44` 이후 `build-exe.js` 가 매번 generate 를 직접 부르므로 이 경로로는
+  다시 걸리지 않습니다. 개발 중 `nest build`·`typecheck` 는 여전히 손으로 챙겨야 합니다.)
 
 ## 6. 마일스톤 상황 및 향후 방향
 
