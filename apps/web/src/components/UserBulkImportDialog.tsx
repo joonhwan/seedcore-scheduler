@@ -5,12 +5,12 @@ import { ApiError } from '../lib/api';
 import { apiErrorMessage } from '../lib/errors';
 
 const SAMPLE = `운영기술센터
-  기구완성팀
-    - gigu01, 김민준-기구완성팀
-    - gigu02, 이서연-기구완성팀
-  - center01, 정하준-센터장
+	기구완성팀
+		- gigu01, 김민준-기구완성팀
+		- gigu02, 이서연-기구완성팀
+	- center01, 정하준-센터장
 구매팀
-  - gumae01, 한지호-구매팀`;
+	- gumae01, 한지호-구매팀`;
 
 export default function UserBulkImportDialog({
   onClose,
@@ -138,6 +138,10 @@ export default function UserBulkImportDialog({
                 들여쓰기로 조직 계층을 나타내고, 사용자 줄만 <code>- </code> 로 시작합니다.
               </p>
               <p className="mt-1">
+                들여쓰기는 한 단계에 탭 하나입니다. 공백으로 맞춰도 되지만, 한 파일 안에서 탭과
+                공백을 섞으면 계층이 어긋나므로 한 가지만 쓰십시오.
+              </p>
+              <p className="mt-1">
                 사용자 줄은 <code>- 아이디, 이름</code> 이며 첫 쉼표만 구분자입니다.
               </p>
               <p className="mt-1">
@@ -147,7 +151,10 @@ export default function UserBulkImportDialog({
               <p className="mt-1">
                 <code>#</code> 로 시작하는 줄과 빈 줄은 건너뜁니다.
               </p>
-              <pre className="mt-2 overflow-x-auto rounded bg-white p-2 font-mono dark:bg-slate-900">
+              <pre
+                className="mt-2 overflow-x-auto rounded bg-white p-2 font-mono dark:bg-slate-900"
+                style={{ tabSize: 2 }}
+              >
                 {SAMPLE}
               </pre>
             </div>
