@@ -14,6 +14,7 @@ import { groupPathMapOf } from '../lib/groupBadge';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import UserCreateDialog from '../components/UserCreateDialog';
+import UserBulkImportDialog from '../components/UserBulkImportDialog';
 import TempPasswordDialog from '../components/TempPasswordDialog';
 import UserGroupBadge from '../components/UserGroupBadge';
 
@@ -23,6 +24,7 @@ export default function AdminUsersPage() {
   const [status, setStatus] = useState<UserListStatus>('all');
   const [includeRetired, setIncludeRetired] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [tempPw, setTempPw] = useState<{ displayName: string; password: string } | null>(null);
 
   // 검색어를 서버로 넘기지 않고 화면에서 거른다. 서버는 username·displayName 만 보고
@@ -80,13 +82,22 @@ export default function AdminUsersPage() {
     <main className="mx-auto max-w-5xl p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">사용자 관리</h1>
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
-        >
-          + 사용자 추가
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setBulkOpen(true)}
+            className="rounded border border-sky-600 px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-slate-800"
+          >
+            일괄 등록
+          </button>
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+          >
+            + 사용자 추가
+          </button>
+        </div>
       </div>
 
       <section className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -142,6 +153,13 @@ export default function AdminUsersPage() {
           </ul>
         )}
       </section>
+
+      {bulkOpen && (
+        <UserBulkImportDialog
+          onClose={() => setBulkOpen(false)}
+          onDone={(summary) => toast.success(summary)}
+        />
+      )}
 
       {createOpen && (
         <UserCreateDialog
