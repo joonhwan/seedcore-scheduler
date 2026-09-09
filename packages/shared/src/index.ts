@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { ProjectDelaySummaryDto } from './expected-progress';
+import { BulkImportIssue } from './user-import';
 export * from './expected-progress';
 export * from './user-groups';
 export * from './member-drafts';
+export * from './user-import';
 
 export const GlobalRole = z.enum(['ADMIN', 'USER']);
 
@@ -159,6 +161,49 @@ export const ResetPasswordResponse = z.object({
 });
 export type ResetPasswordResponse = z.infer<typeof ResetPasswordResponse>;
 
+// ─── 사용자 일괄 등록 (ADMIN) ───────────────────────────────────────────────
+export const BulkImportUsersDto = z.object({
+  text: z.string().min(1),
+  initialPassword: z.string().min(PASSWORD_MIN_LENGTH),
+  /** 참이면 아무것도 쓰지 않고 미리보기만 만든다. */
+  dryRun: z.boolean().default(true),
+  /** 참이면 이미 있는 아이디를 건너뛰고 나머지만 만든다. */
+  skipExisting: z.boolean().default(false),
+  /**
+   * 미리보기가 내려준 값을 그대로 되돌려준다. dryRun 이 거짓일 때만 쓴다.
+   * 서버가 트랜잭션 안에서 다시 계산해 다르면 409 BULK_IMPORT_STALE 로 거부한다.
+   * 미리보기를 본 뒤 등록을 누르기까지 다른 관리자가 사용자나 그룹을 만들 수 있고,
+   * 그때 조용히 다른 결과가 나오는 것을 막기 위함이다 (설계 문서 §4.4).
+   */
+  previewToken: z.string().min(1).optional(),
+});
+export type BulkImportUsersDto = z.infer<typeof BulkImportUsersDto>;
+
+export const BulkImportUserPlan = z.object({
+  line: z.number().int(),
+  username: z.string(),
+  displayName: z.string(),
+  /** 최상위부터의 소속 경로. 빈 배열이면 소속 없음. */
+  groupPath: z.array(z.string()),
+});
+export type BulkImportUserPlan = z.infer<typeof BulkImportUserPlan>;
+
+export const BulkImportResult = z.object({
+  /** 실제로 반영했는가. dryRun 이면 항상 false. */
+  applied: z.boolean(),
+  /** 새로 만들 그룹 경로와 사용자 목록을 정렬해 해시한 값. 적용 요청이 되돌려준다. */
+  previewToken: z.string(),
+  groupsToCreate: z.array(z.array(z.string())),
+  groupsExisting: z.array(z.array(z.string())),
+  usersToCreate: z.array(BulkImportUserPlan),
+  usersExisting: z.array(z.object({ line: z.number().int(), username: z.string() })),
+  issues: z.array(BulkImportIssue),
+  createdUserCount: z.number().int(),
+  createdGroupCount: z.number().int(),
+  skippedUserCount: z.number().int(),
+});
+export type BulkImportResult = z.infer<typeof BulkImportResult>;
+
 /**
  * 계정 하나가 남긴 활동의 집계. 완전 삭제가 가능한지 판단하는 근거다.
  *
@@ -206,6 +251,7 @@ export const AuditAction = z.enum([
   'USER_RETIRE',
   'USER_UNRETIRE',
   'USER_DELETE',
+  'USER_BULK_IMPORT',
   'ADMIN_OVERRIDE_EDIT',
   'PROJECT_CREATE',
   'PROJECT_UPDATE',
