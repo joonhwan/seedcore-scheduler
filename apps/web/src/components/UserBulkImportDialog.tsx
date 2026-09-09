@@ -3,6 +3,35 @@ import { PASSWORD_MIN_LENGTH, validatePassword, type BulkImportResult } from '@s
 import { useBulkImportUsers } from '../lib/users';
 import { ApiError } from '../lib/api';
 import { apiErrorMessage } from '../lib/errors';
+import sampleFileText from '../assets/user-bulk-import-example.txt?raw';
+
+/** 내려받을 때 관리자 PC 에 저장되는 이름. 화면 안내 문구와 같아야 찾기 쉽다. */
+const SAMPLE_FILE_NAME = '사용자-일괄등록-예시.txt';
+
+/**
+ * 예시 파일을 그 자리에서 만들어 내려준다.
+ *
+ * public/ 에 정적 파일로 두지 않는 이유: exe(pkg 스냅샷)든 nginx 든 그 경로를 못 찾으면
+ * SPA 폴백이 index.html 을 이 파일 이름으로 내려준다. 에러가 나지 않으므로 관리자는
+ * HTML 덩어리를 받아 놓고도 무엇이 잘못됐는지 알 수 없다. 번들에 문자열로 넣어 두면
+ * 네트워크 요청 자체가 없어 dev·nginx·exe 어디서든 똑같이 동작한다.
+ */
+function downloadSampleFile(): void {
+  const blob = new Blob(
+    // 앞의 \uFEFF 는 BOM 이다. 이게 없으면 Windows 메모장이 옛 코드페이지로 열어
+    // 한글이 깨진다. 다시 올릴 때는 File.text() 의 UTF-8 디코딩이 BOM 을 떼어 내므로
+    // 내용에 남지 않는다. 줄바꿈은 CRLF 로 맞춘다 — 받는 쪽이 거의 다 메모장이고,
+    // LF 만 있으면 전부 한 줄로 붙어 보인다.
+    ['\uFEFF' + sampleFileText.replace(/\r?\n/g, '\r\n')],
+    { type: 'text/plain;charset=utf-8' },
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = SAMPLE_FILE_NAME;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const SAMPLE = `운영기술센터
 	기구완성팀
@@ -129,7 +158,7 @@ export default function UserBulkImportDialog({
    */
   const guidance =
     preview === null
-      ? '먼저 “확인”을 눌러 무엇이 만들어질지 미리 봅니다. 이 단계에서는 아무것도 만들어지지 않습니다.'
+      ? '텍스트 파일을 선택한 후, 초기 비밀번호를 입력하고, “확인” 버튼을 눌러 무엇이 만들어질 지 미리 본 다음, 문제가 없으면 “등록” 버튼을 눌러서 최종 등록을 진행합니다.'
       : blocked
         ? '고쳐야 하는 줄이 남아 있어 등록할 수 없습니다. 내용을 고친 뒤 “확인”을 다시 누르십시오.'
         : initialPassword.length === 0
@@ -152,13 +181,28 @@ export default function UserBulkImportDialog({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          <button
-            type="button"
-            onClick={() => setShowFormat((v) => !v)}
-            className="text-xs font-semibold text-sky-600 underline"
-          >
-            {showFormat ? '형식 설명 접기' : '형식 설명 보기'}
-          </button>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <button
+              type="button"
+              onClick={() => setShowFormat((v) => !v)}
+              className="text-xs font-semibold text-sky-600 underline"
+            >
+              {showFormat ? '형식 설명 접기' : '형식 설명 보기'}
+            </button>
+            <button
+              type="button"
+              onClick={downloadSampleFile}
+              title={`${SAMPLE_FILE_NAME} 를 저장합니다. 이 파일을 고쳐서 다시 올리면 됩니다.`}
+              className="text-xs font-semibold text-sky-600 underline"
+            >
+              예시 파일 내려받기
+            </button>
+          </div>
+          <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+            예시 파일을 내려받아 메모장 같은 편집기로 열고, 조직 이름과 사람 목록만 우리 회사 것으로
+            바꿔 저장하십시오. 그 파일을 아래 <b>텍스트 파일 선택</b>으로 올리면 그대로 등록됩니다.
+            형식을 처음부터 만드는 것보다 예시를 고쳐 쓰는 쪽이 훨씬 빠릅니다.
+          </p>
           {showFormat && (
             <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800">
               <p>

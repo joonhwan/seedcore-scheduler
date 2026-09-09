@@ -1273,6 +1273,12 @@ export default function UserGuidePage() {
                 개통 시점처럼 수십 명을 넣어야 할 때, 9.1 의 개별 추가를 사람 수만큼 되풀이하지 않아도 됩니다.
                 사용자 관리 화면 오른쪽 위의 <strong className="font-semibold">일괄 등록</strong> 버튼으로 엽니다.
               </p>
+              <p className="text-slate-600 dark:text-slate-300 mt-2">
+                <b>형식을 처음부터 만들 필요는 없습니다.</b> 대화상자 위쪽의 <strong className="font-semibold">예시 파일 내려받기</strong> 를 누르면
+                아래 형식대로 채워진 <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">사용자-일괄등록-예시.txt</code> 가 저장됩니다.
+                메모장 같은 편집기로 열어 조직 이름과 사람 목록만 우리 회사 것으로 바꿔 저장한 뒤, 그 파일을 그대로 다시 올리면 됩니다.
+                빈 파일에서 시작하는 것보다 훨씬 빠르고, 들여쓰기를 잘못 잡는 실수도 줄어듭니다.
+              </p>
 
               <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mt-4 mb-1">파일 형식</h4>
               <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300 my-2">
@@ -1300,6 +1306,7 @@ export default function UserGuidePage() {
 
               <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mt-4 mb-1">등록하는 순서</h4>
               <ol className="list-decimal pl-5 space-y-1 text-slate-600 dark:text-slate-300 my-2">
+                <li><b>예시 파일을 내려받아 고칩니다.</b> 대화상자 위쪽의 <strong className="font-semibold">예시 파일 내려받기</strong> 로 저장한 다음, 조직 이름과 사람 목록을 우리 회사 것으로 바꿉니다. 이미 준비된 파일이 있으면 이 단계는 건너뜁니다.</li>
                 <li><b>파일을 고르거나 내용을 붙여넣습니다.</b> 고른 뒤에도 아래 칸에서 바로 고칠 수 있습니다.</li>
                 <li><b>&quot;확인&quot;을 누릅니다.</b> 이 단계에서는 <b>아무것도 만들어지지 않습니다.</b> 새로 만들 그룹과 사람이 몇인지, 각자 어느 그룹에 들어가는지, 고쳐야 할 줄이 몇 번째인지를 보여 줍니다.</li>
                 <li><b>초기 비밀번호를 한 번 입력합니다.</b> 전원에게 같은 값이 들어가며, 각자 <b>첫 로그인 때 반드시 바꿉니다</b>(1.2).</li>
