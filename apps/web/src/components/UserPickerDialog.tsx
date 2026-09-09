@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { UserGroupItem } from '@sam/shared';
 import { groupPathNames } from '@sam/shared';
 import { useUsers } from '../lib/users';
+import { sortUsersByDisplayName } from '../lib/memberSort';
 import { apiErrorMessage } from '../lib/errors';
 
 /**
@@ -31,12 +32,16 @@ export default function UserPickerDialog({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const users = useUsers({ status: 'active' });
 
+  // 서버는 계정을 만든 시각의 역순으로 내려준다. 사람을 찾아 고르는 목록이므로 이름순으로
+  // 다시 놓는다 (lib/memberSort.ts).
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const all = (users.data ?? []).filter((u) => !excludeUserIds.has(u.id));
-    if (!q) return all;
-    return all.filter(
-      (u) => u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q),
+    if (!q) return sortUsersByDisplayName(all);
+    return sortUsersByDisplayName(
+      all.filter(
+        (u) => u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q),
+      ),
     );
   }, [users.data, excludeUserIds, query]);
 

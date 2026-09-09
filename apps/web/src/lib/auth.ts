@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ChangePasswordDto, LoginDto, MeResponse } from '@sam/shared';
+import type { ChangePasswordDto, LoginDto, MeResponse, UpdateMeDto } from '@sam/shared';
 import { api, ApiError } from './api';
 
 const ME_KEY = ['auth', 'me'] as const;
@@ -54,6 +54,19 @@ export function useLogout() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.post<void>('/auth/logout'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ME_KEY }),
+  });
+}
+
+/**
+ * 본인 표시 이름 변경.
+ *
+ * 성공하면 me 를 무효화해서 헤더에 걸린 이름이 바로 따라오게 한다.
+ */
+export function useUpdateMe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateMeDto) => api.patch<void>('/auth/me', input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ME_KEY }),
   });
 }

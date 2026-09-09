@@ -11,6 +11,7 @@ import {
 } from '../lib/users';
 import { useGroupTree } from '../lib/groups';
 import { groupPathMapOf } from '../lib/groupBadge';
+import { sortUsersByDisplayName } from '../lib/memberSort';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import UserCreateDialog from '../components/UserCreateDialog';
@@ -54,12 +55,16 @@ export default function AdminUsersPage() {
   const filtered = useMemo(() => {
     const all = users.data ?? [];
     const q = query.trim().toLowerCase();
-    if (!q) return all;
-    return all.filter(
-      (u) =>
-        u.username.toLowerCase().includes(q) ||
-        u.displayName.toLowerCase().includes(q) ||
-        (groupPaths.get(u.id) ?? []).some((name) => name.toLowerCase().includes(q)),
+    // 서버는 계정을 만든 시각의 역순으로 내려준다. 사람을 찾으러 오는 화면이므로 이름순으로
+    // 다시 놓는다. 한국어 정렬을 브라우저에서 하는 이유는 lib/memberSort.ts 의 docstring 참고.
+    if (!q) return sortUsersByDisplayName(all);
+    return sortUsersByDisplayName(
+      all.filter(
+        (u) =>
+          u.username.toLowerCase().includes(q) ||
+          u.displayName.toLowerCase().includes(q) ||
+          (groupPaths.get(u.id) ?? []).some((name) => name.toLowerCase().includes(q)),
+      ),
     );
   }, [users.data, groupPaths, query]);
 

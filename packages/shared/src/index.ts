@@ -63,6 +63,18 @@ export const ChangePasswordDto = z.object({
 });
 export type ChangePasswordDto = z.infer<typeof ChangePasswordDto>;
 
+/**
+ * 본인이 자기 표시 이름을 바꿀 때 쓴다 (PATCH /auth/me).
+ *
+ * 길이 제한은 관리자 경로(UpdateUserDto)와 같은 1~128 자다. 다만 여기만 `trim()` 을 둔다 —
+ * 본인이 직접 입력하는 자리라서 공백만 넣은 이름이 실제로 들어오고, 그러면 화면 곳곳의
+ * 이름 칸이 빈 채로 보인다.
+ */
+export const UpdateMeDto = z.object({
+  displayName: z.string().trim().min(1).max(128),
+});
+export type UpdateMeDto = z.infer<typeof UpdateMeDto>;
+
 export const MeResponse = z.object({
   id: z.string(),
   username: z.string(),
@@ -553,6 +565,19 @@ export const BulkAddMembersResult = z.object({
   skippedUserIds: z.array(z.string()),
 });
 export type BulkAddMembersResult = z.infer<typeof BulkAddMembersResult>;
+
+export const BulkRemoveMembersDto = z.object({
+  userIds: z.array(z.string().min(1)).min(1, '한 명 이상을 골라야 합니다'),
+});
+export type BulkRemoveMembersDto = z.infer<typeof BulkRemoveMembersDto>;
+
+export const BulkRemoveMembersResult = z.object({
+  removed: z.number().int(),
+  skipped: z.number().int(),
+  /** 이미 멤버가 아니라서 건너뛴 사람들. */
+  skippedUserIds: z.array(z.string()),
+});
+export type BulkRemoveMembersResult = z.infer<typeof BulkRemoveMembersResult>;
 
 // ─── 일정 노드 DTO ─────────────────────────────────────────────────────────
 export const Progress = z.number().int().min(0).max(100);

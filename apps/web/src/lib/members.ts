@@ -3,6 +3,8 @@ import type {
   AddMemberDto,
   BulkAddMembersDto,
   BulkAddMembersResult,
+  BulkRemoveMembersDto,
+  BulkRemoveMembersResult,
   ProjectMemberItem,
   ProjectRole,
 } from '@sam/shared';
@@ -53,6 +55,25 @@ export function useAddMembersBulk(projectId: string) {
   return useMutation({
     mutationFn: (input: BulkAddMembersDto) =>
       api.post<BulkAddMembersResult>(`/projects/${projectId}/members/bulk`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: membersKey(projectId) });
+      qc.invalidateQueries({ queryKey: projectKey(projectId) });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+}
+
+/**
+ * 여러 명을 한꺼번에 뺀다.
+ *
+ * 개별 DELETE 를 여러 번 부르지 않는 이유는 서버 쪽 removeBulk 의 주석에 적어 두었다 —
+ * 마지막 MANAGER 검사가 호출 순서에 좌우되기 때문이다.
+ */
+export function useRemoveMembersBulk(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BulkRemoveMembersDto) =>
+      api.post<BulkRemoveMembersResult>(`/projects/${projectId}/members/bulk-remove`, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: membersKey(projectId) });
       qc.invalidateQueries({ queryKey: projectKey(projectId) });

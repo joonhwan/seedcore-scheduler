@@ -97,6 +97,7 @@ function buildService(
         async (args: {
           where: { projectId: string; userId?: { in: string[] } };
           include?: { user?: unknown };
+          select?: { userId?: boolean; role?: boolean };
         }) => {
           const { where } = args;
           const filtered = members.filter(
@@ -108,6 +109,11 @@ function buildService(
           // 않고 userId 만 필요로 하므로 기존 반환 모양(  { userId } 만 ) 을 그대로 둔다.
           if (args.include?.user) {
             return filtered.map((m) => ({ ...m, user: userRowFor(m.userId) }));
+          }
+          // removeBulk() 는 role 까지 골라 읽는다 — 감사로그의 previousRole 이 그 값이라
+          // 대역이 select 를 무시하면 그 필드가 조용히 undefined 로 남는다.
+          if (args.select?.role) {
+            return filtered.map((m) => ({ userId: m.userId, role: m.role }));
           }
           return filtered.map((m) => ({ userId: m.userId }));
         },
@@ -155,19 +161,34 @@ function buildService(
         async ({
           where,
         }: {
-          where: { projectId: string; role: 'MANAGER' | 'MEMBER'; userId?: { not: string } };
+          where: {
+            projectId: string;
+            role: 'MANAGER' | 'MEMBER';
+            userId?: { not?: string; notIn?: string[] };
+          };
         }) =>
-          members.filter(
-            (m) =>
-              m.projectId === where.projectId &&
-              m.role === where.role &&
-              (where.userId === undefined || m.userId !== where.userId.not),
-          ).length,
+          members.filter((m) => {
+            if (m.projectId !== where.projectId || m.role !== where.role) return false;
+            // removeBulk() 는 "이번에 빼는 사람들을 뺀 나머지" 를 notIn 으로 센다.
+            // 대역이 이를 무시하면 마지막 MANAGER 검사가 언제나 통과해 시험이 헛돈다.
+            if (where.userId?.notIn !== undefined) return !where.userId.notIn.includes(m.userId);
+            if (where.userId?.not !== undefined) return m.userId !== where.userId.not;
+            return true;
+          }).length,
       ),
       createMany: vi.fn(async ({ data }: { data: PmRow[] }) => {
         for (const row of data) members.push({ ...row, addedAt: T0 });
         return { count: data.length };
       }),
+      deleteMany: vi.fn(
+        async ({ where }: { where: { projectId: string; userId: { in: string[] } } }) => {
+          const doomed = members.filter(
+            (m) => m.projectId === where.projectId && where.userId.in.includes(m.userId),
+          );
+          for (const row of doomed) members.splice(members.indexOf(row), 1);
+          return { count: doomed.length };
+        },
+      ),
     },
     userGroup: {
       findMany: vi.fn(async () => groups),
@@ -478,5 +499,97 @@ describe('MembersService 소속 그룹 채우기', () => {
     // '가나다팀' 이 '기구완성팀' 보다 가나다순으로 앞선다 (groupPathOfUser 의 규칙).
     expect(u1?.groupName).toBe('가나다팀');
     expect(u1?.groupPath).toEqual(['가나다팀']);
+  });
+});
+
+describe('MembersService.removeBulk', () => {
+  it('MANAGER 를 여럿 함께 빼도 한 명이 남으면 통과한다', async () => {
+    // 개별 DELETE 를 반복 호출하는 방식에서는 이 작업의 성패가 호출 순서에 좌우된다.
+    // 마지막 MANAGER 검사를 "제거 후 남는 인원" 기준으로 한 번만 해야 통과한다.
+    const { service, members } = buildService({
+      members: [
+        MANAGER_MEMBER,
+        { projectId: 'p1', userId: 'mgr-2', role: 'MANAGER', addedById: 'a', addedAt: T0 },
+        { projectId: 'p1', userId: 'mgr-3', role: 'MANAGER', addedById: 'a', addedAt: T0 },
+      ],
+    });
+
+    const result = await service.removeBulk('p1', { userIds: ['mgr-2', 'mgr-3'] }, MANAGER_CTX);
+
+    expect(result).toEqual({ removed: 2, skipped: 0, skippedUserIds: [] });
+    expect(members.map((m) => m.userId)).toEqual(['mgr-1']);
+  });
+
+  it('MANAGER 가 한 명도 남지 않으면 거부하고 아무도 지우지 않는다', async () => {
+    const { service, members } = buildService({
+      members: [
+        MANAGER_MEMBER,
+        { projectId: 'p1', userId: 'u1', role: 'MEMBER', addedById: 'a', addedAt: T0 },
+      ],
+    });
+
+    await expect(
+      service.removeBulk('p1', { userIds: ['mgr-1', 'u1'] }, ADMIN_CTX),
+    ).rejects.toMatchObject({ response: { error: 'LAST_MANAGER' } });
+
+    // 부분 성공으로 남기지 않는다 — MEMBER 쪽도 그대로 있어야 한다.
+    expect(members.map((m) => m.userId).sort()).toEqual(['mgr-1', 'u1']);
+  });
+
+  it('멤버가 아닌 사람은 오류로 만들지 않고 건너뛴다', async () => {
+    const { service, members } = buildService({
+      members: [
+        MANAGER_MEMBER,
+        { projectId: 'p1', userId: 'u1', role: 'MEMBER', addedById: 'a', addedAt: T0 },
+      ],
+    });
+
+    const result = await service.removeBulk('p1', { userIds: ['u1', 'u9'] }, MANAGER_CTX);
+
+    expect(result).toEqual({ removed: 1, skipped: 1, skippedUserIds: ['u9'] });
+    expect(members.map((m) => m.userId)).toEqual(['mgr-1']);
+  });
+
+  it('사람마다 MEMBER_REMOVE 감사로그를 남긴다', async () => {
+    const { service, audit } = buildService({
+      members: [
+        MANAGER_MEMBER,
+        { projectId: 'p1', userId: 'u1', role: 'MEMBER', addedById: 'a', addedAt: T0 },
+        { projectId: 'p1', userId: 'u2', role: 'MEMBER', addedById: 'a', addedAt: T0 },
+      ],
+    });
+
+    await service.removeBulk('p1', { userIds: ['u1', 'u2'] }, MANAGER_CTX);
+
+    const removeLogs = (audit.log as unknown as { mock: { calls: [Record<string, unknown>][] } }
+    ).mock.calls
+      .map(([entry]) => entry)
+      .filter((entry) => entry.action === 'MEMBER_REMOVE');
+    expect(removeLogs.map((e) => e.targetId)).toEqual(['p1:u1', 'p1:u2']);
+  });
+
+  it('MANAGER 도 ADMIN 모드도 아니면 거부한다', async () => {
+    const { service } = buildService({
+      members: [
+        MANAGER_MEMBER,
+        { projectId: 'p1', userId: 'u1', role: 'MEMBER', addedById: 'a', addedAt: T0 },
+      ],
+    });
+
+    await expect(
+      service.removeBulk(
+        'p1',
+        { userIds: ['u1'] },
+        { actorId: 'u1', globalRole: 'USER', adminMode: false },
+      ),
+    ).rejects.toMatchObject({ response: { error: 'MANAGER_REQUIRED' } });
+  });
+
+  it('없는 프로젝트면 거부한다', async () => {
+    const { service } = buildService({ members: [MANAGER_MEMBER] });
+
+    await expect(
+      service.removeBulk('nope', { userIds: ['u1'] }, ADMIN_CTX),
+    ).rejects.toMatchObject({ response: { error: 'PROJECT_NOT_FOUND' } });
   });
 });

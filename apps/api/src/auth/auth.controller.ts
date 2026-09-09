@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   HttpCode,
+  Patch,
   Post,
   Get,
   Req,
@@ -14,6 +15,7 @@ import type { Response } from 'express';
 import {
   ChangePasswordDto,
   LoginDto,
+  UpdateMeDto,
   type MeResponse,
   type SessionExtendResponse,
 } from '@sam/shared';
@@ -129,6 +131,26 @@ export class AuthController {
       sessionExpiresAt: extended.expiresAt.toISOString(),
       serverNow: new Date().toISOString(),
     };
+  }
+
+  /**
+   * 본인 표시 이름 변경.
+   *
+   * `@AllowPasswordChange()` 를 붙이지 않는다 — 비밀번호를 반드시 바꿔야 하는 상태에서
+   * 이름부터 고치게 할 이유가 없고, 그 상태의 화면은 비밀번호 변경만 보여 준다.
+   */
+  @Patch('me')
+  @HttpCode(204)
+  @UsePipes(new ZodValidationPipe(UpdateMeDto))
+  async updateMe(
+    @Body() body: UpdateMeDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<void> {
+    if (!req.user) throw new Error('user missing — guard misconfigured');
+    await this.auth.updateDisplayName(req.user.id, body.displayName, {
+      ip: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
   }
 
   @Post('change-password')

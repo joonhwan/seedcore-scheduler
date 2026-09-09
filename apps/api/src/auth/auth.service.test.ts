@@ -18,6 +18,7 @@ const PASSWORD = 'CorrectHorse!42';
 interface FakeUserRow {
   id: string;
   username: string;
+  displayName: string;
   passwordHash: string;
   isActive: boolean;
   failedLoginCount: number;
@@ -31,9 +32,11 @@ function buildService(row: FakeUserRow) {
   const updates: Array<Record<string, unknown>> = [];
   const auditEntries: Array<Record<string, unknown>> = [];
 
+  const findUnique = vi.fn().mockResolvedValue(row);
+
   const prisma = {
     user: {
-      findUnique: vi.fn().mockResolvedValue(row),
+      findUnique,
       update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         updates.push(data);
         return { ...row, ...data };
@@ -62,6 +65,7 @@ function buildService(row: FakeUserRow) {
     updates,
     auditEntries,
     rateLimit,
+    findUnique,
   };
 }
 
@@ -69,6 +73,7 @@ function makeRow(passwordHash: string): FakeUserRow {
   return {
     id: 'user-1',
     username: 'admin',
+    displayName: '관리자',
     passwordHash,
     isActive: true,
     failedLoginCount: 12,
@@ -186,5 +191,43 @@ describe('AuthService.login — 로그인 제한', () => {
 
     // 제한에 걸린 요청은 DB 를 건드리지 않는다 (요청이 몰리는 상황에서 쓰기를 늘리지 않는다).
     expect(auditEntries).toHaveLength(0);
+  });
+});
+
+describe('AuthService.updateDisplayName — 본인이 자기 이름을 바꾼다', () => {
+  it('이름을 저장하고 USER_UPDATE 감사로그에 이전 이름과 새 이름을 남긴다', async () => {
+    const bcryptHash = await bcrypt.hash(PASSWORD, 10);
+    const row = makeRow(bcryptHash);
+    const { service, updates, auditEntries } = buildService(row);
+
+    await service.updateDisplayName(row.id, '이준환', {});
+
+    expect(updates).toEqual([{ displayName: '이준환' }]);
+    const entry = auditEntries.find((e) => e['action'] === 'USER_UPDATE');
+    // actorId 와 targetId 가 같은 것이 본인 변경임을 나타낸다 (관리자 변경과 구분되는 지점).
+    expect(entry?.['actorId']).toBe(row.id);
+    expect(entry?.['targetId']).toBe(row.id);
+    expect(entry?.['payload']).toEqual({ displayName: { from: '관리자', to: '이준환' } });
+  });
+
+  it('이름이 그대로면 쓰기도 감사로그도 남기지 않는다', async () => {
+    const bcryptHash = await bcrypt.hash(PASSWORD, 10);
+    const row = makeRow(bcryptHash);
+    const { service, updates, auditEntries } = buildService(row);
+
+    await service.updateDisplayName(row.id, '관리자', {});
+
+    expect(updates).toHaveLength(0);
+    expect(auditEntries).toHaveLength(0);
+  });
+
+  it('세션의 사용자가 사라진 뒤라면 거부한다', async () => {
+    const bcryptHash = await bcrypt.hash(PASSWORD, 10);
+    const { service, findUnique } = buildService(makeRow(bcryptHash));
+    findUnique.mockResolvedValue(null);
+
+    await expect(service.updateDisplayName('user-1', '이준환', {})).rejects.toMatchObject({
+      response: { error: 'NO_SESSION' },
+    });
   });
 });

@@ -302,4 +302,41 @@ export class AuthService {
       userAgent: ctx.userAgent,
     });
   }
+
+  /**
+   * 본인이 자기 표시 이름을 바꾼다.
+   *
+   * 관리자 경로(UsersService.update)와 달리 퇴사·마지막 ADMIN 같은 검사가 없다. 여기에
+   * 도달한 사람은 이미 로그인에 성공한 활성 계정이고, 바꾸는 값도 자기 이름 하나뿐이다.
+   *
+   * 감사 액션은 관리자 변경과 같은 USER_UPDATE 를 쓴다. actorId 와 targetId 가 같은 것이
+   * 본인 변경이라는 표시다 (감사 액션 목록을 늘리지 않기 위해 이 규약을 택했다).
+   */
+  async updateDisplayName(
+    userId: string,
+    displayName: string,
+    ctx: LoginContext,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException({ error: 'NO_SESSION' });
+
+    // 값이 그대로면 쓰기도 감사로그도 남기지 않는다. 저장 버튼을 두 번 눌렀을 때
+    // 감사로그에 의미 없는 줄이 쌓이는 것을 막는다.
+    if (user.displayName === displayName) return;
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { displayName },
+    });
+
+    await this.audit.log({
+      actorId: user.id,
+      action: 'USER_UPDATE',
+      targetType: 'user',
+      targetId: user.id,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      payload: { displayName: { from: user.displayName, to: displayName } },
+    });
+  }
 }

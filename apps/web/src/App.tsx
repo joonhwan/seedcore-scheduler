@@ -10,6 +10,7 @@ import SessionExpiryDialog from './components/SessionExpiryDialog';
 import ServerNoticeDialog from './components/ServerNoticeDialog';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
+import MyProfilePage from './pages/MyProfilePage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectNewPage from './pages/ProjectNewPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
@@ -301,10 +302,14 @@ function Header() {
               </div>
             )}
             <SessionCountdownBadge />
-            <span className="text-slate-500 dark:text-slate-400 border-l border-slate-200 dark:border-slate-700 pl-3">
+            <Link
+              to="/me"
+              title="내 정보 (이름·비밀번호 변경)"
+              className="text-slate-500 dark:text-slate-400 border-l border-slate-200 dark:border-slate-700 pl-3 hover:text-slate-900 hover:underline dark:hover:text-slate-200 transition-colors"
+            >
               {me.data.displayName}
               {isAdmin ? ' (ADMIN)' : ''}
-            </span>
+            </Link>
             <button
               type="button"
               onClick={() => logout.mutate()}
@@ -672,6 +677,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <ChangePasswordPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/me"
+            element={
+              <RequireAuth>
+                <MyProfilePage />
               </RequireAuth>
             }
           />

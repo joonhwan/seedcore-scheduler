@@ -8,6 +8,7 @@ import {
 import { useUsers } from '../lib/users';
 import { useGroupTree } from '../lib/groups';
 import { groupPathMapOf } from '../lib/groupBadge';
+import { sortUsersByDisplayName } from '../lib/memberSort';
 import { apiErrorMessage } from '../lib/errors';
 import GroupPickerDialog from './GroupPickerDialog';
 import UserGroupBadge from './UserGroupBadge';
@@ -47,15 +48,29 @@ export default function MemberDraftEditor({
   const counts = countDraftRoles(drafts);
   const inDraft = useMemo(() => new Set(drafts.map((d) => d.userId)), [drafts]);
 
-  /** 검색 결과. 이미 명단에 있는 사람은 후보에서 뺀다. */
+  /**
+   * 검색 결과. 이미 명단에 있는 사람은 후보에서 뺀다.
+   *
+   * 서버는 계정을 만든 시각의 역순으로 내려주므로 이름순으로 다시 놓는다 (lib/memberSort.ts).
+   */
   const candidates = useMemo(() => {
     const q = search.trim().toLowerCase();
     const all = (users.data ?? []).filter((u) => !inDraft.has(u.id));
-    if (!q) return all;
-    return all.filter(
-      (u) => u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q),
+    if (!q) return sortUsersByDisplayName(all);
+    return sortUsersByDisplayName(
+      all.filter(
+        (u) => u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q),
+      ),
     );
   }, [users.data, inDraft, search]);
+
+  /**
+   * 담아 둔 명단도 이름순으로 보여 준다. 담은 순서대로 두면 바로 아래 후보 목록만 이름순이라
+   * 한 화면 안에서 규칙이 어긋난다. 정렬은 보여 줄 때만 하고 onChange 로 올려보내는 배열의
+   * 순서는 건드리지 않는다 — 서버가 그 순서를 쓰지는 않지만, 표시 규칙 때문에 상위 상태를
+   * 흔들 이유가 없다.
+   */
+  const sortedDrafts = useMemo(() => sortUsersByDisplayName(drafts), [drafts]);
 
   /**
    * 그룹으로 담겨 이미 명단에 들어간 사람이 checked 에 남아 있으면 "선택한 N명 담기" 의 숫자가
@@ -199,7 +214,7 @@ export default function MemberDraftEditor({
       </div>
 
       <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
-        {drafts.map((d) => (
+        {sortedDrafts.map((d) => (
           <li key={d.userId} className="flex flex-wrap items-center gap-3 py-2">
             <span className="flex-1 text-sm">
               {d.displayName} <span className="text-xs text-slate-500">@{d.username}</span>{' '}

@@ -10,6 +10,8 @@ import type {
   AddMemberDto,
   BulkAddMembersDto,
   BulkAddMembersResult,
+  BulkRemoveMembersDto,
+  BulkRemoveMembersResult,
   ProjectMemberItem,
   UpdateMemberRoleDto,
 } from '@sam/shared';
@@ -259,6 +261,82 @@ export class MembersService {
         payload: { sub: 'MEMBER_REMOVE' },
       });
     }
+  }
+
+  /**
+   * 여러 명을 한꺼번에 뺀다.
+   *
+   * 개별 DELETE 를 화면에서 여러 번 부르지 않는 이유가 둘이다. 중간에 하나가 실패하면
+   * 절반만 지워진 상태로 남고, 무엇보다 **마지막 MANAGER 검사가 호출 순서에 좌우된다** —
+   * MANAGER 3명 중 2명을 빼는 것은 정당한 작업인데, 한 명씩 부르면 마지막 호출이
+   * LAST_MANAGER 로 튕길지가 순서에 달린다. 그래서 검사를 "제거 후 남는 인원" 기준으로
+   * 한 번만 하고, 걸리면 전체를 거부한다 (아무도 지우지 않는다).
+   *
+   * 명단에 멤버가 아닌 사람이 섞여 있으면 오류로 만들지 않고 건너뛴다. addBulk 와 같은
+   * 정책이며, 다른 사람이 먼저 제거해 화면이 낡은 경우가 정상적으로 생긴다.
+   */
+  async removeBulk(
+    projectId: string,
+    body: BulkRemoveMembersDto,
+    ctx: ActorContext,
+  ): Promise<BulkRemoveMembersResult> {
+    await this.assertProjectExists(projectId);
+    await this.assertWriteAccess(projectId, ctx);
+
+    // 같은 사람이 두 번 실려 오면 뒤엣것을 버린다.
+    const userIds = [...new Set(body.userIds)];
+
+    const targets = await this.prisma.projectMember.findMany({
+      where: { projectId, userId: { in: userIds } },
+      select: { userId: true, role: true },
+    });
+    const found = new Map(targets.map((m) => [m.userId, m.role]));
+    const toRemove = userIds.filter((id) => found.has(id));
+    const skippedUserIds = userIds.filter((id) => !found.has(id));
+
+    if (toRemove.length > 0) {
+      const remainingManagers = await this.prisma.projectMember.count({
+        where: { projectId, role: 'MANAGER', userId: { notIn: toRemove } },
+      });
+      if (remainingManagers === 0) {
+        throw new BadRequestException({ error: 'LAST_MANAGER' });
+      }
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.projectMember.deleteMany({
+          where: { projectId, userId: { in: toRemove } },
+        });
+      });
+    }
+
+    for (const userId of toRemove) {
+      await this.audit.log({
+        actorId: ctx.actorId,
+        action: 'MEMBER_REMOVE',
+        targetType: 'project_member',
+        targetId: `${projectId}:${userId}`,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        payload: { previousRole: found.get(userId) },
+      });
+    }
+    if (ctx.adminMode && toRemove.length > 0) {
+      await this.audit.log({
+        actorId: ctx.actorId,
+        action: 'ADMIN_OVERRIDE_EDIT',
+        targetType: 'project',
+        targetId: projectId,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        payload: { sub: 'MEMBER_REMOVE_BULK', count: toRemove.length },
+      });
+    }
+
+    return {
+      removed: toRemove.length,
+      skipped: skippedUserIds.length,
+      skippedUserIds,
+    };
   }
 
   /**
