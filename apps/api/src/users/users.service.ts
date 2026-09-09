@@ -4,10 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import {
+  MAX_GROUP_DEPTH,
+  groupPathKey,
+  parseUserImport,
   validatePassword,
+  type BulkImportResult,
+  type BulkImportUserPlan,
+  type BulkImportUsersDto,
+  type ParsedImport,
   type UserActivitySummary,
   type UserListItem,
 } from '@sam/shared';
@@ -18,8 +25,8 @@ import { AuditService } from '../audit/audit.service';
 
 interface ActorContext {
   actorId: string;
-  ip?: string | undefined;
-  userAgent?: string | undefined;
+  ip?: string | null | undefined;
+  userAgent?: string | null | undefined;
 }
 
 @Injectable()
@@ -429,6 +436,111 @@ export class UsersService {
       payload: { username: target.username, displayName: target.displayName },
     });
   }
+
+  /**
+   * 조직도 텍스트 한 장으로 그룹과 계정을 한 번에 만든다.
+   *
+   * `dryRun` 이 참이면 아무것도 쓰지 않고 무엇이 만들어질지만 세어 준다. 미리보기와 적용이
+   * 같은 계산(`resolveImport`)을 지나므로 "미리보기에서는 31명이라 했는데 등록하니 30명"이
+   * 생길 수 없다.
+   */
+  async bulkImport(input: BulkImportUsersDto, ctx: ActorContext): Promise<BulkImportResult> {
+    const parsed = parseUserImport(input.text);
+
+    if (parsed.issues.length > 0 && !input.dryRun) {
+      throw new BadRequestException({ error: 'BULK_IMPORT_INVALID', issues: parsed.issues });
+    }
+
+    if (input.dryRun) {
+      const r = await this.resolveImport(this.prisma, parsed);
+      return {
+        applied: false,
+        previewToken: bulkImportTokenOf(r.groupsToCreate, r.usersToCreate),
+        groupsToCreate: r.groupsToCreate,
+        groupsExisting: r.groupsExisting,
+        usersToCreate: r.usersToCreate,
+        usersExisting: r.usersExisting,
+        issues: parsed.issues,
+        createdUserCount: 0,
+        createdGroupCount: 0,
+        skippedUserCount: 0,
+      };
+    }
+
+    // 적용 경로는 Task 4 에서 채운다.
+    throw new BadRequestException({ error: 'BULK_IMPORT_INVALID', issues: [] });
+  }
+
+  /**
+   * 파싱 결과를 데이터베이스와 대조해 "만들 것"과 "이미 있는 것"으로 가른다.
+   *
+   * 첫 인자로 클라이언트를 받는 이유는 **적용할 때 이 대조를 트랜잭션 안에서 다시 해야 하기
+   * 때문**이다. 미리보기는 `this.prisma`, 적용은 트랜잭션 클라이언트를 넘긴다 (설계 문서 §4.4).
+   */
+  private async resolveImport(
+    db: Pick<PrismaService, 'user' | 'userGroup'>,
+    parsed: ParsedImport,
+  ): Promise<{
+    idByPathKey: Map<string, string>;
+    groupsToCreate: string[][];
+    groupsExisting: string[][];
+    usersToCreate: BulkImportUserPlan[];
+    usersExisting: { line: number; username: string }[];
+  }> {
+    // 그룹은 조직 규모상 많아야 수십 개라 통째로 읽어 경로를 만든다.
+    const rows = await db.userGroup.findMany();
+    const byId = new Map(rows.map((g) => [g.id, g]));
+    const idByPathKey = new Map<string, string>();
+    for (const g of rows) {
+      const names: string[] = [];
+      let cur: { id: string; name: string; parentId: string | null } | undefined = g;
+      // 부모가 사라진 고아나 순환을 만나도 멈추도록 횟수를 제한한다.
+      for (let hop = 0; cur !== undefined && hop <= MAX_GROUP_DEPTH; hop++) {
+        names.unshift(cur.name);
+        cur = cur.parentId === null ? undefined : byId.get(cur.parentId);
+      }
+      idByPathKey.set(groupPathKey(names), g.id);
+    }
+
+    const groupsToCreate: string[][] = [];
+    const groupsExisting: string[][] = [];
+    for (const path of parsed.groups) {
+      if (idByPathKey.has(groupPathKey(path))) groupsExisting.push(path);
+      else groupsToCreate.push(path);
+    }
+
+    // 퇴사자도 아이디를 점유한다. retiredAt 으로 거르면 안 된다 — 거르면 만들려다 username
+    // 유일 제약에 걸려 통째로 되돌아간다.
+    const found = await db.user.findMany({
+      where: { username: { in: parsed.users.map((u) => u.username) } },
+    });
+    const taken = new Set(found.map((f) => f.username));
+
+    const usersToCreate: BulkImportUserPlan[] = [];
+    const usersExisting: { line: number; username: string }[] = [];
+    for (const u of parsed.users) {
+      if (taken.has(u.username)) usersExisting.push({ line: u.line, username: u.username });
+      else usersToCreate.push(u);
+    }
+
+    return { idByPathKey, groupsToCreate, groupsExisting, usersToCreate, usersExisting };
+  }
+}
+
+/**
+ * 미리보기가 약속한 결과를 한 문자열로 요약한다.
+ *
+ * 적용할 때 트랜잭션 안에서 다시 계산해 대조하며, 다르면 그 사이에 다른 관리자가 무언가를
+ * 만든 것이므로 거부한다. AGENTS.md §4.5 의 expectedUpdatedAt 을 시각 하나가 아니라 집합에
+ * 적용한 것이다.
+ */
+function bulkImportTokenOf(
+  groupsToCreate: string[][],
+  usersToCreate: { username: string }[],
+): string {
+  const g = groupsToCreate.map((p) => groupPathKey(p)).sort();
+  const u = usersToCreate.map((x) => x.username).sort();
+  return createHash('sha256').update(JSON.stringify({ g, u })).digest('hex');
 }
 
 /**

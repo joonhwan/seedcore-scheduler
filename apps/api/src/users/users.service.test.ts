@@ -59,8 +59,21 @@ interface Counts {
   serverNoticesCreated?: number;
 }
 
-function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
+interface GroupRow {
+  id: string;
+  name: string;
+  parentId: string | null;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+function buildService(
+  seed: { users?: UserRow[]; counts?: Counts; groups?: GroupRow[] } = {},
+) {
   const users = [...(seed.users ?? [userRow({ id: 'u1' })])];
+  const groupRows: GroupRow[] = [...(seed.groups ?? [])];
+  const groupMemberRows: { groupId: string; userId: string; addedById: string }[] = [];
   const c = seed.counts ?? {};
   const auditRows: { actorId: string | null }[] = [];
   const deleted: string[] = [];
@@ -70,12 +83,22 @@ function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
         users.find((u) => u.id === where.id) ?? null,
       ),
-      findMany: vi.fn(async ({ where }: { where?: { retiredAt?: null; isActive?: boolean } }) =>
-        users.filter(
-          (u) =>
-            (where?.retiredAt === undefined || u.retiredAt === null) &&
-            (where?.isActive === undefined || u.isActive === where.isActive),
-        ),
+      findMany: vi.fn(
+        async ({
+          where,
+        }: {
+          where?: { retiredAt?: null; isActive?: boolean; username?: { in: string[] } };
+        }) => {
+          if (where?.username !== undefined) {
+            const wanted = new Set(where.username.in);
+            return users.filter((u) => wanted.has(u.username));
+          }
+          return users.filter(
+            (u) =>
+              (where?.retiredAt === undefined || u.retiredAt === null) &&
+              (where?.isActive === undefined || u.isActive === where.isActive),
+          );
+        },
       ),
       count: vi.fn(
         async ({ where }: { where: { globalRole?: string; isActive?: boolean; id?: { not: string } } }) =>
@@ -106,6 +129,20 @@ function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
         deleted.push(where.id);
         return users.splice(i, 1)[0]!;
       }),
+      create: vi.fn(
+        async ({ data }: { data: Partial<UserRow> & { id: string; username: string } }) => {
+          // 실제 SQLite 는 username 유일 제약을 P2002 로 알린다. 대역이 조용히 두 번째 행을
+          // 받아 주면 경합 시험이 통과해 버린다.
+          if (users.some((u) => u.username === data.username)) {
+            const err = new Error('Unique constraint failed') as Error & { code: string };
+            err.code = 'P2002';
+            throw err;
+          }
+          const row = userRow({ ...data, id: data.id });
+          users.push(row);
+          return row;
+        },
+      ),
     },
     projectMember: {
       count: vi.fn(async ({ where }: { where: { userId?: string; addedById?: string } }) =>
@@ -115,6 +152,22 @@ function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
     userGroupMember: {
       count: vi.fn(async ({ where }: { where: { userId?: string; addedById?: string } }) =>
         where.addedById !== undefined ? (c.groupMembersAdded ?? 0) : (c.groupMemberships ?? 0),
+      ),
+      create: vi.fn(
+        async ({ data }: { data: { groupId: string; userId: string; addedById: string } }) => {
+          groupMemberRows.push(data);
+          return data;
+        },
+      ),
+    },
+    userGroup: {
+      findMany: vi.fn(async () => groupRows),
+      create: vi.fn(
+        async ({ data }: { data: { id: string; name: string; parentId: string | null } }) => {
+          const row: GroupRow = { ...data, description: null, createdAt: T0, updatedAt: T0 };
+          groupRows.push(row);
+          return row;
+        },
       ),
     },
     project: { count: vi.fn(async () => c.createdProjects ?? 0) },
@@ -136,7 +189,9 @@ function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
   };
 
   const prisma = prismaObject as unknown as PrismaService;
-  const auth = {} as AuthService;
+  const auth = {
+    hashPassword: vi.fn(async (plain: string) => `hashed:${plain}`),
+  } as unknown as AuthService;
   const sessions = { destroyAllForUser: vi.fn(async () => 2) } as unknown as SessionsService;
   const audit = { log: vi.fn(async () => undefined) } as unknown as AuditService;
 
@@ -148,6 +203,8 @@ function buildService(seed: { users?: UserRow[]; counts?: Counts } = {}) {
     users,
     deleted,
     auditRows,
+    groupRows,
+    groupMemberRows,
   };
 }
 
@@ -410,5 +467,101 @@ describe('UsersService.remove()', () => {
     });
     await service.remove('u1', CTX);
     expect(deleted).toEqual(['u1']);
+  });
+});
+
+const IMPORT_TEXT = [
+  '운영기술센터',
+  '  기구완성팀',
+  '    - gigu01, 김민준-기구완성팀',
+  '    - gigu02, 이서연-기구완성팀',
+  '  - center01, 정하준-센터장',
+].join('\n');
+const IMPORT_CTX = { actorId: 'u1', ip: null, userAgent: null };
+
+describe('UsersService.bulkImport() — 미리보기', () => {
+  it('아무것도 쓰지 않고 만들 것만 세어 준다', async () => {
+    const { service, users, groupRows } = buildService({ users: [userRow({ id: 'u1' })] });
+    const r = await service.bulkImport(
+      { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: true, skipExisting: false },
+      IMPORT_CTX,
+    );
+    expect(r.applied).toBe(false);
+    expect(r.groupsToCreate).toEqual([['운영기술센터'], ['운영기술센터', '기구완성팀']]);
+    expect(r.usersToCreate.map((u) => u.username)).toEqual(['gigu01', 'gigu02', 'center01']);
+    expect(r.usersExisting).toEqual([]);
+    expect(users).toHaveLength(1);
+    expect(groupRows).toHaveLength(0);
+  });
+
+  it('이미 있는 아이디를 가려낸다', async () => {
+    const { service } = buildService({
+      users: [userRow({ id: 'u1' }), userRow({ id: 'x', username: 'gigu02' })],
+    });
+    const r = await service.bulkImport(
+      { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: true, skipExisting: false },
+      IMPORT_CTX,
+    );
+    expect(r.usersExisting).toEqual([{ line: 4, username: 'gigu02' }]);
+    expect(r.usersToCreate.map((u) => u.username)).toEqual(['gigu01', 'center01']);
+  });
+
+  it('퇴사자의 아이디도 이미 쓰이는 것으로 본다', async () => {
+    const { service } = buildService({
+      users: [
+        userRow({ id: 'u1' }),
+        userRow({ id: 'x', username: 'gigu01', retiredAt: T0, isActive: false }),
+      ],
+    });
+    const r = await service.bulkImport(
+      { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: true, skipExisting: false },
+      IMPORT_CTX,
+    );
+    expect(r.usersExisting.map((u) => u.username)).toEqual(['gigu01']);
+  });
+
+  it('이미 있는 그룹은 다시 만들지 않는다', async () => {
+    const { service } = buildService({
+      users: [userRow({ id: 'u1' })],
+      groups: [
+        {
+          id: 'g1',
+          name: '운영기술센터',
+          parentId: null,
+          description: null,
+          createdAt: T0,
+          updatedAt: T0,
+        },
+      ],
+    });
+    const r = await service.bulkImport(
+      { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: true, skipExisting: false },
+      IMPORT_CTX,
+    );
+    expect(r.groupsExisting).toEqual([['운영기술센터']]);
+    expect(r.groupsToCreate).toEqual([['운영기술센터', '기구완성팀']]);
+  });
+
+  it('파일 내용에 오류가 있으면 줄 번호와 함께 담아 돌려준다', async () => {
+    const { service } = buildService();
+    const r = await service.bulkImport(
+      { text: '- 김하나, 이름', initialPassword: 'Init!2026', dryRun: true, skipExisting: false },
+      IMPORT_CTX,
+    );
+    expect(r.issues.map((i) => [i.line, i.code])).toEqual([[1, 'INVALID_USERNAME']]);
+  });
+
+  it('같은 입력이면 같은 previewToken 을 준다', async () => {
+    const a = buildService({ users: [userRow({ id: 'u1' })] });
+    const b = buildService({ users: [userRow({ id: 'u1' })] });
+    const args = {
+      text: IMPORT_TEXT,
+      initialPassword: 'Init!2026',
+      dryRun: true,
+      skipExisting: false,
+    };
+    expect((await a.service.bulkImport(args, IMPORT_CTX)).previewToken).toBe(
+      (await b.service.bulkImport(args, IMPORT_CTX)).previewToken,
+    );
   });
 });

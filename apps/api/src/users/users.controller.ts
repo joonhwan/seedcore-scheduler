@@ -13,8 +13,10 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import {
+  BulkImportUsersDto,
   CreateUserDto,
   UpdateUserDto,
+  type BulkImportResult,
   type ResetPasswordResponse,
   type UserActivitySummary,
   type UserListItem,
@@ -52,6 +54,20 @@ export class UsersController {
     @Req() req: AuthenticatedRequest,
   ): Promise<UserListItem> {
     return this.users.create(body, {
+      actorId: req.user!.id,
+      ip: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
+  }
+
+  @Post('bulk-import')
+  @HttpCode(200)
+  @UsePipes(new ZodValidationPipe(BulkImportUsersDto))
+  bulkImport(
+    @Body() body: BulkImportUsersDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<BulkImportResult> {
+    return this.users.bulkImport(body, {
       actorId: req.user!.id,
       ip: getClientIp(req),
       userAgent: getUserAgent(req),
