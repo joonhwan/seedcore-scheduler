@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  BulkImportResult,
+  BulkImportUsersDto,
   CreateUserDto,
   ResetPasswordResponse,
   UpdateUserDto,
@@ -66,6 +68,27 @@ export function useCreateUser() {
     mutationFn: (input: CreateUserDto) =>
       api.post<UserListItem>('/admin/users', input),
     onSuccess: () => invalidateAll(qc),
+  });
+}
+
+/**
+ * 일괄 등록. 미리보기(dryRun: true)와 적용(dryRun: false)이 같은 엔드포인트다.
+ *
+ * 미리보기는 아무것도 바꾸지 않지만 POST 라서 mutation 으로 둔다. 화면이 "확인" 을 눌렀을
+ * 때만 부르고 결과를 자기 상태로 들고 있으므로, 쿼리 캐시에 담을 이유가 없다.
+ */
+export function useBulkImportUsers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BulkImportUsersDto) =>
+      api.post<BulkImportResult>('/admin/users/bulk-import', input),
+    onSuccess: (result) => {
+      // 미리보기는 아무것도 바꾸지 않았으므로 다시 읽을 이유가 없다.
+      if (result.applied) {
+        invalidateAll(qc);
+        qc.invalidateQueries({ queryKey: ['admin', 'groups'] });
+      }
+    },
   });
 }
 

@@ -47,6 +47,11 @@ const KNOWN: Record<string, string> = {
   NOTICE_ALREADY_ACTIVE:
     '이미 유효한 재시작 예고가 있습니다. 먼저 취소한 뒤 다시 등록하십시오.',
   NOTICE_ALREADY_CANCELED: '이미 취소된 예고입니다.',
+  BULK_IMPORT_INVALID: '파일 내용에 고쳐야 할 곳이 남아 있습니다.',
+  BULK_IMPORT_DUPLICATE:
+    '이미 등록된 아이디가 있습니다. "이미 있는 아이디는 건너뛰기"를 켜거나 파일에서 빼십시오.',
+  BULK_IMPORT_STALE:
+    '미리보기 이후에 다른 관리자가 사용자나 그룹을 만들었습니다. 다시 확인한 뒤 등록해 주십시오.',
 };
 
 export function apiErrorMessage(err: unknown, fallback?: string): string {
