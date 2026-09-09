@@ -29,12 +29,23 @@ export default function UserBulkImportDialog({
   const bulk = useBulkImportUsers();
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
-    setText(await file.text());
-    setPreview(null);
-    setError(null);
-    setNotice(null);
+    try {
+      setText(await file.text());
+      setPreview(null);
+      setError(null);
+      setNotice(null);
+    } catch {
+      // 드물지만 파일을 읽지 못할 수 있다(옮겨졌거나 권한이 막혔거나). 조용히 지나가면
+      // 관리자는 파일을 골랐는데 내용이 안 뜨는 이유를 알 수 없다.
+      setError('파일을 읽지 못했습니다. 다른 파일을 고르거나 내용을 직접 붙여넣으십시오.');
+    } finally {
+      // 고른 파일 이름을 비워 둔다. 그러지 않으면 같은 파일을 고쳐서 다시 골랐을 때
+      // 브라우저가 "바뀐 것이 없다"고 보아 이 함수를 아예 부르지 않는다.
+      input.value = '';
+    }
   }
 
   /** 미리보기를 새로 받는다. */
@@ -176,16 +187,22 @@ export default function UserBulkImportDialog({
             </div>
           )}
 
-          <label className="mt-4 block text-xs font-bold">텍스트 파일 선택</label>
+          <label htmlFor="bulk-import-file" className="mt-4 block text-xs font-bold">
+            텍스트 파일 선택
+          </label>
           <input
+            id="bulk-import-file"
             type="file"
             accept=".txt,text/plain"
             onChange={(e) => void handleFile(e)}
             className="mt-1 block w-full text-xs"
           />
 
-          <label className="mt-4 block text-xs font-bold">내용 확인 / 직접 입력</label>
+          <label htmlFor="bulk-import-text" className="mt-4 block text-xs font-bold">
+            내용 확인 / 직접 입력
+          </label>
           <textarea
+            id="bulk-import-text"
             value={text}
             onChange={(e) => {
               setText(e.target.value);
@@ -207,7 +224,7 @@ export default function UserBulkImportDialog({
               <p>
                 새로 만들 그룹 <b>{preview.groupsToCreate.length}개</b>
                 {preview.groupsExisting.length > 0 && (
-                  <span className="text-slate-500">
+                  <span className="text-slate-500 dark:text-slate-400">
                     {' '}
                     (이미 있는 그룹 {preview.groupsExisting.length}개는 그대로 씁니다)
                   </span>
@@ -217,15 +234,15 @@ export default function UserBulkImportDialog({
                 새로 만들 사람 <b>{preview.usersToCreate.length}명</b>
               </p>
               {preview.usersExisting.length > 0 && (
-                <p className="mt-1 text-amber-600">
+                <p className="mt-1 text-amber-600 dark:text-amber-400">
                   이미 있는 아이디 {preview.usersExisting.length}명 (
                   {preview.usersExisting.map((u) => u.username).join(', ')})
                 </p>
               )}
               {preview.issues.length > 0 && (
-                <ul className="mt-2 space-y-0.5 text-rose-600">
+                <ul className="mt-2 space-y-0.5 text-rose-600 dark:text-rose-400">
                   {preview.issues.map((i, idx) => (
-                    <li key={idx}>
+                    <li key={`${i.line}-${i.code}-${idx}`}>
                       {i.line > 0 ? `${i.line}번째 줄: ` : ''}
                       {i.message}
                     </li>
@@ -274,19 +291,22 @@ export default function UserBulkImportDialog({
             </div>
           )}
 
-          <label className="mt-4 block text-xs font-bold">초기 비밀번호 (전원 공통)</label>
+          <label htmlFor="bulk-import-password" className="mt-4 block text-xs font-bold">
+            초기 비밀번호 (전원 공통)
+          </label>
           <input
+            id="bulk-import-password"
             type="text"
             value={initialPassword}
             onChange={(e) => setInitialPassword(e.target.value)}
             className="mt-1 w-full rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
           />
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             만들어진 계정은 첫 로그인 때 비밀번호를 반드시 바꿉니다.
           </p>
 
-          {notice && <p className="mt-3 text-sm text-amber-600">{notice}</p>}
-          {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+          {notice && <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">{notice}</p>}
+          {error && <p className="mt-3 text-sm text-rose-600 dark:text-rose-400">{error}</p>}
         </div>
 
         <div className="flex flex-col gap-2 border-t border-slate-200 px-5 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">

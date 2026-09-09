@@ -9,6 +9,7 @@ import type {
   UserListItem,
 } from '@sam/shared';
 import { api } from './api';
+import { groupsKey } from './groups';
 
 export type UserListStatus = 'active' | 'inactive' | 'all';
 
@@ -86,7 +87,7 @@ export function useBulkImportUsers() {
       // 미리보기는 아무것도 바꾸지 않았으므로 다시 읽을 이유가 없다.
       if (result.applied) {
         invalidateAll(qc);
-        qc.invalidateQueries({ queryKey: ['admin', 'groups'] });
+        qc.invalidateQueries({ queryKey: groupsKey });
       }
     },
   });
