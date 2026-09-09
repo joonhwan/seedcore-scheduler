@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseUserImport } from './user-import';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 describe('parseUserImport() — 정상 트리', () => {
   const text = [
@@ -143,5 +145,48 @@ describe('parseUserImport() — 중복과 한계', () => {
       'INVALID_USERNAME',
       'BAD_USER_LINE',
     ]);
+  });
+});
+
+describe('샘플 파일', () => {
+  const path = fileURLToPath(
+    new URL('../../../docs-customer/사용자-일괄등록-예시.txt', import.meta.url),
+  );
+  const parsed = parseUserImport(readFileSync(path, 'utf8'));
+
+  it('오류 없이 읽힌다', () => {
+    expect(parsed.issues).toEqual([]);
+  });
+
+  it('34명이다', () => {
+    expect(parsed.users).toHaveLength(34);
+  });
+
+  it('그룹은 여섯이고 운영기술센터 아래에 세 팀이 있다', () => {
+    expect(parsed.groups.map((p) => p.join('/'))).toEqual([
+      '운영기술센터',
+      '운영기술센터/기구완성팀',
+      '운영기술센터/생산기술팀',
+      '운영기술센터/품질보증팀',
+      '구매팀',
+      '경영관리',
+    ]);
+  });
+
+  it('센터장은 센터 직속이다', () => {
+    expect(parsed.users.find((u) => u.username === 'center01')!.groupPath).toEqual([
+      '운영기술센터',
+    ]);
+  });
+
+  it('팀별 인원이 확정명세와 같다', () => {
+    const count = (name: string) =>
+      parsed.users.filter((u) => u.groupPath.at(-1) === name).length;
+    expect(count('기구완성팀')).toBe(5);
+    expect(count('생산기술팀')).toBe(8);
+    expect(count('품질보증팀')).toBe(7);
+    expect(count('운영기술센터')).toBe(1);
+    expect(count('구매팀')).toBe(3);
+    expect(count('경영관리')).toBe(10);
   });
 });
