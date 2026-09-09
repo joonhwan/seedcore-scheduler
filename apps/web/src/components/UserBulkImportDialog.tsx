@@ -198,9 +198,12 @@ export default function UserBulkImportDialog({
 
           {preview && (
             <div className="mt-4 rounded border border-slate-200 p-3 text-sm dark:border-slate-700">
-              <p>
-                새로 만들 사람 <b>{preview.usersToCreate.length}명</b>
-              </p>
+              {/*
+                아래 목록도 그룹을 먼저 늘어놓으므로 요약도 같은 차례로 둔다. 둘이 어긋나면
+                읽는 사람이 숫자와 목록을 짝지으며 헷갈린다. 그룹을 앞에 두는 것은 실제로
+                그룹이 먼저 만들어지기 때문이기도 하고, 목록이 짧아 들여쓰기가 제대로 읽혔는지
+                눈으로 확인하기 좋은 쪽이 그룹이기 때문이다.
+              */}
               <p>
                 새로 만들 그룹 <b>{preview.groupsToCreate.length}개</b>
                 {preview.groupsExisting.length > 0 && (
@@ -209,6 +212,9 @@ export default function UserBulkImportDialog({
                     (이미 있는 그룹 {preview.groupsExisting.length}개는 그대로 씁니다)
                   </span>
                 )}
+              </p>
+              <p>
+                새로 만들 사람 <b>{preview.usersToCreate.length}명</b>
               </p>
               {preview.usersExisting.length > 0 && (
                 <p className="mt-1 text-amber-600">
@@ -228,11 +234,19 @@ export default function UserBulkImportDialog({
               )}
               {(preview.groupsToCreate.length > 0 || preview.usersToCreate.length > 0) && (
                 <div className="mt-2 max-h-48 overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800">
+                  {preview.groupsToCreate.length > 0 && (
+                    <p className="font-bold text-slate-500 dark:text-slate-400">새로 만들 그룹</p>
+                  )}
                   {preview.groupsToCreate.map((p, idx) => (
                     <p key={`g-${idx}`} className="font-mono">
                       {p.join(' / ')}
                     </p>
                   ))}
+                  {preview.usersToCreate.length > 0 && (
+                    <p className="mt-2 font-bold text-slate-500 dark:text-slate-400">
+                      새로 만들 사람
+                    </p>
+                  )}
                   {preview.usersToCreate.map((u, idx) => (
                     <p key={`u-${idx}`} className="font-mono">
                       {u.username} · {u.displayName} —{' '}
