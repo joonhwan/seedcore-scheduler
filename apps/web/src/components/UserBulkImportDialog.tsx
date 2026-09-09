@@ -108,6 +108,22 @@ export default function UserBulkImportDialog({
   }
 
   const blocked = preview !== null && preview.issues.length > 0;
+
+  /**
+   * 지금 눌러야 할 버튼이 무엇인지 한 줄로 알려 준다.
+   *
+   * 버튼 셋(취소·확인·등록)만 놓여 있으면 "확인"과 "등록"이 어떻게 다른지 알기 어렵다.
+   * 두 단계(미리 본 뒤 만든다)라는 것이 이 화면의 성격이므로, 지금 어느 단계인지를
+   * 버튼 옆에서 말해 준다.
+   */
+  const guidance =
+    preview === null
+      ? '먼저 “확인”을 눌러 무엇이 만들어질지 미리 봅니다. 이 단계에서는 아무것도 만들어지지 않습니다.'
+      : blocked
+        ? '고쳐야 하는 줄이 남아 있어 등록할 수 없습니다. 내용을 고친 뒤 “확인”을 다시 누르십시오.'
+        : initialPassword.length === 0
+          ? '초기 비밀번호를 넣으면 “등록”을 누를 수 있습니다.'
+          : '미리 본 내용 그대로 만들려면 “등록”을 누릅니다.';
   const busy = bulk.isPending;
 
   return (
@@ -259,30 +275,36 @@ export default function UserBulkImportDialog({
           {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700"
-          >
-            취소
-          </button>
-          <button
-            type="button"
-            disabled={text.trim().length === 0 || busy}
-            onClick={() => void loadPreview()}
-            className="rounded border border-sky-600 px-3 py-1.5 text-sm font-semibold text-sky-700 disabled:opacity-50 dark:text-sky-400"
-          >
-            확인
-          </button>
-          <button
-            type="button"
-            disabled={preview === null || blocked || initialPassword.length === 0 || busy}
-            onClick={() => void handleApply()}
-            className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            등록
-          </button>
+        <div className="flex flex-col gap-2 border-t border-slate-200 px-5 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
+          <p className="min-w-0 text-xs text-slate-500 dark:text-slate-400">{guidance}</p>
+          <div className="flex shrink-0 justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              title="등록하지 않고 창을 닫습니다."
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              disabled={text.trim().length === 0 || busy}
+              onClick={() => void loadPreview()}
+              title="입력한 내용을 서버가 읽어 무엇이 만들어질지 보여 줍니다. 아직 아무것도 만들지 않습니다."
+              className="rounded border border-sky-600 px-3 py-1.5 text-sm font-semibold text-sky-700 disabled:opacity-50 dark:text-sky-400"
+            >
+              확인
+            </button>
+            <button
+              type="button"
+              disabled={preview === null || blocked || initialPassword.length === 0 || busy}
+              onClick={() => void handleApply()}
+              title="미리 본 내용 그대로 그룹과 계정을 실제로 만듭니다."
+              className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              등록
+            </button>
+          </div>
         </div>
       </div>
     </div>

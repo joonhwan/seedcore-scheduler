@@ -86,6 +86,7 @@ export default function AdminUsersPage() {
           <button
             type="button"
             onClick={() => setBulkOpen(true)}
+            title="조직도 텍스트 파일 한 장으로 그룹 계층과 사용자 계정을 한 번에 만듭니다. 등록 전에 무엇이 만들어질지 미리 보여 줍니다."
             className="rounded border border-sky-600 px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-slate-800"
           >
             일괄 등록
@@ -93,6 +94,7 @@ export default function AdminUsersPage() {
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
+            title="사용자 한 명을 만들고 소속 그룹을 지정합니다. 여러 명을 한꺼번에 넣으려면 왼쪽의 일괄 등록을 쓰십시오."
             className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
           >
             + 사용자 추가
