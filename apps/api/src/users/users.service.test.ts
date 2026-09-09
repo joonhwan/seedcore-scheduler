@@ -74,6 +74,7 @@ function buildService(
   const users = [...(seed.users ?? [userRow({ id: 'u1' })])];
   const groupRows: GroupRow[] = [...(seed.groups ?? [])];
   const groupMemberRows: { groupId: string; userId: string; addedById: string }[] = [];
+  let hashCallCount = 0;
   const c = seed.counts ?? {};
   const auditRows: { actorId: string | null }[] = [];
   const deleted: string[] = [];
@@ -164,6 +165,19 @@ function buildService(
       findMany: vi.fn(async () => groupRows),
       create: vi.fn(
         async ({ data }: { data: { id: string; name: string; parentId: string | null } }) => {
+          // 스키마의 @@unique([parentId, name]) 를 흉내 낸다. 대역이 무엇이든 받아 주면
+          // 경합 방어의 그룹 쪽 절반이 시험으로 확인되지 않는다.
+          //
+          // 최상위(parentId 가 null)는 일부러 막지 않는다. SQLite 는 NULL 을 서로 다른
+          // 값으로 보므로 실제 데이터베이스에서도 걸리지 않기 때문이다.
+          if (
+            data.parentId !== null &&
+            groupRows.some((g) => g.parentId === data.parentId && g.name === data.name)
+          ) {
+            const err = new Error('Unique constraint failed') as Error & { code: string };
+            err.code = 'P2002';
+            throw err;
+          }
           const row: GroupRow = { ...data, description: null, createdAt: T0, updatedAt: T0 };
           groupRows.push(row);
           return row;
@@ -185,12 +199,32 @@ function buildService(
         return { count: 1 };
       }),
     },
-    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaObject)),
+    // 되돌리기를 흉내 낸다. 예전에는 콜백을 그대로 부르기만 해서, 도중에 실패해도 이미
+    // 만들어진 행이 배열에 남았다. 그래서 "중간에 실패하면 아무것도 남지 않는다"는 설계
+    // 약속을 시험으로 확인할 수 없었다. 시작 전 상태를 떠 두었다가 예외가 나면 되돌린다.
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const usersBefore = [...users];
+      const groupsBefore = [...groupRows];
+      const membersBefore = [...groupMemberRows];
+      try {
+        return await fn(prismaObject);
+      } catch (err) {
+        users.length = 0;
+        users.push(...usersBefore);
+        groupRows.length = 0;
+        groupRows.push(...groupsBefore);
+        groupMemberRows.length = 0;
+        groupMemberRows.push(...membersBefore);
+        throw err;
+      }
+    }),
   };
 
   const prisma = prismaObject as unknown as PrismaService;
   const auth = {
-    hashPassword: vi.fn(async (plain: string) => `hashed:${plain}`),
+    // 부를 때마다 다른 값을 돌려준다. 모두 같은 값이면 hashByUsername 이 엉뚱한 사람의
+    // 해시를 집어도 시험이 통과한다. 실제 bcrypt 도 salt 때문에 매번 다르다.
+    hashPassword: vi.fn(async (plain: string) => `hashed:${plain}:${++hashCallCount}`),
   } as unknown as AuthService;
   const sessions = { destroyAllForUser: vi.fn(async () => 2) } as unknown as SessionsService;
   const audit = { log: vi.fn(async () => undefined) } as unknown as AuditService;
@@ -200,6 +234,7 @@ function buildService(
     prismaObject,
     sessions,
     audit,
+    auth,
     users,
     deleted,
     auditRows,
@@ -840,5 +875,77 @@ describe('UsersService.bulkImport() — 미리보기와 적용 사이의 경합'
     // 감사 기록이 하나도 남지 않아야 한다. 감사로그를 트랜잭션 안으로 옮기면 이 시험이
     // 즉시 빨갛게 된다 — "커밋 뒤에만 남긴다"는 이 갈래의 핵심 제약을 이 한 줄이 잠근다.
     expect(s.audit.log).not.toHaveBeenCalled();
+  });
+});
+
+describe('UsersService.bulkImport() — 되돌리기와 해시', () => {
+  async function previewOf(s: ReturnType<typeof buildService>) {
+    return s.service.bulkImport(
+      { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: true, skipExisting: false },
+      IMPORT_CTX,
+    );
+  }
+
+  it('사용자 생성이 터지면 앞서 만든 그룹까지 모두 되돌아간다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    const p = await previewOf(s);
+    // 그룹 둘을 만든 뒤 첫 사용자에서 터지는 상황
+    s.prismaObject.user.create = vi.fn(async () => {
+      const err = new Error('Unique constraint failed') as Error & { code: string };
+      err.code = 'P2002';
+      throw err;
+    });
+
+    await expect(
+      s.service.bulkImport(
+        {
+          text: IMPORT_TEXT,
+          initialPassword: 'Init!2026',
+          dryRun: false,
+          skipExisting: false,
+          previewToken: p.previewToken,
+        },
+        IMPORT_CTX,
+      ),
+    ).rejects.toMatchObject({ response: { error: 'BULK_IMPORT_STALE' } });
+
+    // 절반만 만들어진 상태가 남으면 안 된다 (설계 문서 §4.3 6단계)
+    expect(s.groupRows).toEqual([]);
+    expect(s.groupMemberRows).toEqual([]);
+    expect(s.users.map((u) => u.username)).toEqual(['u1']);
+    expect(s.audit.log).not.toHaveBeenCalled();
+  });
+
+  it('사람마다 자기 몫의 해시를 받는다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    const p = await previewOf(s);
+    await s.service.bulkImport(
+      {
+        text: IMPORT_TEXT,
+        initialPassword: 'Init!2026',
+        dryRun: false,
+        skipExisting: false,
+        previewToken: p.previewToken,
+      },
+      IMPORT_CTX,
+    );
+
+    const made = s.users.filter((u) => u.id !== 'u1');
+    expect(made).toHaveLength(3);
+    // 해싱 대역이 부를 때마다 다른 값을 주므로, 같은 해시가 두 사람에게 들어가면 여기서 잡힌다
+    expect(new Set(made.map((u) => u.passwordHash)).size).toBe(3);
+    for (const u of made) expect(u.passwordHash).toMatch(/^hashed:Init!2026:\d+$/);
+  });
+
+  it('previewToken 이 없으면 해싱을 시작하기 전에 거부한다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    await expect(
+      s.service.bulkImport(
+        { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: false, skipExisting: false },
+        IMPORT_CTX,
+      ),
+    ).rejects.toMatchObject({ response: { error: 'BULK_IMPORT_STALE' } });
+    // 거부될 것이 뻔한 요청에 bcrypt 를 사람 수만큼 돌리지 않는다
+    expect(s.auth.hashPassword).not.toHaveBeenCalled();
   });
 });

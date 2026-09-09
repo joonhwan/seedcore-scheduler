@@ -483,6 +483,12 @@ export class UsersService {
       }
     }
 
+    // 토큰이 아예 없으면 아래 대조에서 반드시 거부된다. 그 전에 사람 수만큼 bcrypt 를
+    // 돌리는 것은 낭비이므로 여기서 먼저 끊는다(34명이면 1.5초가량).
+    if (input.previewToken === undefined) {
+      throw new ConflictException({ error: 'BULK_IMPORT_STALE' });
+    }
+
     // 해싱을 트랜잭션 밖에서 먼저 끝낸다. bcrypt 는 한 번에 40밀리초 남짓이라 34명이면
     // 1.5초가량인데, 트랜잭션 안에 두면 SQLite 의 단일 Writer 를 그만큼 붙들어 다른 사람의
     // 저장이 모두 밀린다. 실제로 쓸 사람은 트랜잭션 안에서 정해지므로 파일에 적힌 사람
@@ -502,6 +508,9 @@ export class UsersService {
     };
 
     try {
+      // Prisma 의 기본 제한은 5초다. 파일이 예상보다 크면 그 안에 못 끝내고 P2028 로
+      // 죽는데, 그것은 아래 세 겹 어디에도 걸리지 않아 정체 모를 500 이 된다. 운영 규모는
+      // 150명 이하지만(AGENTS.md 1장) 상한이 코드에 없으므로 여유를 둔다.
       outcome = await this.prisma.$transaction(async (tx) => {
         // 대조를 여기서 다시 한다. 앞선 미리보기 요청이 대조한 뒤로 사람이 화면을 읽는
         // 시간과 이 요청의 해싱 시간(위 for 루프, 34명이면 1초 넘게)이 흘렀으므로 삽입
@@ -596,11 +605,17 @@ export class UsersService {
           usersExisting: r.usersExisting,
           groupsExisting: r.groupsExisting,
         };
-      });
+      }, TRANSACTION_OPTIONS);
     } catch (err) {
       if (err instanceof HttpException) throw err;
       // 위 검사를 모두 지나고도 남는 경합은 유일 제약이 잡는다. 날것의 Prisma 오류를 그대로
       // 올리면 화면이 무슨 일인지 알 수 없으므로 같은 409 로 바꾼다.
+      //
+      // 다만 이 마지막 겹은 **최상위 그룹에는 걸리지 않는다.** user_groups 의 유일 제약은
+      // (parent_id, name) 인데 SQLite 는 NULL 을 서로 다른 값으로 보므로, parent_id 가 비어
+      // 있는 최상위 그룹은 같은 이름으로 두 행이 들어가도 P2002 가 나지 않는다. 최상위
+      // 그룹은 앞의 두 겹(트랜잭션 안 재대조와 토큰 대조)만으로 막는다. 기존 그룹 생성
+      // 경로(GroupsService.create 의 assertNameFree)도 같은 사정이라 앱 계층에서 막는다.
       if (typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2002') {
         throw new ConflictException({ error: 'BULK_IMPORT_STALE' });
       }
@@ -696,6 +711,16 @@ export class UsersService {
     return { idByPathKey, groupsToCreate, groupsExisting, usersToCreate, usersExisting };
   }
 }
+
+/**
+ * 일괄 등록 트랜잭션의 시간 제한.
+ *
+ * Prisma 기본값은 5초다. 파일이 예상보다 크면 그 안에 못 끝내고 P2028 로 죽는데, 그것은
+ * 경합을 막는 세 겹 어디에도 걸리지 않아 정체 모를 500 이 된다. 운영 규모는 전체 150명
+ * 이하지만(AGENTS.md 1장) 인원 상한이 코드에 없으므로 여유를 둔다. 트랜잭션 안에서 도는
+ * 것은 읽기 둘과 사람마다 두 문장뿐이고 해싱은 밖에서 이미 끝나 있다.
+ */
+const TRANSACTION_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
 
 /**
  * 미리보기가 약속한 결과를 한 문자열로 요약한다.
