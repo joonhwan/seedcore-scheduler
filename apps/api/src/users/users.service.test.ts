@@ -719,6 +719,24 @@ describe('UsersService.bulkImport() — 적용', () => {
     expect(r.createdUserCount).toBe(2);
     expect(r.skippedUserCount).toBe(1);
   });
+
+  it('skipExisting 이 참이면 적용 응답의 usersExisting 에 건너뛴 사람의 아이디가 담긴다', async () => {
+    const s = buildService({
+      users: [userRow({ id: 'u1' }), userRow({ id: 'x', username: 'gigu02' })],
+    });
+    const p = await preview(s, true);
+    const r = await s.service.bulkImport(
+      {
+        text: IMPORT_TEXT,
+        initialPassword: 'Init!2026',
+        dryRun: false,
+        skipExisting: true,
+        previewToken: p.previewToken,
+      },
+      IMPORT_CTX,
+    );
+    expect(r.usersExisting.map((u) => u.username)).toEqual(['gigu02']);
+  });
 });
 
 describe('UsersService.bulkImport() — 미리보기와 적용 사이의 경합', () => {

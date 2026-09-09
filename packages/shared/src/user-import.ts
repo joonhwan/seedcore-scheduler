@@ -85,6 +85,12 @@ export function parseUserImport(text: string): ParsedImport {
   const widths: number[] = [];
   /** path[i] 는 i 단계의 그룹 이름이다. 사용자 줄은 여기에 쌓이지 않는다. */
   const path: string[] = [];
+  /**
+   * 가장 최근 사용자 줄의 단계. `path` 는 사용자 줄에서 잘리지 않으므로, 앞선 가지의
+   * 그룹 이름이 남아 있으면 사용자 줄 아래에 들여 쓴 그룹이 그 이름의 하위로 잘못 붙는다.
+   * 이 값으로 "사용자 줄보다 깊게 들여 썼는가"를 따로 판정한다.
+   */
+  let lastUserLevel: number | null = null;
 
   const seenUsernames = new Set<string>();
   const seenGroupKeys = new Set<string>();
@@ -121,6 +127,21 @@ export function parseUserImport(text: string): ParsedImport {
       }
       widths.length = found + 1;
       level = found;
+    }
+
+    // 가장 최근 사용자 줄보다 깊게 들여 썼다면, path 에 남아 있는 앞선 그룹 이름 때문에
+    // 아래의 path[level - 1] 가드를 그냥 지나칠 수 있다. 여기서 먼저 잡는다.
+    if (lastUserLevel !== null && level > lastUserLevel) {
+      issues.push({
+        line,
+        code: 'BAD_INDENT',
+        message: '상위 그룹이 없는 자리입니다. 사용자 줄 아래에는 아무것도 넣을 수 없습니다.',
+      });
+      widths.length = level;
+      continue;
+    } else if (lastUserLevel !== null && level <= lastUserLevel) {
+      // 형제이거나 더 얕은 줄이므로 사용자 줄의 영향권을 벗어났다.
+      lastUserLevel = null;
     }
 
     // 자기보다 한 단계 얕은 자리에 그룹이 있어야 한다. 사용자 줄 아래에 무언가를 들여 쓴
@@ -184,6 +205,7 @@ export function parseUserImport(text: string): ParsedImport {
       }
       seenUsernames.add(username);
       users.push({ line, username, displayName, groupPath: path.slice(0, level) });
+      lastUserLevel = level;
     } else {
       // ── 그룹 줄 ──────────────────────────────────────────────────────
       const name = trimmed;

@@ -74,6 +74,23 @@ describe('parseUserImport() — 들여쓰기', () => {
     const text = ['본부', '  - aaa01, 김하나-본부', '    팀'].join('\n');
     expect(parseUserImport(text).issues.map((i) => i.code)).toEqual(['BAD_INDENT']);
   });
+
+  it('앞선 가지의 그룹 이름이 path 에 남아 있어도 사용자 줄 아래에 들여 쓴 그룹을 잡는다', () => {
+    const text = [
+      '운영기술센터',
+      '  기구완성팀',
+      '  - center01, 정하준-센터장',
+      '    생산기술팀',
+    ].join('\n');
+    const r = parseUserImport(text);
+    expect(r.issues.map((i) => [i.line, i.code])).toEqual([[4, 'BAD_INDENT']]);
+    expect(r.groups.map((p) => p.join('/'))).toEqual(['운영기술센터', '운영기술센터/기구완성팀']);
+  });
+
+  it('사용자 줄 뒤에 더 깊게 들여 쓴 그룹은, 몇 줄 지나서도 BAD_INDENT 로 잡는다', () => {
+    const text = ['본부', '  팀A', '    - aaa01, 김', '- bbb01, 이', '  팀B'].join('\n');
+    expect(parseUserImport(text).issues.map((i) => [i.line, i.code])).toEqual([[5, 'BAD_INDENT']]);
+  });
 });
 
 describe('parseUserImport() — 사용자 줄', () => {

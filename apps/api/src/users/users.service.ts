@@ -493,11 +493,19 @@ export class UsersService {
     }
 
     const pending: AuditEntry[] = [];
-    let outcome: { created: BulkImportUserPlan[]; groups: string[][]; skipped: number };
+    let outcome: {
+      created: BulkImportUserPlan[];
+      groups: string[][];
+      skipped: number;
+      usersExisting: { line: number; username: string }[];
+      groupsExisting: string[][];
+    };
 
     try {
       outcome = await this.prisma.$transaction(async (tx) => {
-        // 대조를 여기서 다시 한다. 위에서 한 번 했더라도 그 사이 해싱에 1초 넘게 흘렀다.
+        // 대조를 여기서 다시 한다. 앞선 미리보기 요청이 대조한 뒤로 사람이 화면을 읽는
+        // 시간과 이 요청의 해싱 시간(위 for 루프, 34명이면 1초 넘게)이 흘렀으므로 삽입
+        // 직전에 다시 대조해야 한다.
         const r = await this.resolveImport(tx as unknown as PrismaService, parsed);
 
         if (r.usersExisting.length > 0 && !input.skipExisting) {
@@ -585,6 +593,8 @@ export class UsersService {
           created: r.usersToCreate,
           groups: r.groupsToCreate,
           skipped: r.usersExisting.length,
+          usersExisting: r.usersExisting,
+          groupsExisting: r.groupsExisting,
         };
       });
     } catch (err) {
@@ -617,15 +627,17 @@ export class UsersService {
 
     return {
       applied: true,
+      // 토큰 대조(위 트랜잭션 안의 BULK_IMPORT_STALE 검사)가 undefined 를 반드시 걸러 내므로
+      // 여기 닿았다는 것은 previewToken 이 있었다는 뜻이다.
       previewToken: input.previewToken!,
       groupsToCreate: outcome.groups,
-      groupsExisting: [],
+      groupsExisting: outcome.groupsExisting,
       usersToCreate: outcome.created,
-      usersExisting: [],
+      usersExisting: outcome.usersExisting,
       issues: [],
       createdUserCount: outcome.created.length,
       createdGroupCount: outcome.groups.length,
-      skippedUserCount: outcome.skipped,
+      skippedUserCount: outcome.usersExisting.length,
     };
   }
 

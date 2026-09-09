@@ -203,15 +203,31 @@ export default function UserBulkImportDialog({
                   ))}
                 </ul>
               )}
+              {(preview.groupsToCreate.length > 0 || preview.usersToCreate.length > 0) && (
+                <div className="mt-2 max-h-48 overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800">
+                  {preview.groupsToCreate.map((p, idx) => (
+                    <p key={`g-${idx}`} className="font-mono">
+                      {p.join(' / ')}
+                    </p>
+                  ))}
+                  {preview.usersToCreate.map((u, idx) => (
+                    <p key={`u-${idx}`} className="font-mono">
+                      {u.username} · {u.displayName} —{' '}
+                      {u.groupPath.length > 0 ? u.groupPath.join(' / ') : '소속 없음'}
+                    </p>
+                  ))}
+                </div>
+              )}
               {preview.usersExisting.length > 0 && (
                 <label className="mt-3 flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={skipExisting}
                     onChange={(e) => {
-                      // 건너뛰기 여부가 바뀌면 만들 사람이 달라져 previewToken 도 달라진다.
+                      // 토큰은 skipExisting 과 무관하므로(resolveImport 는 이 값을 받지 않고,
+                      // bulkImportTokenOf() 도 groupsToCreate/usersToCreate 만으로 계산한다)
+                      // 미리보기를 다시 받을 필요가 없다.
                       setSkipExisting(e.target.checked);
-                      setPreview(null);
                     }}
                     className="h-4 w-4"
                   />
