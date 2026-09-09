@@ -843,7 +843,7 @@ export default function UserGuidePage() {
                 끄면 본인이 멤버로 속한 프로젝트만 보이고 관리 버튼도 함께 사라집니다.
                 <span className="block mt-1">
                   프로젝트 생성 · 명칭 변경(3.2) · 보관/복원(3.3) · 복제(3.4) · 영구 삭제 · 상태 필터 ·
-                  사용자 그룹 관리(9.3) · 사용자 상세(9.4) · 계정 정리(9.5) · 서버 관리(9.6)
+                  사용자 그룹 관리(9.3) · 사용자 상세(9.4) · 계정 정리(9.5) · 서버 관리(9.6) · 일괄 등록(9.7)
                 </span>
               </div>
 
@@ -1194,6 +1194,56 @@ export default function UserGuidePage() {
                   목록을 보는 <strong className="font-semibold">관리자 자신도 포함</strong>됩니다. 다만 이 화면을 켜 두는 것 자체는 활동으로 세지
                   않으므로, 화면만 켜 놓고 자리를 비우면 5분 뒤 목록에서 빠집니다.
                 </li>
+              </ul>
+
+              {/* 9.7 텍스트 파일로 사용자 일괄 등록 */}
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-6 mb-2">9.7 텍스트 파일로 사용자 일괄 등록 (/admin/users)</h3>
+              <p className="text-slate-600 dark:text-slate-300">
+                조직도를 적은 <strong className="font-semibold">텍스트 파일 한 장</strong>으로 그룹 계층과 계정을 한 번에 만듭니다.
+                개통 시점처럼 수십 명을 넣어야 할 때, 9.1 의 개별 추가를 사람 수만큼 되풀이하지 않아도 됩니다.
+                사용자 관리 화면 오른쪽 위의 <strong className="font-semibold">일괄 등록</strong> 버튼으로 엽니다.
+              </p>
+
+              <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mt-4 mb-1">파일 형식</h4>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300 my-2">
+                <li><b>들여쓰기가 조직 계층입니다.</b> 한 단계에 <b>탭 하나</b>를 권합니다. 공백으로 맞춰도 되지만, 한 파일 안에서 탭과 공백을 섞으면 계층이 어긋납니다.</li>
+                <li><b>사람은 <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">- 아이디, 이름</code> 으로 적습니다.</b> 줄 앞의 <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">- </code> 이 사람과 그룹을 가릅니다. 첫 쉼표만 구분자이므로 이름에 쉼표가 들어가도 잘리지 않습니다.</li>
+                <li><b>아이디에는 한글을 쓸 수 없습니다.</b> 영문·숫자와 <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">. _ -</code> 만 3~64자입니다. 부서 이름을 넣으려면 <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">gigu01</code> 처럼 영문 약칭을 쓰십시오.</li>
+                <li><b>들여쓰기 없는 사람 줄은 소속이 없는 사람</b>이 됩니다. 임원처럼 어느 팀에도 속하지 않는 인원이 여기에 듭니다.</li>
+                <li><code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">#</code> 로 시작하는 줄과 빈 줄은 건너뜁니다.</li>
+              </ul>
+              <pre className="my-2 overflow-x-auto rounded border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300" style={{ tabSize: 2 }}>{`운영기술센터
+	기구완성팀
+		- gigu01, 김민준-기구완성팀
+		- gigu02, 이서연-기구완성팀
+	생산기술팀
+		- saeng01, 박도윤-생산기술팀
+	- center01, 정하준-센터장
+구매팀
+	- gumae01, 한지호-구매팀
+- ceo01, 최정우-대표이사`}</pre>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                위 예시에서 <b>센터장</b>은 팀보다 한 단계 얕게 적어 세 팀 어디에도 속하지 않고 운영기술센터 직속이 되고,
+                <b> 대표이사</b>는 들여쓰기가 없어 소속이 없습니다.
+              </p>
+
+              <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mt-4 mb-1">등록하는 순서</h4>
+              <ol className="list-decimal pl-5 space-y-1 text-slate-600 dark:text-slate-300 my-2">
+                <li><b>파일을 고르거나 내용을 붙여넣습니다.</b> 고른 뒤에도 아래 칸에서 바로 고칠 수 있습니다.</li>
+                <li><b>&quot;확인&quot;을 누릅니다.</b> 이 단계에서는 <b>아무것도 만들어지지 않습니다.</b> 새로 만들 그룹과 사람이 몇인지, 각자 어느 그룹에 들어가는지, 고쳐야 할 줄이 몇 번째인지를 보여 줍니다.</li>
+                <li><b>초기 비밀번호를 한 번 입력합니다.</b> 전원에게 같은 값이 들어가며, 각자 <b>첫 로그인 때 반드시 바꿉니다</b>(1.2).</li>
+                <li><b>&quot;등록&quot;을 누릅니다.</b> 버튼 왼쪽에 지금 무엇을 해야 하는지가 늘 적혀 있으니, 등록이 눌리지 않으면 그 문구를 보십시오.</li>
+              </ol>
+
+              <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mt-4 mb-1">알아두실 점</h4>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300 my-2">
+                <li><b>고쳐야 할 줄이 하나라도 있으면 등록되지 않습니다.</b> 몇 번째 줄이 왜 문제인지 한꺼번에 보여 주므로, 파일을 고쳐 다시 &quot;확인&quot;을 누르십시오.</li>
+                <li><b>이미 있는 아이디가 섞여 있으면</b> 목록으로 알려 주고 <b>&quot;이미 있는 아이디는 건너뛰고 나머지만 만들기&quot;</b> 선택이 나타납니다. 켜지 않으면 등록이 거절됩니다. 같은 파일을 두 번 올려도 사고가 나지 않게 하려는 것입니다.</li>
+                <li><b>이미 있는 그룹은 그대로 씁니다.</b> 없는 그룹만 새로 만들며, 기존 그룹의 이름이나 상위 그룹을 덮어쓰지 않습니다.</li>
+                <li><b>기존 계정은 건드리지 않습니다.</b> 이 기능은 새로 만드는 일만 합니다. 이름이나 소속을 고치는 것은 9.4 의 사용자 상세에서 합니다.</li>
+                <li><b>전부 아니면 전무입니다.</b> 도중에 무엇 하나라도 실패하면 그때까지 만든 것이 모두 되돌아갑니다. 절반만 만들어진 상태가 남지 않습니다.</li>
+                <li><b>미리 본 뒤 다른 관리자가 사람이나 그룹을 만들었다면</b> 등록이 거절되고 미리보기를 자동으로 다시 받아 옵니다. 입력한 내용은 그대로 남으니 처음부터 다시 하실 필요는 없습니다. 미리 본 것과 다른 결과가 조용히 만들어지는 일을 막기 위한 것입니다.</li>
+                <li>만들어진 계정은 모두 <b>일반 사용자(USER)</b> 입니다. 관리자 권한은 이 기능으로 주지 않습니다.</li>
               </ul>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-3">
