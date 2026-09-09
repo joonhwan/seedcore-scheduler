@@ -300,6 +300,34 @@ export default function UserGuidePage() {
                 로그아웃된 것이 아니므로 다시 로그인할 필요가 없습니다. 서버가 돌아오면 보고 있던 화면으로
                 저절로 되돌아갑니다.
               </p>
+
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-6">1.5 내 정보 — 이름과 비밀번호 바꾸기</h3>
+              <p className="text-slate-600 dark:text-slate-300">
+                화면 오른쪽 위에 있는 <strong className="font-semibold">자기 이름을 클릭</strong>하면
+                <strong className="font-semibold"> 내 정보</strong> 화면이 열립니다. 여기서 표시 이름과 비밀번호를 스스로 바꿉니다.
+                1.2 의 비밀번호 변경 화면은 첫 로그인처럼 <strong className="font-semibold">반드시 바꿔야 하는 때</strong>에만 나타나므로,
+                평소에 바꾸려면 이 화면으로 들어오십시오.
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300">
+                <li>
+                  <strong className="font-semibold">이름</strong>: 고쳐서 <strong className="font-semibold">저장</strong>을 누르면 곧바로
+                  반영됩니다. 이 이름은 프로젝트 멤버 목록, 일정의 담당자와 수정 이력, 댓글에 그대로 나타나므로
+                  <strong className="font-semibold"> 남이 나를 알아볼 수 있는 이름</strong>으로 두십시오.
+                </li>
+                <li>
+                  <strong className="font-semibold">비밀번호</strong>: <strong className="font-semibold">현재 비밀번호</strong>를 함께 넣어야
+                  바꿀 수 있습니다. 새 비밀번호는 현재 비밀번호와 달라야 합니다(그 밖의 제한은 1.2 와 같이 없습니다).
+                  바꾼 뒤에도 <strong className="font-semibold">로그인은 그대로 유지</strong>되므로 다시 로그인하지 않아도 됩니다.
+                </li>
+                <li>
+                  <strong className="font-semibold">ID 는 바꿀 수 없습니다.</strong> 로그인과 기록을 잇는 값이라 관리자도 바꾸지 않습니다.
+                  ID 를 잘못 발급받았다면 관리자에게 계정을 다시 만들어 달라고 요청하십시오.
+                </li>
+              </ul>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                비밀번호를 잊었을 때는 스스로 되돌릴 수 없습니다. 관리자에게 초기화를 요청하면 임시 비밀번호를
+                받게 되고, 그 비밀번호로 로그인하면 1.2 의 변경 화면이 나타납니다.
+              </p>
             </div>
           </section>
 
@@ -968,6 +996,27 @@ export default function UserGuidePage() {
                 <li><b>MANAGER → MEMBER (격상)</b>: 프로젝트 관리 권한을 해제하고 일반 수정 권한으로 전환합니다. (단, 프로젝트에 마지막 남은 MANAGER인 경우 해제할 수 없으며 경고 알림이 발생합니다.)</li>
                 <li><b>자기 자신 역할 변경 제약</b>: 일반 MANAGER 사용자는 자신의 실수나 권한 남용을 방지하기 위해 <b>자기 자신의 역할은 변경할 수 없습니다</b> (비활성 처리). 단, ADMIN 모드의 관리자(ADMIN)는 본인의 프로젝트 역할도 변경할 수 있습니다.</li>
                 <li><b>참여자 추가</b>: 검색으로 한 사람씩 넣거나, 관리자 모드에서는 <b>그룹으로 담기</b> 로 부서째 한 번에 넣습니다(9.3). 명단에는 각자의 <b>소속 그룹 배지</b>가 함께 나옵니다.</li>
+                <li>
+                  <b>체크박스로 여러 명을 한 번에</b>: 현재 멤버 목록과 아래 후보 목록 모두 이름 왼쪽에 체크박스가
+                  있습니다. 골라 두면 목록 위에 <b>선택 N명 제거</b> · <b>선택 N명 추가</b> 버튼이 나타납니다.
+                  한 명만 다룰 때는 그 행의 <b>제거</b> · <b>+ 추가</b> 버튼을 그대로 쓰면 됩니다.
+                  머리의 <b>전체 선택</b> 은 지금 보이는 목록만 다루므로, 검색으로 걸러 둔 상태에서 누르면
+                  걸러진 사람만 골라집니다.
+                </li>
+                <li>
+                  <b>후보 목록의 선택은 검색어를 바꿔도 유지됩니다.</b> 세 명을 고른 뒤 네 번째 사람을 찾으려
+                  검색어를 넣어도 앞서 고른 사람이 풀리지 않습니다. 지금 몇 명을 골랐는지는 버튼 옆 숫자로
+                  확인하십시오. 추가할 <b>역할</b>은 오른쪽 위 선택 상자의 값이 고른 전원에게 함께 적용됩니다.
+                </li>
+                <li>
+                  <b>MANAGER 를 모두 뺄 수는 없습니다.</b> 고른 인원을 빼면 MANAGER 가 한 명도 남지 않는 경우
+                  <b>전체가 거부되고 아무도 빠지지 않습니다</b>. 절반만 빠진 상태로 남는 일은 없으므로, 안내를
+                  받으면 MANAGER 한 명을 선택에서 풀고 다시 누르십시오.
+                </li>
+                <li>
+                  <b>목록 순서</b>: 현재 멤버는 MANAGER 를 위에 모아 두고 그 안에서 이름순, 후보는 이름순입니다.
+                  <b>영문 이름이 한글 이름보다 앞에</b> 오므로, 한글 이름을 찾을 때는 목록 아래쪽을 보십시오.
+                </li>
               </ul>
 
               {/* 9.3 사용자 그룹 관리 */}
@@ -1034,6 +1083,12 @@ export default function UserGuidePage() {
                 사용자 목록과 프로젝트 참여자 명단에는 <strong className="font-semibold">소속 그룹 배지</strong>가 붙어, 누가 어느 부서인지 바로
                 보입니다. 사용자 관리 화면의 검색창에서는 <strong className="font-semibold">그룹 이름으로도</strong> 사람을 찾을 수 있습니다.
               </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                사람이 나오는 목록은 모두 <strong className="font-semibold">이름순</strong>입니다(사용자 관리, 프로젝트 멤버 관리,
+                인원 추가 대화상자, 프로젝트를 만들 때의 명단 편집기). 이때
+                <strong className="font-semibold"> 영문 이름이 한글 이름보다 앞에</strong> 오므로, 한글 이름을 찾을 때는 목록 아래쪽을
+                보십시오.
+              </p>
               <p className="rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300">
                 <strong>그룹은 명단을 복사하는 방식입니다.</strong> 프로젝트를 만들 때 그룹을 고르면 그 순간의 인원이
                 참여자로 들어갑니다. <strong>나중에 그룹 인원이 바뀌어도 이미 만들어진 프로젝트의 참여자는 그대로</strong>
@@ -1068,8 +1123,10 @@ export default function UserGuidePage() {
                   9.3 의 그룹 관리 화면에서 합니다.
                 </li>
                 <li>
-                  <strong className="font-semibold">표시 이름</strong>도 여기서 고칩니다. 비밀번호 리셋과 활성·비활성 전환은 사용자 관리 목록에서
-                  합니다.
+                  <strong className="font-semibold">표시 이름</strong>도 여기서 고칩니다. 다만 이 자리는
+                  <strong className="font-semibold"> 관리자가 다른 사람의 이름을 고치는 곳</strong>입니다. 본인 이름은 각자
+                  내 정보 화면에서 직접 바꿀 수 있으므로(1.5), 대신 고쳐 달라는 요청을 받았을 때만 쓰십시오.
+                  비밀번호 리셋과 활성·비활성 전환은 사용자 관리 목록에서 합니다.
                 </li>
               </ul>
               <div className="my-3 overflow-hidden rounded-lg border border-slate-200 shadow-sm dark:border-slate-800">
