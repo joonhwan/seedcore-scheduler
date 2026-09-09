@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,7 +22,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { SessionsService } from '../sessions/sessions.service';
-import { AuditService } from '../audit/audit.service';
+import { AuditService, type AuditEntry } from '../audit/audit.service';
 
 interface ActorContext {
   actorId: string;
@@ -467,8 +468,165 @@ export class UsersService {
       };
     }
 
-    // 적용 경로는 Task 4 에서 채운다.
-    throw new BadRequestException({ error: 'BULK_IMPORT_INVALID', issues: [] });
+    // ── 적용 ────────────────────────────────────────────────────────────
+    // 정책 판단의 단일 지점은 validatePassword 하나다(AGENTS.md §4.4). 그 함수는 username 을
+    // 반드시 받고 "아이디를 비밀번호에 넣지 말 것"까지 보므로, 공통 비밀번호라도 파일에 적힌
+    // 아이디 전부에 대해 확인한다. 한 사람이라도 걸리면 그 값은 공통으로 쓸 수 없다.
+    for (const u of parsed.users) {
+      const policyError = validatePassword(input.initialPassword, u.username);
+      if (policyError) {
+        throw new BadRequestException({
+          error: 'PASSWORD_POLICY_VIOLATION',
+          reason: policyError,
+          username: u.username,
+        });
+      }
+    }
+
+    // 해싱을 트랜잭션 밖에서 먼저 끝낸다. bcrypt 는 한 번에 40밀리초 남짓이라 34명이면
+    // 1.5초가량인데, 트랜잭션 안에 두면 SQLite 의 단일 Writer 를 그만큼 붙들어 다른 사람의
+    // 저장이 모두 밀린다. 실제로 쓸 사람은 트랜잭션 안에서 정해지므로 파일에 적힌 사람
+    // 전부를 미리 해싱한다 — 건너뛸 두어 명 몫이 남는 대신 락 시간이 짧아진다.
+    const hashByUsername = new Map<string, string>();
+    for (const u of parsed.users) {
+      hashByUsername.set(u.username, await this.auth.hashPassword(input.initialPassword));
+    }
+
+    const pending: AuditEntry[] = [];
+    let outcome: { created: BulkImportUserPlan[]; groups: string[][]; skipped: number };
+
+    try {
+      outcome = await this.prisma.$transaction(async (tx) => {
+        // 대조를 여기서 다시 한다. 위에서 한 번 했더라도 그 사이 해싱에 1초 넘게 흘렀다.
+        const r = await this.resolveImport(tx as unknown as PrismaService, parsed);
+
+        if (r.usersExisting.length > 0 && !input.skipExisting) {
+          throw new BadRequestException({
+            error: 'BULK_IMPORT_DUPLICATE',
+            usernames: r.usersExisting.map((x) => x.username),
+          });
+        }
+        if (bulkImportTokenOf(r.groupsToCreate, r.usersToCreate) !== input.previewToken) {
+          throw new ConflictException({ error: 'BULK_IMPORT_STALE' });
+        }
+
+        // 상위 그룹이 먼저 있어야 하위 그룹의 parentId 를 채울 수 있다. 경로 길이 순으로
+        // 만들면 부모가 반드시 앞선다.
+        const idByPathKey = new Map(r.idByPathKey);
+        const orderedGroups = [...r.groupsToCreate].sort((a, b) => a.length - b.length);
+        for (const path of orderedGroups) {
+          const parentId =
+            path.length === 1 ? null : (idByPathKey.get(groupPathKey(path.slice(0, -1))) ?? null);
+          if (path.length > 1 && parentId === null) {
+            // 여기에 닿으면 파서나 정렬이 깨진 것이다. 조용히 최상위로 만들면 조직도가
+            // 어긋난 채 남으므로 통째로 되돌린다.
+            throw new ConflictException({ error: 'BULK_IMPORT_STALE' });
+          }
+          const created = await tx.userGroup.create({
+            data: { id: randomUUID(), name: path[path.length - 1]!, parentId, description: null },
+          });
+          idByPathKey.set(groupPathKey(path), created.id);
+          pending.push({
+            actorId: ctx.actorId,
+            action: 'GROUP_CREATE',
+            targetType: 'user_group',
+            targetId: created.id,
+            ip: ctx.ip,
+            userAgent: ctx.userAgent,
+            payload: { name: created.name, parentId: created.parentId, bulkImport: true },
+          });
+        }
+
+        for (const u of r.usersToCreate) {
+          const created = await tx.user.create({
+            data: {
+              id: randomUUID(),
+              username: u.username,
+              displayName: u.displayName,
+              passwordHash: hashByUsername.get(u.username)!,
+              passwordMustChange: true,
+              globalRole: 'USER',
+              isActive: true,
+            },
+          });
+          pending.push({
+            actorId: ctx.actorId,
+            action: 'USER_CREATE',
+            targetType: 'user',
+            targetId: created.id,
+            ip: ctx.ip,
+            userAgent: ctx.userAgent,
+            payload: {
+              username: created.username,
+              displayName: created.displayName,
+              bulkImport: true,
+            },
+          });
+
+          if (u.groupPath.length > 0) {
+            const groupId = idByPathKey.get(groupPathKey(u.groupPath));
+            if (groupId === undefined) throw new ConflictException({ error: 'BULK_IMPORT_STALE' });
+            await tx.userGroupMember.create({
+              data: { groupId, userId: created.id, addedById: ctx.actorId },
+            });
+            pending.push({
+              actorId: ctx.actorId,
+              action: 'GROUP_MEMBER_ADD',
+              targetType: 'user_group',
+              targetId: groupId,
+              ip: ctx.ip,
+              userAgent: ctx.userAgent,
+              payload: { userId: created.id, bulkImport: true },
+            });
+          }
+        }
+
+        return {
+          created: r.usersToCreate,
+          groups: r.groupsToCreate,
+          skipped: r.usersExisting.length,
+        };
+      });
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      // 위 검사를 모두 지나고도 남는 경합은 유일 제약이 잡는다. 날것의 Prisma 오류를 그대로
+      // 올리면 화면이 무슨 일인지 알 수 없으므로 같은 409 로 바꾼다.
+      if (typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2002') {
+        throw new ConflictException({ error: 'BULK_IMPORT_STALE' });
+      }
+      throw err;
+    }
+
+    // 감사로그는 커밋한 뒤에 남긴다. AuditService 는 자기 PrismaService 로 쓰기 때문에
+    // 트랜잭션 안에서 부르면 같은 SQLite 파일에 두 번째 Writer 로 붙어 잠금 경합을 만든다.
+    // 되돌아간 작업의 기록이 남지 않는다는 이점도 함께 얻는다.
+    for (const entry of pending) await this.audit.log(entry);
+    await this.audit.log({
+      actorId: ctx.actorId,
+      action: 'USER_BULK_IMPORT',
+      targetType: 'user',
+      targetId: null,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      payload: {
+        createdUserCount: outcome.created.length,
+        createdGroupCount: outcome.groups.length,
+        skippedUserCount: outcome.skipped,
+      },
+    });
+
+    return {
+      applied: true,
+      previewToken: input.previewToken!,
+      groupsToCreate: outcome.groups,
+      groupsExisting: [],
+      usersToCreate: outcome.created,
+      usersExisting: [],
+      issues: [],
+      createdUserCount: outcome.created.length,
+      createdGroupCount: outcome.groups.length,
+      skippedUserCount: outcome.skipped,
+    };
   }
 
   /**

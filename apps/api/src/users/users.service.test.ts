@@ -565,3 +565,258 @@ describe('UsersService.bulkImport() — 미리보기', () => {
     );
   });
 });
+
+describe('UsersService.bulkImport() — 적용', () => {
+  async function preview(s: ReturnType<typeof buildService>, skipExisting = false) {
+    return s.service.bulkImport(
+      { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: true, skipExisting },
+      IMPORT_CTX,
+    );
+  }
+
+  it('그룹과 사용자를 만들고 소속까지 넣는다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    const p = await preview(s);
+    const r = await s.service.bulkImport(
+      {
+        text: IMPORT_TEXT,
+        initialPassword: 'Init!2026',
+        dryRun: false,
+        skipExisting: false,
+        previewToken: p.previewToken,
+      },
+      IMPORT_CTX,
+    );
+    expect(r.applied).toBe(true);
+    expect(r.createdGroupCount).toBe(2);
+    expect(r.createdUserCount).toBe(3);
+    expect(r.skippedUserCount).toBe(0);
+    expect(s.groupRows.map((g) => g.name)).toEqual(['운영기술센터', '기구완성팀']);
+    expect(s.groupMemberRows).toHaveLength(3);
+  });
+
+  it('상위 그룹을 먼저 만들고 하위 그룹의 parentId 를 채운다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    const p = await preview(s);
+    await s.service.bulkImport(
+      {
+        text: IMPORT_TEXT,
+        initialPassword: 'Init!2026',
+        dryRun: false,
+        skipExisting: false,
+        previewToken: p.previewToken,
+      },
+      IMPORT_CTX,
+    );
+    const center = s.groupRows.find((g) => g.name === '운영기술센터')!;
+    const team = s.groupRows.find((g) => g.name === '기구완성팀')!;
+    expect(center.parentId).toBeNull();
+    expect(team.parentId).toBe(center.id);
+  });
+
+  it('만든 계정은 첫 로그인 시 비밀번호 변경을 강제한다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    const p = await preview(s);
+    await s.service.bulkImport(
+      {
+        text: IMPORT_TEXT,
+        initialPassword: 'Init!2026',
+        dryRun: false,
+        skipExisting: false,
+        previewToken: p.previewToken,
+      },
+      IMPORT_CTX,
+    );
+    const made = s.users.find((u) => u.username === 'gigu01')!;
+    expect(made.passwordMustChange).toBe(true);
+    expect(made.globalRole).toBe('USER');
+    expect(made.isActive).toBe(true);
+  });
+
+  it('개별 기록과 일괄 등록 요약을 모두 감사로그에 남긴다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    const p = await preview(s);
+    await s.service.bulkImport(
+      {
+        text: IMPORT_TEXT,
+        initialPassword: 'Init!2026',
+        dryRun: false,
+        skipExisting: false,
+        previewToken: p.previewToken,
+      },
+      IMPORT_CTX,
+    );
+    const log = s.audit.log as unknown as { mock: { calls: [{ action: string }][] } };
+    const actions = log.mock.calls.map((c) => c[0].action);
+    expect(actions.filter((a) => a === 'USER_CREATE')).toHaveLength(3);
+    expect(actions.filter((a) => a === 'GROUP_CREATE')).toHaveLength(2);
+    expect(actions.filter((a) => a === 'USER_BULK_IMPORT')).toHaveLength(1);
+  });
+
+  it('previewToken 이 없으면 거부한다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    await expect(
+      s.service.bulkImport(
+        { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: false, skipExisting: false },
+        IMPORT_CTX,
+      ),
+    ).rejects.toMatchObject({ response: { error: 'BULK_IMPORT_STALE' } });
+  });
+
+  it('파일 내용에 오류가 남아 있으면 400 으로 거부한다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    await expect(
+      s.service.bulkImport(
+        {
+          text: '- 김하나, 이름',
+          initialPassword: 'Init!2026',
+          dryRun: false,
+          skipExisting: false,
+          previewToken: 'x',
+        },
+        IMPORT_CTX,
+      ),
+    ).rejects.toMatchObject({ response: { error: 'BULK_IMPORT_INVALID' } });
+    expect(s.users).toHaveLength(1);
+  });
+
+  it('중복이 있는데 skipExisting 이 거짓이면 400 으로 거부하고 아무것도 만들지 않는다', async () => {
+    const s = buildService({
+      users: [userRow({ id: 'u1' }), userRow({ id: 'x', username: 'gigu02' })],
+    });
+    const p = await preview(s);
+    await expect(
+      s.service.bulkImport(
+        {
+          text: IMPORT_TEXT,
+          initialPassword: 'Init!2026',
+          dryRun: false,
+          skipExisting: false,
+          previewToken: p.previewToken,
+        },
+        IMPORT_CTX,
+      ),
+    ).rejects.toMatchObject({ response: { error: 'BULK_IMPORT_DUPLICATE' } });
+    expect(s.groupRows).toHaveLength(0);
+    expect(s.users).toHaveLength(2);
+  });
+
+  it('skipExisting 이 참이면 겹치는 사람만 건너뛴다', async () => {
+    const s = buildService({
+      users: [userRow({ id: 'u1' }), userRow({ id: 'x', username: 'gigu02' })],
+    });
+    const p = await preview(s, true);
+    const r = await s.service.bulkImport(
+      {
+        text: IMPORT_TEXT,
+        initialPassword: 'Init!2026',
+        dryRun: false,
+        skipExisting: true,
+        previewToken: p.previewToken,
+      },
+      IMPORT_CTX,
+    );
+    expect(r.createdUserCount).toBe(2);
+    expect(r.skippedUserCount).toBe(1);
+  });
+});
+
+describe('UsersService.bulkImport() — 미리보기와 적용 사이의 경합', () => {
+  it('그 사이 다른 사람이 같은 아이디를 만들면 409 로 거부한다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    const p = await s.service.bulkImport(
+      { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: true, skipExisting: true },
+      IMPORT_CTX,
+    );
+    // 미리보기와 적용 사이에 다른 경로로 계정이 생긴 상황
+    s.users.push(userRow({ id: 'other', username: 'gigu02' }));
+
+    await expect(
+      s.service.bulkImport(
+        {
+          text: IMPORT_TEXT,
+          initialPassword: 'Init!2026',
+          dryRun: false,
+          skipExisting: true,
+          previewToken: p.previewToken,
+        },
+        IMPORT_CTX,
+      ),
+    ).rejects.toMatchObject({ response: { error: 'BULK_IMPORT_STALE' } });
+    // skipExisting 이 참이어도 조용히 한 명을 덜 만들지 않는다 — 이것이 이 시험의 요지다
+    expect(s.users.filter((u) => u.username === 'gigu01')).toHaveLength(0);
+    expect(s.groupRows).toHaveLength(0);
+  });
+
+  it('그 사이 같은 이름의 그룹이 생기면 409 로 거부한다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    const p = await s.service.bulkImport(
+      { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: true, skipExisting: false },
+      IMPORT_CTX,
+    );
+    s.groupRows.push({
+      id: 'g-new',
+      name: '운영기술센터',
+      parentId: null,
+      description: null,
+      createdAt: T0,
+      updatedAt: T0,
+    });
+
+    await expect(
+      s.service.bulkImport(
+        {
+          text: IMPORT_TEXT,
+          initialPassword: 'Init!2026',
+          dryRun: false,
+          skipExisting: false,
+          previewToken: p.previewToken,
+        },
+        IMPORT_CTX,
+      ),
+    ).rejects.toMatchObject({ response: { error: 'BULK_IMPORT_STALE' } });
+  });
+
+  it('낡은 previewToken 이면 409 로 거부한다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    await expect(
+      s.service.bulkImport(
+        {
+          text: IMPORT_TEXT,
+          initialPassword: 'Init!2026',
+          dryRun: false,
+          skipExisting: false,
+          previewToken: 'stale',
+        },
+        IMPORT_CTX,
+      ),
+    ).rejects.toMatchObject({ response: { error: 'BULK_IMPORT_STALE' } });
+  });
+
+  it('검사를 모두 지나고 유일 제약에 걸려도 409 로 바꿔 준다', async () => {
+    const s = buildService({ users: [userRow({ id: 'u1' })] });
+    const p = await s.service.bulkImport(
+      { text: IMPORT_TEXT, initialPassword: 'Init!2026', dryRun: true, skipExisting: false },
+      IMPORT_CTX,
+    );
+    // 대조는 통과하지만 삽입이 P2002 로 실패하는 상황을 흉내 낸다
+    s.prismaObject.user.create = vi.fn(async () => {
+      const err = new Error('Unique constraint failed') as Error & { code: string };
+      err.code = 'P2002';
+      throw err;
+    });
+
+    await expect(
+      s.service.bulkImport(
+        {
+          text: IMPORT_TEXT,
+          initialPassword: 'Init!2026',
+          dryRun: false,
+          skipExisting: false,
+          previewToken: p.previewToken,
+        },
+        IMPORT_CTX,
+      ),
+    ).rejects.toMatchObject({ response: { error: 'BULK_IMPORT_STALE' } });
+  });
+});
