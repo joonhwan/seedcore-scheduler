@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { APP_VERSION_LABEL } from '../version';
+import { useMe } from '../lib/auth';
 
 export default function UserGuidePage() {
   const [activeSection, setActiveSection] = useState<string>('sec-1');
+  const me = useMe();
+  const loggedIn = me.data !== null && me.data !== undefined;
 
   const scrollToSection = (id: string) => {
     setActiveSection(id);
@@ -28,14 +31,24 @@ export default function UserGuidePage() {
             일정관리 시스템의 주요 기능, 간트 차트 조작법, 댓글 및 이력 관리, 관리자 모드 사용법을 안내합니다.
           </p>
         </div>
+        {/*
+          이 화면은 로그인하지 않아도 열리므로 돌아갈 곳이 두 가지다. 로그인한 사람은
+          프로젝트 목록으로, 아직 로그인하지 않은 사람은 로그인 화면으로 보낸다. 늘
+          "프로젝트 목록으로" 라고 적어 두면 비로그인 방문자가 그 버튼을 눌렀을 때
+          로그인 화면이 떠서 문구와 어긋난다.
+
+          useMe 는 서버에 물어보지 못했을 때(5xx·연결 실패) data 를 비우지 않고 isError 로
+          남기므로(lib/auth.ts), 로그인한 사람이 서버 재시작 중에 이 화면을 열어도 문구가
+          로그인 쪽으로 바뀌지 않는다.
+        */}
         <Link
-          to="/"
+          to={loggedIn ? '/' : '/login'}
           className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
           </svg>
-          <span>프로젝트 목록으로</span>
+          <span>{loggedIn ? '프로젝트 목록으로' : '로그인 화면으로'}</span>
         </Link>
       </div>
 
@@ -1000,7 +1013,7 @@ export default function UserGuidePage() {
                   <b>체크박스로 여러 명을 한 번에</b>: 현재 멤버 목록과 아래 후보 목록 모두 이름 왼쪽에 체크박스가
                   있습니다. 골라 두면 목록 위에 <b>선택 N명 제거</b> · <b>선택 N명 추가</b> 버튼이 나타납니다.
                   한 명만 다룰 때는 그 행의 <b>제거</b> · <b>+ 추가</b> 버튼을 그대로 쓰면 됩니다.
-                  머리의 <b>전체 선택</b> 은 지금 보이는 목록만 다루므로, 검색으로 걸러 둔 상태에서 누르면
+                  머리의 <b>전체 선택</b>은 지금 보이는 목록만 다루므로, 검색으로 걸러 둔 상태에서 누르면
                   걸러진 사람만 골라집니다.
                 </li>
                 <li>
@@ -1009,12 +1022,12 @@ export default function UserGuidePage() {
                   확인하십시오. 추가할 <b>역할</b>은 오른쪽 위 선택 상자의 값이 고른 전원에게 함께 적용됩니다.
                 </li>
                 <li>
-                  <b>MANAGER 를 모두 뺄 수는 없습니다.</b> 고른 인원을 빼면 MANAGER 가 한 명도 남지 않는 경우
+                  <b>MANAGER 를 모두 뺄 수는 없습니다.</b> 고른 인원을 빼면 MANAGER 가 한 명도 남지 않는 경우{' '}
                   <b>전체가 거부되고 아무도 빠지지 않습니다</b>. 절반만 빠진 상태로 남는 일은 없으므로, 안내를
                   받으면 MANAGER 한 명을 선택에서 풀고 다시 누르십시오.
                 </li>
                 <li>
-                  <b>목록 순서</b>: 현재 멤버는 MANAGER 를 위에 모아 두고 그 안에서 이름순, 후보는 이름순입니다.
+                  <b>목록 순서</b>: 현재 멤버는 MANAGER 를 위에 모아 두고 그 안에서 이름순, 후보는 이름순입니다.{' '}
                   <b>영문 이름이 한글 이름보다 앞에</b> 오므로, 한글 이름을 찾을 때는 목록 아래쪽을 보십시오.
                 </li>
               </ul>

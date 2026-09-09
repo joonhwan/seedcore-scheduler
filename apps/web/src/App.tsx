@@ -784,22 +784,16 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route
-            path="/help"
-            element={
-              <RequireAuth>
-                <UserGuidePage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/guide"
-            element={
-              <RequireAuth>
-                <UserGuidePage />
-              </RequireAuth>
-            }
-          />
+          {/*
+            사용설명서는 로그인하지 않아도 읽을 수 있다. 로그인 화면의 푸터와 단축키 창이
+            이미 이 주소를 가리키고 있어서, 인증을 걸어 두면 그 링크가 로그인 화면으로
+            되튕겼다. 화면 자체는 인증이 필요한 조회를 하지 않는다(useState 와 Link 뿐).
+
+            /guide 는 /help 의 다른 이름이다. 한쪽만 열어 두면 어느 주소로 들어왔는지에
+            따라 되튕기는 일이 생기므로 둘을 같이 둔다.
+          */}
+          <Route path="/help" element={<UserGuidePage />} />
+          <Route path="/guide" element={<UserGuidePage />} />
           {/*
             어디에도 걸리지 않는 주소는 안내를 보여준다. 이 라우트가 없으면 헤더와 푸터만 뜨고
             본문이 백지로 남아서, 오타로 잘못 들어온 사용자에게는 화면이 깨진 것처럼 보인다.
