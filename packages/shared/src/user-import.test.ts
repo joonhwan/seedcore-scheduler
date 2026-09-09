@@ -93,6 +93,30 @@ describe('parseUserImport() — 들여쓰기', () => {
   });
 });
 
+describe('parseUserImport() — 들여쓰기에 섞인 전각 공백', () => {
+  const FW = '\u3000';
+
+  it('전각 공백으로 들여쓴 줄은 BAD_INDENT 로 잡는다', () => {
+    const text = ['본부', FW + FW + '- aaa01, 김하나-본부'].join('\n');
+    const r = parseUserImport(text);
+    expect(r.issues.map((i) => [i.line, i.code])).toEqual([[2, 'BAD_INDENT']]);
+    // 폭을 짐작해 통과시키면 소속 없는 사람이 조용히 만들어진다. 그것을 막는 것이 요지다.
+    expect(r.users).toEqual([]);
+  });
+
+  it('일반 공백 뒤에 전각 공백이 섞여도 잡는다', () => {
+    const text = ['본부', '  ' + FW + '팀'].join('\n');
+    expect(parseUserImport(text).issues.map((i) => i.code)).toEqual(['BAD_INDENT']);
+  });
+
+  it('이름 안의 전각 공백은 건드리지 않는다', () => {
+    const text = ['본부', '  - aaa01, 김' + FW + '하나-본부'].join('\n');
+    const r = parseUserImport(text);
+    expect(r.issues).toEqual([]);
+    expect(r.users[0]!.displayName).toBe('김' + FW + '하나-본부');
+  });
+});
+
 describe('parseUserImport() — 사용자 줄', () => {
   it('이름 안의 쉼표를 자르지 않는다', () => {
     expect(parseUserImport('- aaa01, 김하나, 팀장').users[0]!.displayName).toBe('김하나, 팀장');

@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { ProjectDelaySummaryDto } from './expected-progress';
 import { BulkImportIssue } from './user-import';
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from './username';
 export * from './expected-progress';
 export * from './user-groups';
 export * from './member-drafts';
 export * from './user-import';
+export * from './username';
 
 export const GlobalRole = z.enum(['ADMIN', 'USER']);
 
@@ -44,9 +46,9 @@ export const validatePassword = (
 // 영문/숫자/언더스코어/하이픈/점, 3~64자.
 export const Username = z
   .string()
-  .min(3)
-  .max(64)
-  .regex(/^[A-Za-z0-9._-]+$/, 'username 은 영숫자/._- 만 허용됩니다');
+  .min(USERNAME_MIN_LENGTH)
+  .max(USERNAME_MAX_LENGTH)
+  .regex(USERNAME_PATTERN, 'username 은 영숫자/._- 만 허용됩니다');
 
 // ─── 인증 DTO ──────────────────────────────────────────────────────────────
 export const LoginDto = z.object({

@@ -12,14 +12,12 @@
  */
 import { z } from 'zod';
 import { MAX_GROUP_DEPTH } from './user-groups';
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, isValidUsername } from './username';
 
 /** 탭 하나를 공백 몇 칸으로 볼지. */
 const TAB_WIDTH = 4;
 const MAX_GROUP_NAME_LENGTH = 64;
 const MAX_DISPLAY_NAME_LENGTH = 128;
-const USERNAME_PATTERN = /^[A-Za-z0-9._-]+$/;
-const USERNAME_MIN = 3;
-const USERNAME_MAX = 64;
 
 export const BulkImportIssueCode = z.enum([
   'EMPTY_FILE',
@@ -66,11 +64,21 @@ export function groupPathKey(path: string[]): string {
   return path.join('\u0000');
 }
 
-function indentWidthOf(raw: string): number {
+/** 들여쓰기에 섞이면 안 되는 공백. 한글 문서에서 실수로 들어오기 쉬운 전각 공백이다. */
+const FULL_WIDTH_SPACE = '\u3000';
+
+/**
+ * 들여쓰기 폭. 알아볼 수 없는 공백을 만나면 `null` 을 돌려준다.
+ *
+ * 전각 공백을 몇 칸으로 볼지 짐작해서 넘기면 안 된다. 폭을 임의로 정하면 사람이 보는 모양과
+ * 프로그램이 읽는 계층이 어긋난 채로 조용히 통과한다. 잡아서 알려 주는 편이 낫다.
+ */
+function indentWidthOf(raw: string): number | null {
   let width = 0;
   for (const ch of raw) {
     if (ch === ' ') width += 1;
     else if (ch === '\t') width += TAB_WIDTH;
+    else if (ch === FULL_WIDTH_SPACE) return null;
     else break;
   }
   return width;
@@ -106,6 +114,14 @@ export function parseUserImport(text: string): ParsedImport {
 
     // ── 단계 판정 ──────────────────────────────────────────────────────
     const width = indentWidthOf(raw);
+    if (width === null) {
+      issues.push({
+        line,
+        code: 'BAD_INDENT',
+        message: '들여쓰기에 전각 공백이 섞여 있습니다. 탭이나 일반 공백을 쓰십시오.',
+      });
+      continue;
+    }
     let level: number;
     if (widths.length === 0) {
       // 첫 줄의 폭이 무엇이든 그것을 0단계의 기준으로 삼는다. 파일 전체가 들여쓰여
@@ -175,15 +191,11 @@ export function parseUserImport(text: string): ParsedImport {
         issues.push({ line, code: 'BAD_USER_LINE', message: '이름이 비어 있습니다.' });
         continue;
       }
-      if (
-        username.length < USERNAME_MIN ||
-        username.length > USERNAME_MAX ||
-        !USERNAME_PATTERN.test(username)
-      ) {
+      if (!isValidUsername(username)) {
         issues.push({
           line,
           code: 'INVALID_USERNAME',
-          message: `아이디 "${username}" 는 영문·숫자와 . _ - 만 ${USERNAME_MIN}~${USERNAME_MAX}자로 쓸 수 있습니다.`,
+          message: `아이디 "${username}" 는 영문·숫자와 . _ - 만 ${USERNAME_MIN_LENGTH}~${USERNAME_MAX_LENGTH}자로 쓸 수 있습니다.`,
         });
         continue;
       }
