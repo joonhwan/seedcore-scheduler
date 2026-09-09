@@ -572,11 +572,11 @@ export class UsersService {
             pending.push({
               actorId: ctx.actorId,
               action: 'GROUP_MEMBER_ADD',
-              targetType: 'user_group',
-              targetId: groupId,
+              targetType: 'user_group_member',
+              targetId: `${groupId}:${created.id}`,
               ip: ctx.ip,
               userAgent: ctx.userAgent,
-              payload: { userId: created.id, bulkImport: true },
+              payload: { bulkImport: true },
             });
           }
         }

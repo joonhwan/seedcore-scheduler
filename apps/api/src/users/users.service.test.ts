@@ -818,5 +818,9 @@ describe('UsersService.bulkImport() — 미리보기와 적용 사이의 경합'
         IMPORT_CTX,
       ),
     ).rejects.toMatchObject({ response: { error: 'BULK_IMPORT_STALE' } });
+    // 되돌아간 작업(그룹 두 개가 이미 pending 에 쌓인 채 사용자 생성에서 터진 상황)의
+    // 감사 기록이 하나도 남지 않아야 한다. 감사로그를 트랜잭션 안으로 옮기면 이 시험이
+    // 즉시 빨갛게 된다 — "커밋 뒤에만 남긴다"는 이 갈래의 핵심 제약을 이 한 줄이 잠근다.
+    expect(s.audit.log).not.toHaveBeenCalled();
   });
 });
