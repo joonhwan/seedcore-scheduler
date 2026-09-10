@@ -35,6 +35,10 @@ const EXPECTED_ARTIFACTS = [
   { name: 'sp-migrate.exe', minBytes: 50 * 1024 * 1024 },
   { name: 'query_engine-windows.dll.node', minBytes: 10 * 1024 * 1024 },
   { name: 'README.txt', minBytes: 1024 },
+  // 관리자가 서버를 띄우는 정식 경로. sp-server.exe 를 직접 더블 클릭하면 콘솔 창을 클릭한
+  // 순간 서버가 멈추는 사고가 나므로(start-server.cmd 머리 주석 참고), 이 파일이 빠진 배포는
+  // 그 자체로 결함이다. 목록에 넣어 검증과 zip 양쪽에서 함께 챙긴다.
+  { name: 'start-server.cmd', minBytes: 512 },
 ];
 
 function formatSize(bytes) {
@@ -383,6 +387,19 @@ async function main() {
     console.log(`✅ 관리자 안내 문서 복사 완료: ${readmeDestPath}`);
   } else {
     console.warn(`⚠️ README 템플릿 파일을 찾을 수 없습니다: ${readmeTemplatePath}`);
+  }
+
+  // 서버 실행용 배치 파일 복사 (apps/api/scripts/start-server.cmd -> dist-exe/start-server.cmd)
+  //
+  // 이름을 바꾸지 않고 그대로 복사한다. README.txt 가 "start-server.cmd 를 더블 클릭" 으로
+  // 안내하므로 양쪽 이름이 어긋나면 관리자가 찾지 못한다.
+  const starterTemplatePath = path.join(__dirname, 'start-server.cmd');
+  const starterDestPath = path.join(outputDistDir, 'start-server.cmd');
+  if (fs.existsSync(starterTemplatePath)) {
+    fs.copyFileSync(starterTemplatePath, starterDestPath);
+    console.log(`✅ 서버 실행 배치 파일 복사 완료: ${starterDestPath}`);
+  } else {
+    console.warn(`⚠️ 실행 배치 파일을 찾을 수 없습니다: ${starterTemplatePath}`);
   }
 
 

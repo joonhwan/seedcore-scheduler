@@ -10,3 +10,24 @@
 # eol=lf 로 못박아 어느 OS 에서 clone 해도 같은 checksum 이 나오게 한다.
 # (apps/api/src/prisma/migration-runner.test.ts 의 checksum 고정 테스트가 이를 감시한다.)
 apps/api/prisma/migrations/**/*.sql text eol=lf
+
+# 배포용 배치 파일은 CRLF 로 체크아웃되어야 한다.
+#
+# build-exe.js 가 이 파일을 그대로 복사해 dist-exe/start-server.cmd 로 내보내므로,
+# 작업 디렉터리의 줄바꿈이 그대로 고객사에 간다. cmd.exe 는 LF 만 있는 배치 파일에서
+# if/for 블록의 경계를 잘못 읽는 경우가 있어, 개발 PC 의 core.autocrlf 설정에 맡기지
+# 않고 여기서 못박는다.
+*.cmd text eol=crlf
+
+# start-server.cmd 만은 작업 디렉터리에 CP949(euc-kr) 로 펼쳐야 한다.
+#
+# 배포판이 도는 한국어 윈도우의 콘솔 기본 코드페이지가 949 다. 이 파일을 UTF-8 로 두고
+# 안에서 `chcp 65001` 을 부르는 방식을 처음에 썼는데, 그러면 cmd.exe 가 배치 파일을 읽는
+# 바이트 위치를 잃어 rem 주석의 한 토막을 명령으로 실행한다 — 고객 화면에
+# "'상태에서도' is not recognized" 류의 오류가 쏟아졌다. 그래서 chcp 를 걷어내고 처음부터
+# 949 로 저장하는 길을 택했다 (그 파일 머리 주석에 같은 내용을 적어 두었다).
+#
+# working-tree-encoding 을 쓰면 저장소에는 UTF-8 로 담기므로 diff 와 검색이 멀쩡하고,
+# 체크아웃될 때만 949 로 바뀐다. build-exe.js 는 이 파일을 그대로 복사하므로 배포판에도
+# 949 로 들어간다. 이 속성을 지우면 위 오류가 그대로 되살아난다.
+apps/api/scripts/start-server.cmd text eol=crlf working-tree-encoding=CP949
