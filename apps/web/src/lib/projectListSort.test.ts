@@ -17,6 +17,7 @@ function project(over: Partial<ProjectListItem>): ProjectListItem {
     name: '프로젝트',
     description: null,
     status: 'ACTIVE',
+    priority: 0,
     myRole: 'MANAGER',
     memberCount: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -174,6 +175,13 @@ describe('parseSortSelection', () => {
     expect(parseSortSelection('[1,2,3]')).toBeNull();
   });
 
+  it('중요도 컬럼을 정렬 기준으로 받아들인다', () => {
+    expect(parseSortSelection('{"by":"priority","order":"desc"}')).toEqual({
+      by: 'priority',
+      order: 'desc',
+    });
+  });
+
   it('정렬 가능한 컬럼 일곱 개를 모두 받아들인다', () => {
     // 화면의 헤더와 이 목록이 어긋나면, 사용자가 고른 정렬이 조용히 무시된다.
     for (const by of PROJECT_SORT_FIELDS) {
@@ -272,5 +280,26 @@ describe('nextSortSelection', () => {
     const thrice = nextSortSelection(twice, 'createdAt');
 
     expect(thrice).toBeNull();
+  });
+
+  it('중요도 컬럼은 첫 클릭이 내림차순이다', () => {
+    // 중요도로 정렬하는 의도는 거의 언제나 "중요한 것을 위에서 보겠다" 이다.
+    expect(nextSortSelection(null, 'priority')).toEqual({ by: 'priority', order: 'desc' });
+  });
+
+  it('중요도를 한 번 더 누르면 오름차순이 된다', () => {
+    expect(nextSortSelection({ by: 'priority', order: 'desc' }, 'priority')).toEqual({
+      by: 'priority',
+      order: 'asc',
+    });
+  });
+
+  it('중요도를 세 번째 누르면 기본 정렬로 돌아간다', () => {
+    expect(nextSortSelection({ by: 'priority', order: 'asc' }, 'priority')).toBeNull();
+  });
+
+  it('다른 컬럼의 첫 클릭은 여전히 오름차순이다', () => {
+    expect(nextSortSelection(null, 'name')).toEqual({ by: 'name', order: 'asc' });
+    expect(nextSortSelection(null, 'memberCount')).toEqual({ by: 'memberCount', order: 'asc' });
   });
 });

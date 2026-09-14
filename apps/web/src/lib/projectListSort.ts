@@ -49,6 +49,7 @@ export function compareProjectsByRecentlyModified(
  */
 export const PROJECT_SORT_FIELDS = [
   'name',
+  'priority',
   'progress',
   'status',
   'memberCount',
@@ -139,11 +140,24 @@ export function saveSortSelection(sel: ProjectSortSelection): void {
  * 한 것은, **다음 상태가 한 값으로 나와야 저장을 빠뜨리는 갈래가 생기지 않기**
  * 때문이다.
  */
+
+/**
+ * 컬럼마다 처음 눌렀을 때의 방향.
+ *
+ * 적지 않은 컬럼은 오름차순에서 시작한다. **중요도만 내림차순이다** — 중요도로 정렬하는
+ * 의도는 거의 언제나 "중요한 것을 위에서 보겠다" 이고, 규칙의 일관성보다 이쪽이 덜
+ * 헷갈린다.
+ */
+const FIRST_ORDER: Partial<Record<ProjectSortField, 'asc' | 'desc'>> = {
+  priority: 'desc',
+};
+
 export function nextSortSelection(
   current: ProjectSortSelection,
   field: ProjectSortField,
 ): ProjectSortSelection {
-  if (current?.by !== field) return { by: field, order: 'asc' };
-  if (current.order === 'asc') return { by: field, order: 'desc' };
+  const first = FIRST_ORDER[field] ?? 'asc';
+  if (current?.by !== field) return { by: field, order: first };
+  if (current.order === first) return { by: field, order: first === 'asc' ? 'desc' : 'asc' };
   return null;
 }
