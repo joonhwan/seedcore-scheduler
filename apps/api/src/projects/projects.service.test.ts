@@ -59,6 +59,9 @@ function buildService(seed: { users?: UserRow[] } = {}) {
           };
         }) => ({
           ...data,
+          // 실제 DB 는 data 에 없는 컬럼도 컬럼 기본값으로 채워 돌려준다. priority 는
+          // CreateProjectDto 가 받지 않으므로 여기서도 실제와 같이 기본값 0 을 흉내 낸다.
+          priority: 0,
           createdAt: T0,
           updatedAt: T0,
         }),
@@ -182,5 +185,14 @@ describe('ProjectsService.create', () => {
     await expect(
       service.create({ name: 'proj', managerUserIds: [], memberUserIds: [] }, CTX),
     ).rejects.toMatchObject({ response: { error: 'MANAGER_REQUIRED' } });
+  });
+
+  it('새로 만든 프로젝트의 priority 는 0(보통)이다', async () => {
+    const { service } = buildService();
+    const result = await service.create(
+      { name: 'proj', managerUserIds: ['u1'], memberUserIds: [] },
+      CTX,
+    );
+    expect(result.priority).toBe(0);
   });
 });
