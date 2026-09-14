@@ -57,6 +57,7 @@ export default function ProjectPriorityCell({
         type="button"
         onClick={() => setEditing(true)}
         title="중요도 변경"
+        aria-label="중요도 변경"
         className="cursor-pointer"
       >
         {badge}
@@ -69,6 +70,7 @@ export default function ProjectPriorityCell({
       autoFocus
       disabled={updateProject.isPending}
       defaultValue={String(project.priority)}
+      aria-label="중요도"
       onBlur={() => setEditing(false)}
       onChange={async (e) => {
         const next = Number(e.target.value);
