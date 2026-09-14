@@ -1,6 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { ProjectListItem } from '@sam/shared';
-import { compareProjectsByRecentlyModified } from './projectListSort';
+import {
+  compareProjectsByRecentlyModified,
+  parseSortSelection,
+  serializeSortSelection,
+  loadSortSelection,
+  saveSortSelection,
+  nextSortSelection,
+  PROJECT_SORT_FIELDS,
+} from './projectListSort';
 
 /** 테스트에 필요한 필드만 채운 프로젝트 하나를 만든다. */
 function project(over: Partial<ProjectListItem>): ProjectListItem {
@@ -119,5 +127,150 @@ describe('compareProjectsByRecentlyModified', () => {
     expect(
       [...list].sort(compareProjectsByRecentlyModified).map((p) => p.id),
     ).toEqual(['c', 'b', 'a']);
+  });
+});
+
+describe('parseSortSelection', () => {
+  it('저장해 둔 정렬 선택을 그대로 돌려준다', () => {
+    const raw = serializeSortSelection({ by: 'name', order: 'asc' });
+
+    expect(parseSortSelection(raw)).toEqual({ by: 'name', order: 'asc' });
+  });
+
+  it('방향이 내림차순인 선택도 그대로 돌려준다', () => {
+    const raw = serializeSortSelection({ by: 'createdAt', order: 'desc' });
+
+    expect(parseSortSelection(raw)).toEqual({ by: 'createdAt', order: 'desc' });
+  });
+
+  it('정렬 없음(기본 정렬) 상태도 저장했다가 복원한다', () => {
+    // 헤더를 세 번 눌러 기본 정렬로 되돌린 것도 사용자의 선택이므로 유지되어야 한다.
+    const raw = serializeSortSelection(null);
+
+    expect(parseSortSelection(raw)).toBeNull();
+  });
+
+  it('저장된 적이 없으면 기본 정렬이다', () => {
+    expect(parseSortSelection(null)).toBeNull();
+  });
+
+  it('목록에 없는 컬럼 이름이면 기본 정렬로 떨어뜨린다', () => {
+    // 컬럼이 사라지거나 이름이 바뀌면 옛 값이 브라우저에 남는다. 그대로 쓰면 존재하지
+    // 않는 필드로 정렬을 시도해 목록이 뒤죽박죽으로 보인다.
+    expect(parseSortSelection('{"by":"lastScheduleChangeAt","order":"asc"}')).toBeNull();
+  });
+
+  it('방향 값이 이상하면 기본 정렬로 떨어뜨린다', () => {
+    expect(parseSortSelection('{"by":"name","order":"sideways"}')).toBeNull();
+  });
+
+  it('JSON 이 깨져 있어도 예외를 던지지 않고 기본 정렬로 떨어뜨린다', () => {
+    // localStorage 는 사용자가 직접 고칠 수 있다.
+    expect(parseSortSelection('{"by":')).toBeNull();
+  });
+
+  it('JSON 이지만 객체가 아니면 기본 정렬로 떨어뜨린다', () => {
+    expect(parseSortSelection('"name"')).toBeNull();
+    expect(parseSortSelection('[1,2,3]')).toBeNull();
+  });
+
+  it('정렬 가능한 컬럼 일곱 개를 모두 받아들인다', () => {
+    // 화면의 헤더와 이 목록이 어긋나면, 사용자가 고른 정렬이 조용히 무시된다.
+    for (const by of PROJECT_SORT_FIELDS) {
+      expect(parseSortSelection(serializeSortSelection({ by, order: 'asc' }))).toEqual({
+        by,
+        order: 'asc',
+      });
+    }
+  });
+});
+
+describe('loadSortSelection / saveSortSelection', () => {
+  /** localStorage 를 대신할 최소 구현. 테스트마다 새로 만든다. */
+  function fakeStorage(seed: Record<string, string> = {}) {
+    const box = { ...seed };
+    return {
+      getItem: (k: string) => (k in box ? box[k]! : null),
+      setItem: (k: string, v: string) => {
+        box[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete box[k];
+      },
+      clear: () => {
+        for (const k of Object.keys(box)) delete box[k];
+      },
+      key: () => null,
+      length: 0,
+      box,
+    };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('저장한 정렬 선택을 다음에 그대로 읽어 온다', () => {
+    vi.stubGlobal('localStorage', fakeStorage());
+
+    saveSortSelection({ by: 'name', order: 'asc' });
+
+    expect(loadSortSelection()).toEqual({ by: 'name', order: 'asc' });
+  });
+
+  it('저장한 적이 없으면 기본 정렬이다', () => {
+    vi.stubGlobal('localStorage', fakeStorage());
+
+    expect(loadSortSelection()).toBeNull();
+  });
+
+  it('저장소를 쓸 수 없는 환경에서도 화면이 죽지 않는다', () => {
+    // 브라우저의 사생활 보호 모드나 쿠키 차단 설정에서는 localStorage 접근 자체가
+    // 예외를 던진다. 목록 화면 전체가 그것 때문에 뜨지 않으면 안 된다.
+    const blocked = {
+      getItem: () => {
+        throw new Error('access denied');
+      },
+      setItem: () => {
+        throw new Error('access denied');
+      },
+    };
+    vi.stubGlobal('localStorage', blocked);
+
+    expect(() => saveSortSelection({ by: 'name', order: 'asc' })).not.toThrow();
+    expect(loadSortSelection()).toBeNull();
+  });
+});
+
+describe('nextSortSelection', () => {
+  it('정렬하지 않던 컬럼을 누르면 오름차순으로 시작한다', () => {
+    expect(nextSortSelection(null, 'name')).toEqual({ by: 'name', order: 'asc' });
+  });
+
+  it('오름차순인 컬럼을 다시 누르면 내림차순이 된다', () => {
+    expect(nextSortSelection({ by: 'name', order: 'asc' }, 'name')).toEqual({
+      by: 'name',
+      order: 'desc',
+    });
+  });
+
+  it('내림차순인 컬럼을 한 번 더 누르면 기본 정렬로 돌아간다', () => {
+    expect(nextSortSelection({ by: 'name', order: 'desc' }, 'name')).toBeNull();
+  });
+
+  it('다른 컬럼을 누르면 그 컬럼의 오름차순으로 옮겨 간다', () => {
+    expect(nextSortSelection({ by: 'name', order: 'desc' }, 'memberCount')).toEqual({
+      by: 'memberCount',
+      order: 'asc',
+    });
+  });
+
+  it('세 번 누르면 제자리로 돌아온다', () => {
+    // 오름차순 → 내림차순 → 해제. 기존 화면 동작을 그대로 지킨다.
+    const once = nextSortSelection(null, 'createdAt');
+    const twice = nextSortSelection(once, 'createdAt');
+    const thrice = nextSortSelection(twice, 'createdAt');
+
+    expect(thrice).toBeNull();
   });
 });

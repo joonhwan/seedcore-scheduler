@@ -7,7 +7,14 @@ import { useProjects, useDeleteProject } from '../lib/projects';
 import { apiErrorMessage } from '../lib/errors';
 import { toast } from '../lib/toast';
 import { DEFAULT_COLUMN_WIDTHS, computeRenderedWidths, type ProjectColumnKey } from '../lib/projectListColumns';
-import { compareProjectsByRecentlyModified } from '../lib/projectListSort';
+import {
+  compareProjectsByRecentlyModified,
+  loadSortSelection,
+  saveSortSelection,
+  nextSortSelection,
+  type ProjectSortField,
+  type ProjectSortSelection,
+} from '../lib/projectListSort';
 import ProjectNameCell from '../components/ProjectNameCell';
 import ProjectArchiveButton from '../components/ProjectArchiveButton';
 import DelayStatusBadge from '../components/DelayStatusBadge';
@@ -123,9 +130,11 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'ARCHIVED'>('ALL');
   const [delayFilter, setDelayFilter] = useState<'ALL' | 'CRITICAL' | 'DELAYED' | 'ON_TRACK'>('ALL');
   
-  // 정렬 상태
-  const [sortBy, setSortBy] = useState<keyof ProjectListItem | 'progress' | null>(null);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(null);
+  // 정렬 상태. 사용자가 고른 정렬은 이 브라우저에 남아 다시 들어와도 유지된다
+  // (서버로 보내지 않으므로 PC 마다 따로 기억된다).
+  const [sort, setSort] = useState<ProjectSortSelection>(loadSortSelection);
+  const sortBy = sort?.by ?? null;
+  const sortOrder = sort?.order ?? null;
 
 
   // 삭제 확인 모달 상태
@@ -158,18 +167,12 @@ export default function ProjectsPage() {
     };
   }, [projects.data]);
 
-  const handleSort = (field: keyof ProjectListItem | 'progress') => {
-    if (sortBy === field) {
-      if (sortOrder === 'asc') {
-        setSortOrder('desc');
-      } else {
-        setSortBy(null);
-        setSortOrder(null);
-      }
-    } else {
-      setSortBy(field);
-      setSortOrder('asc');
-    }
+  const handleSort = (field: ProjectSortField) => {
+    // 다음 상태를 한 값으로 받아 적용과 저장을 한 번씩만 한다. 분기마다 따로 세우면
+    // 어느 한 갈래에서 저장을 빠뜨리기 쉽다.
+    const next = nextSortSelection(sort, field);
+    setSort(next);
+    saveSortSelection(next);
   };
 
   const handleDeleteExecute = async () => {
@@ -261,7 +264,7 @@ export default function ProjectsPage() {
   // 화면에서 다시 자를 이유가 없다.
   const totalItems = filtered.length;
 
-  const renderSortIcon = (field: keyof ProjectListItem) => {
+  const renderSortIcon = (field: ProjectSortField) => {
     if (sortBy !== field || !sortOrder) {
       return (
         <svg className="w-3 h-3 text-slate-400 dark:text-slate-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -548,7 +551,7 @@ export default function ProjectsPage() {
                       onClick={() => handleSort('progress')}
                       className="cursor-pointer flex items-center justify-center gap-1 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
                     >
-                      진척 현황 {renderSortIcon('progress' as any)}
+                      진척 현황 {renderSortIcon('progress')}
                     </div>
                     <div
                       onMouseDown={(e) => handleMouseDown(e, 'progress')}

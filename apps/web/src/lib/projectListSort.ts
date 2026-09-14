@@ -39,3 +39,111 @@ export function compareProjectsByRecentlyModified(
   if (a.id !== b.id) return a.id < b.id ? -1 : 1;
   return 0;
 }
+
+/**
+ * 목록 헤더를 눌러 정렬할 수 있는 컬럼.
+ *
+ * 화면(`ProjectsPage`)의 헤더와 이 목록은 반드시 같아야 한다. 여기에 없는 이름이
+ * 저장돼 있으면 `parseSortSelection` 이 기본 정렬로 떨어뜨리므로, 헤더에 컬럼을
+ * 추가하면서 이 목록을 빠뜨리면 **그 컬럼의 정렬만 조용히 무시된다.**
+ */
+export const PROJECT_SORT_FIELDS = [
+  'name',
+  'progress',
+  'status',
+  'memberCount',
+  'myRole',
+  'createdAt',
+  'updatedAt',
+] as const;
+
+export type ProjectSortField = (typeof PROJECT_SORT_FIELDS)[number];
+
+/**
+ * 사용자가 고른 정렬. `null` 은 "고른 것 없음", 곧 기본 정렬(최근 수정순)을 뜻한다.
+ *
+ * 헤더를 세 번 눌러 기본 정렬로 되돌린 것도 하나의 선택이므로, 이 `null` 역시
+ * 저장한다. "저장한 적 없음"과 "기본 정렬을 골랐음"이 같은 결과가 되는 것은
+ * 의도된 것이다 — 둘 다 기본 정렬로 보이면 된다.
+ */
+export type ProjectSortSelection = {
+  by: ProjectSortField;
+  order: 'asc' | 'desc';
+} | null;
+
+/** 같은 화면의 컬럼 폭 키(`sam_project_list_column_widths_v3`)와 같은 관례를 따른다. */
+const SORT_STORAGE_KEY = 'sam_project_list_sort_v1';
+
+export function serializeSortSelection(sel: ProjectSortSelection): string {
+  return JSON.stringify(sel);
+}
+
+/**
+ * 저장해 둔 문자열에서 정렬 선택을 복원한다. 믿을 수 없는 값이면 기본 정렬로 떨어뜨린다.
+ *
+ * localStorage 는 사용자가 직접 고칠 수 있고, 컬럼 이름이 바뀌면 옛 값이 남는다.
+ * 검사 없이 그대로 쓰면 존재하지 않는 필드로 정렬을 시도해 목록이 뒤죽박죽으로 보인다.
+ */
+export function parseSortSelection(raw: string | null): ProjectSortSelection {
+  if (raw === null) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+
+  const { by, order } = parsed as { by?: unknown; order?: unknown };
+  if (typeof by !== 'string') return null;
+  if (!(PROJECT_SORT_FIELDS as readonly string[]).includes(by)) return null;
+  if (order !== 'asc' && order !== 'desc') return null;
+
+  return { by: by as ProjectSortField, order };
+}
+
+/**
+ * 정렬 선택을 읽어 온다. 저장소를 쓸 수 없으면 기본 정렬로 둔다.
+ *
+ * 사생활 보호 모드나 쿠키 차단 설정에서는 localStorage 접근 자체가 예외를 던진다.
+ * 그것 때문에 목록 화면 전체가 뜨지 않는 일은 없어야 하므로 조용히 삼킨다.
+ */
+export function loadSortSelection(): ProjectSortSelection {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    return parseSortSelection(localStorage.getItem(SORT_STORAGE_KEY));
+  } catch {
+    return null;
+  }
+}
+
+/** 정렬 선택을 이 브라우저에만 남긴다. 서버로 보내지 않으므로 PC 마다 따로 기억된다. */
+export function saveSortSelection(sel: ProjectSortSelection): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(SORT_STORAGE_KEY, serializeSortSelection(sel));
+  } catch {
+    // 저장소를 쓸 수 없는 환경이면 기억하는 것만 포기한다. 정렬 자체는 계속 동작한다.
+  }
+}
+
+/**
+ * 헤더를 한 번 눌렀을 때 옮겨 갈 다음 정렬 선택을 계산한다.
+ *
+ * 같은 컬럼을 계속 누르면 오름차순 → 내림차순 → 기본 정렬로 돌아오고, 다른 컬럼을
+ * 누르면 그 컬럼의 오름차순에서 시작한다. 화면이 오래 써 온 동작 그대로다.
+ *
+ * 화면의 클릭 처리기가 분기마다 상태를 따로 세우는 대신 이 함수를 한 번 부르도록
+ * 한 것은, **다음 상태가 한 값으로 나와야 저장을 빠뜨리는 갈래가 생기지 않기**
+ * 때문이다.
+ */
+export function nextSortSelection(
+  current: ProjectSortSelection,
+  field: ProjectSortField,
+): ProjectSortSelection {
+  if (current?.by !== field) return { by: field, order: 'asc' };
+  if (current.order === 'asc') return { by: field, order: 'desc' };
+  return null;
+}
