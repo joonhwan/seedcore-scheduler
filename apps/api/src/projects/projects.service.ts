@@ -75,6 +75,7 @@ export class ProjectsService {
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
         lastScheduleChangeAt: lastChanges.get(p.id) ?? null,
+        priority: p.priority,
         delaySummary,
       };
     });
@@ -147,6 +148,7 @@ export class ProjectsService {
       createdAt: project.createdAt.toISOString(),
       updatedAt: project.updatedAt.toISOString(),
       lastScheduleChangeAt: await this.lastScheduleChangeAt(project.id),
+      priority: project.priority,
       createdById: project.createdById,
       delaySummary,
     };
@@ -265,6 +267,7 @@ export class ProjectsService {
       updatedAt: created.updatedAt.toISOString(),
       // 방금 만든 프로젝트라 일정이 하나도 없다.
       lastScheduleChangeAt: null,
+      priority: created.priority,
       createdById: created.createdById,
     };
   }
@@ -347,6 +350,7 @@ export class ProjectsService {
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
       lastScheduleChangeAt: await this.lastScheduleChangeAt(updated.id),
+      priority: updated.priority,
       createdById: updated.createdById,
     };
   }
@@ -587,6 +591,9 @@ export class ProjectsService {
         // 복제는 승계한 일정마다 clonedFrom 이력을 남기므로, 노드를 하나라도 옮겼으면
         // 그 이력의 시각이 곧 "일정이 마지막으로 바뀐 시각"이 된다.
         lastScheduleChangeAt: await this.lastScheduleChangeAt(created.id),
+        // 중요도는 복제 시 원본에서 물려받지 않는다 — 그때그때의 우선순위 판단이라 틀만
+        // 베끼는 복제에 자동으로 붙으면 잘못된 신호가 된다. DB 기본값(0)이 들어간다.
+        priority: created.priority,
         createdById: created.createdById,
       },
       nodeCount: cloned.length,

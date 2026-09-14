@@ -54,6 +54,9 @@ model Project {
   createdById String   @map("created_by")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+  /// 중요도(우선순위). 0 이 미지정이자 보통. 범위 판단은 packages/shared 의 Zod 가 한다.
+  /// CHECK 를 걸지 않은 이유는 설계 문서 §3.2 참고 — 단계를 넓힐 때 테이블 재생성을 피한다.
+  priority    Int      @default(0)
 
   createdBy User            @relation("ProjectCreatedBy", fields: [createdById], references: [id])
   members   ProjectMember[]
