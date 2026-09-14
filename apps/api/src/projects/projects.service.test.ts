@@ -401,4 +401,50 @@ describe('ProjectsService.update — 변경 이력', () => {
     const entry = auditLogs.find((l) => l.action === 'PROJECT_UPDATE');
     expect(entry?.payload).toEqual({ priority: { before: 0, after: 1 } });
   });
+
+  it('요청에 필드가 있어도 값이 기존과 같으면 담지 않는다', async () => {
+    // "필드가 patch 에 없는 경우" 와 구별해야 한다 — 여기서는 name 이 patch 에
+    // 분명히 들어 있지만 target.name 과 같은 값('기존 이름')이라 바뀐 것이 아니다.
+    // 함께 보낸 priority 는 실제로 바뀌므로 그것만 payload 에 남아야 한다.
+    const { service, project, auditLogs } = buildProjectWithMember('u1', 'MANAGER');
+
+    await service.update(
+      project.id,
+      {
+        name: project.name,
+        priority: 5,
+        expectedUpdatedAt: project.updatedAt.toISOString(),
+      },
+      { actorId: 'u1', globalRole: 'USER', adminMode: false },
+    );
+
+    const entry = auditLogs.find((l) => l.action === 'PROJECT_UPDATE');
+    expect(entry?.payload).toEqual({ priority: { before: 0, after: 5 } });
+  });
+
+  it('description 의 이전 값과 새 값도 함께 남긴다 (null 사이 전환 포함)', async () => {
+    const { service, project, auditLogs } = buildProjectWithMember('u1', 'MANAGER');
+
+    const afterFirst = await service.update(
+      project.id,
+      { description: null, expectedUpdatedAt: project.updatedAt.toISOString() },
+      { actorId: 'u1', globalRole: 'USER', adminMode: false },
+    );
+
+    const firstEntry = auditLogs.find((l) => l.action === 'PROJECT_UPDATE');
+    expect(firstEntry?.payload).toEqual({
+      description: { before: project.description, after: null },
+    });
+
+    await service.update(
+      project.id,
+      { description: '새 설명', expectedUpdatedAt: afterFirst.updatedAt },
+      { actorId: 'u1', globalRole: 'USER', adminMode: false },
+    );
+
+    const secondEntry = auditLogs.filter((l) => l.action === 'PROJECT_UPDATE')[1];
+    expect(secondEntry?.payload).toEqual({
+      description: { before: null, after: '새 설명' },
+    });
+  });
 });
