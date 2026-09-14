@@ -309,16 +309,75 @@ export const CreateProjectDto = z.object({
 });
 export type CreateProjectDto = z.infer<typeof CreateProjectDto>;
 
+/**
+ * 프로젝트 중요도(우선순위).
+ *
+ * 팀장·관리자가 그때그때 조정하며, 여러 프로젝트에 걸쳐 있는 멤버가 무엇을 먼저
+ * 진행해야 하는지 알아차리게 하는 조직 공통 값이다. 개인의 화면 설정이 아니다.
+ *
+ * **0 이 "지정하지 않음"이자 "보통"이다.** 부호 있는 정수로 둔 덕분에 값을 매기지 않은
+ * 프로젝트가 저절로 가운데에 놓인다. 미지정 항목을 맨 위로 올릴지 맨 아래로 내릴지
+ * 고민할 필요가 없다.
+ *
+ * 단계를 넓힐 계획이 있어 **DB 에는 `CHECK` 제약을 걸지 않았다.** SQLite 는 제약을 바꾸려면
+ * 테이블을 다시 만들어야 하기 때문이다. 범위를 아는 곳은 여기뿐이므로, 넓힐 때는 이 파일의
+ * 상수와 라벨 표만 고치면 된다.
+ */
+export const PROJECT_PRIORITY_MIN = -3;
+export const PROJECT_PRIORITY_MAX = 3;
+
+const PROJECT_PRIORITY_LABELS: Readonly<Record<number, string>> = {
+  3: '최우선',
+  2: '높음',
+  1: '다소 높음',
+  0: '보통',
+  [-1]: '다소 낮음',
+  [-2]: '낮음',
+  [-3]: '최하',
+};
+
+/**
+ * 저장값을 화면에 보일 말로 옮긴다. 숫자만으로는 높은 쪽인지 낮은 쪽인지 즉시 읽히지 않는다.
+ *
+ * 표에 없는 값은 부호를 붙인 숫자를 그대로 돌려준다. 범위를 넓혔다 되돌리거나 DB 를 직접
+ * 고친 경우에도 목록 화면은 떠야 하기 때문이다.
+ */
+export function projectPriorityLabel(value: number): string {
+  const label = PROJECT_PRIORITY_LABELS[value];
+  if (label !== undefined) return label;
+  return value > 0 ? `+${value}` : String(value);
+}
+
+/** 편집 드롭다운에 채울 선택지. 큰 값이 위에 오도록 내림차순으로 늘어놓는다. */
+export const PROJECT_PRIORITY_OPTIONS: readonly { value: number; label: string }[] = Array.from(
+  { length: PROJECT_PRIORITY_MAX - PROJECT_PRIORITY_MIN + 1 },
+  (_, i) => {
+    const value = PROJECT_PRIORITY_MAX - i;
+    return { value, label: projectPriorityLabel(value) };
+  },
+);
+
 export const UpdateProjectDto = z
   .object({
     name: z.string().min(1).max(128).optional(),
     description: z.string().max(2000).nullable().optional(),
     status: ProjectStatus.optional(),
+    priority: z
+      .number()
+      .int()
+      .min(PROJECT_PRIORITY_MIN)
+      .max(PROJECT_PRIORITY_MAX)
+      .optional(),
     expectedUpdatedAt: z.string(),
   })
-  .refine((v) => v.name !== undefined || v.description !== undefined || v.status !== undefined, {
-    message: '변경 항목이 없습니다',
-  });
+  .refine(
+    (v) =>
+      v.name !== undefined ||
+      v.description !== undefined ||
+      v.status !== undefined ||
+      v.priority !== undefined,
+    { message: '변경 항목이 없습니다' },
+  );
 export type UpdateProjectDto = z.infer<typeof UpdateProjectDto>;
 
 export const ProjectListItem = z.object({
@@ -328,6 +387,13 @@ export const ProjectListItem = z.object({
   status: ProjectStatus,
   myRole: ProjectRole.nullable(), // 비멤버(ADMIN 모드)면 null
   memberCount: z.number().int(),
+  /**
+   * 프로젝트 중요도. 0 이 미지정이자 보통이다.
+   *
+   * 요청(UpdateProjectDto)과 달리 **범위를 제한하지 않는다.** 응답 스키마가 DB 의 현재
+   * 값을 거부하면 목록 전체가 뜨지 않기 때문이다.
+   */
+  priority: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
   /**
