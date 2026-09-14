@@ -1032,7 +1032,7 @@ function ProjectHeader({
       <header className="flex flex-col gap-1 py-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-lg font-bold">
-            <ProjectNameEditor project={project} canRename={isAdmin && adminMode} />
+            <ProjectNameEditor project={project} canRename={canManage} />
             {projectProgress !== null && (
               <div className="inline-flex items-center gap-1.5">
                 <span

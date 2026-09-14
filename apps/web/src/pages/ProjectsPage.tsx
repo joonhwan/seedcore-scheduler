@@ -17,6 +17,7 @@ import {
 } from '../lib/projectListSort';
 import ProjectNameCell from '../components/ProjectNameCell';
 import ProjectPriorityCell from '../components/ProjectPriorityCell';
+import ProjectDescriptionCell from '../components/ProjectDescriptionCell';
 import ProjectArchiveButton from '../components/ProjectArchiveButton';
 import DelayStatusBadge from '../components/DelayStatusBadge';
 import ProgressBarWithExpected from '../components/ProgressBarWithExpected';
@@ -143,7 +144,6 @@ export default function ProjectsPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   const canCreate = me.data?.globalRole === 'ADMIN' && adminMode;
-  const canRename = me.data?.globalRole === 'ADMIN' && adminMode;
 
   // 상세 화면(ProjectDetailPage) 의 canManageProject 와 같은 조건이다.
   // ADMIN 을 "모든 프로젝트의 MANAGER" 로 보는 단순화에 따른다.
@@ -694,7 +694,7 @@ export default function ProjectsPage() {
                         className="px-4 py-3 font-semibold text-slate-950 dark:text-slate-50"
                         style={{ width: `${renderedWidths.name}px`, maxWidth: `${renderedWidths.name}px` }}
                       >
-                        <ProjectNameCell project={p} canRename={canRename} />
+                        <ProjectNameCell project={p} canRename={canManageProject(p)} />
                       </td>
                       <td
                         className="whitespace-nowrap px-3 py-3 text-center"
@@ -705,9 +705,8 @@ export default function ProjectsPage() {
                       <td
                         className="px-4 py-3 text-slate-600 dark:text-slate-400 truncate"
                         style={{ width: `${renderedWidths.description}px`, maxWidth: `${renderedWidths.description}px` }}
-                        title={p.description ?? ''}
                       >
-                        {p.description ?? '-'}
+                        <ProjectDescriptionCell project={p} canManage={canManageProject(p)} />
                       </td>
                       <td
                         className="px-3 py-3"
