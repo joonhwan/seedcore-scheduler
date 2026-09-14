@@ -557,8 +557,11 @@ export default function ProjectsPage() {
                     className="sticky top-0 z-10 relative select-none bg-slate-50 px-4 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
                     style={{ width: `${renderedWidths.description}px` }}
                   >
-                    <div className="flex items-center justify-center gap-1.5">
-                      설명
+                    <div
+                      onClick={() => handleSort('description')}
+                      className="cursor-pointer flex items-center justify-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100"
+                    >
+                      설명 {renderSortIcon('description')}
                     </div>
                     <div
                       onMouseDown={(e) => handleMouseDown(e, 'description')}

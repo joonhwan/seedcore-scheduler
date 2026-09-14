@@ -50,6 +50,7 @@ export function compareProjectsByRecentlyModified(
 export const PROJECT_SORT_FIELDS = [
   'name',
   'priority',
+  'description',
   'progress',
   'status',
   'memberCount',

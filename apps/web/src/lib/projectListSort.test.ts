@@ -303,3 +303,29 @@ describe('nextSortSelection', () => {
     expect(nextSortSelection(null, 'memberCount')).toEqual({ by: 'memberCount', order: 'asc' });
   });
 });
+
+describe('설명 컬럼 정렬', () => {
+  it('설명을 정렬 기준으로 받아들인다', () => {
+    expect(parseSortSelection('{"by":"description","order":"asc"}')).toEqual({
+      by: 'description',
+      order: 'asc',
+    });
+  });
+
+  it('설명 컬럼의 첫 클릭은 오름차순이다', () => {
+    // "가나다순으로 보겠다" 가 자연스러운 의도다. 중요도만 내림차순으로 시작하는
+    // 예외이며, 설명은 기본 규칙을 따른다.
+    expect(nextSortSelection(null, 'description')).toEqual({
+      by: 'description',
+      order: 'asc',
+    });
+  });
+
+  it('설명도 세 번 누르면 기본 정렬로 돌아간다', () => {
+    const once = nextSortSelection(null, 'description');
+    const twice = nextSortSelection(once, 'description');
+
+    expect(twice).toEqual({ by: 'description', order: 'desc' });
+    expect(nextSortSelection(twice, 'description')).toBeNull();
+  });
+});
