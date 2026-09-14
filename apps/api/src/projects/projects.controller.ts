@@ -97,8 +97,7 @@ export class ProjectsController {
     });
   }
 
-  @Patch('admin/projects/:id')
-  @AdminOnly()
+  @Patch('projects/:id')
   update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(UpdateProjectDto)) body: UpdateProjectDto,

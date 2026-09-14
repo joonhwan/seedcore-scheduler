@@ -196,3 +196,167 @@ describe('ProjectsService.create', () => {
     expect(result.priority).toBe(0);
   });
 });
+
+/**
+ * ProjectsService.update() 전용 가짜다. buildService() 는 create() 만 흉내 내므로
+ * project.findUnique / project.update / projectMember.findUnique 가 없다 — update() 가
+ * 그 셋을 그대로 쓰므로 여기서 새로 짓는다.
+ *
+ * 프로젝트 한 건과 그 멤버 한 명을 심고 { service, project } 를 돌려준다. project.update() 는
+ * data 를 기존 행에 병합하고 updatedAt 을 한 틱 앞으로 미는 것으로 실제 DB 갱신을 흉내 낸다.
+ * include.members.where.userId 를 그대로 읽어, 응답에 실리는 myRole 이 "글을 쓴 사람"이 아니라
+ * "그 include 를 요청한 ctx.actorId" 기준이 되게 한다 — 실제 Prisma 동작과 같다.
+ */
+function buildProjectWithMember(userId: string, role: 'MANAGER' | 'MEMBER') {
+  const projectId = 'p1';
+  let current = {
+    id: projectId,
+    name: '기존 이름',
+    description: '기존 설명',
+    status: 'ACTIVE',
+    priority: 0,
+    createdById: 'creator',
+    createdAt: T0,
+    updatedAt: T0,
+  };
+
+  const members = new Map<string, { projectId: string; userId: string; role: 'MANAGER' | 'MEMBER' }>();
+  members.set(userId, { projectId, userId, role });
+
+  const prismaObject = {
+    project: {
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+        where.id === current.id ? { ...current } : null,
+      ),
+      update: vi.fn(
+        async ({
+          data,
+          include,
+        }: {
+          data: Record<string, unknown>;
+          include: { members: { where: { userId: string } } };
+        }) => {
+          current = {
+            ...current,
+            ...data,
+            updatedAt: new Date(current.updatedAt.getTime() + 1000),
+          } as typeof current;
+          const m = members.get(include.members.where.userId);
+          return {
+            ...current,
+            members: m ? [{ role: m.role }] : [],
+            _count: { members: members.size },
+          };
+        },
+      ),
+    },
+    projectMember: {
+      findUnique: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { projectId_userId: { projectId: string; userId: string } };
+        }) => {
+          const m = members.get(where.projectId_userId.userId);
+          if (!m || m.projectId !== where.projectId_userId.projectId) return null;
+          return { role: m.role };
+        },
+      ),
+    },
+    nodeHistory: {
+      // lastScheduleChangeAt() 이 update() 끝에서 부른다 — 일정 변경 이력이 없는 상태를 흉내 낸다.
+      findFirst: vi.fn(async () => null),
+    },
+  };
+
+  const prisma = prismaObject as unknown as PrismaService;
+  const audit = { log: vi.fn(async () => {}) } as unknown as AuditService;
+  const service = new ProjectsService(prisma, audit);
+  return { service, project: current, prismaObject };
+}
+
+describe('ProjectsService.update — 필드별 권한', () => {
+  it('MANAGER 가 명칭·설명·중요도를 고칠 수 있다', async () => {
+    const { service, project } = buildProjectWithMember('u1', 'MANAGER');
+
+    const result = await service.update(
+      project.id,
+      {
+        name: '새 이름',
+        description: '새 설명',
+        priority: 2,
+        expectedUpdatedAt: project.updatedAt.toISOString(),
+      },
+      { actorId: 'u1', globalRole: 'USER', adminMode: false },
+    );
+
+    expect(result.name).toBe('새 이름');
+    expect(result.priority).toBe(2);
+  });
+
+  it('MANAGER 가 보관 상태를 바꾸려 하면 요청 전체를 거부한다', async () => {
+    // 일부만 반영하면 무엇이 적용되고 무엇이 무시됐는지 화면이 알 수 없다.
+    const { service, project } = buildProjectWithMember('u1', 'MANAGER');
+
+    await expect(
+      service.update(
+        project.id,
+        {
+          name: '새 이름',
+          status: 'ARCHIVED',
+          expectedUpdatedAt: project.updatedAt.toISOString(),
+        },
+        { actorId: 'u1', globalRole: 'USER', adminMode: false },
+      ),
+    ).rejects.toMatchObject({ response: { error: 'FORBIDDEN_FIELD' } });
+  });
+
+  it('MEMBER 는 고칠 수 없다', async () => {
+    const { service, project } = buildProjectWithMember('u1', 'MEMBER');
+
+    await expect(
+      service.update(
+        project.id,
+        { priority: 1, expectedUpdatedAt: project.updatedAt.toISOString() },
+        { actorId: 'u1', globalRole: 'USER', adminMode: false },
+      ),
+    ).rejects.toMatchObject({ response: { error: 'NOT_A_MANAGER' } });
+  });
+
+  it('관리자 모드를 켠 ADMIN 은 멤버가 아니어도 고칠 수 있다', async () => {
+    const { service, project } = buildProjectWithMember('someone', 'MANAGER');
+
+    const result = await service.update(
+      project.id,
+      { priority: 3, expectedUpdatedAt: project.updatedAt.toISOString() },
+      { actorId: 'admin', globalRole: 'ADMIN', adminMode: true },
+    );
+
+    expect(result.priority).toBe(3);
+  });
+
+  it('관리자 모드를 끈 ADMIN 은 남의 프로젝트를 고칠 수 없다', async () => {
+    // AGENTS.md §4.4 — ADMIN 의 전체 권한은 관리자 모드에서만 열린다.
+    const { service, project } = buildProjectWithMember('someone', 'MANAGER');
+
+    await expect(
+      service.update(
+        project.id,
+        { priority: 3, expectedUpdatedAt: project.updatedAt.toISOString() },
+        { actorId: 'admin', globalRole: 'ADMIN', adminMode: false },
+      ),
+    ).rejects.toMatchObject({ response: { error: 'NOT_A_MANAGER' } });
+  });
+
+  it('관리자 모드의 ADMIN 은 보관 상태도 바꿀 수 있다', async () => {
+    const { service, project } = buildProjectWithMember('someone', 'MANAGER');
+
+    const result = await service.update(
+      project.id,
+      { status: 'ARCHIVED', expectedUpdatedAt: project.updatedAt.toISOString() },
+      { actorId: 'admin', globalRole: 'ADMIN', adminMode: true },
+    );
+
+    expect(result.status).toBe('ARCHIVED');
+  });
+});

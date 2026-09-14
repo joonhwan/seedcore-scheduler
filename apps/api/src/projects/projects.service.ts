@@ -276,6 +276,25 @@ export class ProjectsService {
     const target = await this.prisma.project.findUnique({ where: { id } });
     if (!target) throw new NotFoundException({ error: 'PROJECT_NOT_FOUND' });
 
+    // 관리자 모드의 ADMIN 은 "모든 프로젝트의 MANAGER" 로 본다. 상세 화면의
+    // canManageProject 와 같은 조건이며, 프로젝트 속성 편집까지 그 판단을 넓힌 것이다.
+    const membership = await this.prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId: id, userId: ctx.actorId } },
+      select: { role: true },
+    });
+    const isManager = membership?.role === 'MANAGER';
+    const isAdminManaging = ctx.globalRole === 'ADMIN' && ctx.adminMode;
+    if (!isManager && !isAdminManaging) {
+      throw new ForbiddenException({ error: 'NOT_A_MANAGER' });
+    }
+
+    // 같은 API 안에서 필드마다 판단이 갈린다. 보관·복원은 관리자 전용으로 남긴다.
+    // 일부만 반영하면 무엇이 적용되고 무엇이 무시됐는지 화면이 알 수 없으므로,
+    // 권한 밖의 필드가 하나라도 섞이면 요청 전체를 거부한다.
+    if (patch.status !== undefined && !isAdminManaging) {
+      throw new ForbiddenException({ error: 'FORBIDDEN_FIELD', field: 'status' });
+    }
+
     if (target.updatedAt.toISOString() !== patch.expectedUpdatedAt) {
       throw new ConflictException({
         code: 'CONFLICT',
@@ -291,6 +310,7 @@ export class ProjectsService {
     if (patch.name !== undefined) data.name = patch.name;
     if (patch.description !== undefined) data.description = patch.description;
     if (patch.status !== undefined) data.status = patch.status;
+    if (patch.priority !== undefined) data.priority = patch.priority;
 
     const updated = await this.prisma.project.update({
       where: { id },

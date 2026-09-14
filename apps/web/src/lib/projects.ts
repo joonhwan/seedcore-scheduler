@@ -42,7 +42,7 @@ export function useUpdateProject(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: UpdateProjectDto) =>
-      api.patch<ProjectDetail>(`/admin/projects/${id}`, input),
+      api.patch<ProjectDetail>(`/projects/${id}`, input),
     onSuccess: (data) => {
       qc.setQueryData(projectKey(id), data);
       // invalidateQueries 의 프라미스를 돌려줘야 목록이 실제로 다시 받아올 때까지
