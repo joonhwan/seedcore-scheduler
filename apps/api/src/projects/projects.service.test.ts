@@ -269,10 +269,15 @@ function buildProjectWithMember(userId: string, role: 'MANAGER' | 'MEMBER') {
     },
   };
 
+  const auditLogs: Array<Record<string, unknown>> = [];
   const prisma = prismaObject as unknown as PrismaService;
-  const audit = { log: vi.fn(async () => {}) } as unknown as AuditService;
+  const audit = {
+    log: vi.fn(async (entry: Record<string, unknown>) => {
+      auditLogs.push(entry);
+    }),
+  } as unknown as AuditService;
   const service = new ProjectsService(prisma, audit);
-  return { service, project: current, prismaObject };
+  return { service, project: current, prismaObject, auditLogs };
 }
 
 describe('ProjectsService.update — 필드별 권한', () => {
@@ -358,5 +363,42 @@ describe('ProjectsService.update — 필드별 권한', () => {
     );
 
     expect(result.status).toBe('ARCHIVED');
+  });
+});
+
+describe('ProjectsService.update — 변경 이력', () => {
+  it('바뀐 필드마다 이전 값과 새 값을 함께 남긴다', async () => {
+    // 기록하는 그 순간에만 알 수 있는 정보다. 지금 담지 않으면 나중에 이력 화면에서
+    // "보통에서 높음으로 올렸다" 를 복원할 방법이 없다.
+    const { service, project, auditLogs } = buildProjectWithMember('u1', 'MANAGER');
+
+    await service.update(
+      project.id,
+      {
+        name: '새 이름',
+        priority: 2,
+        expectedUpdatedAt: project.updatedAt.toISOString(),
+      },
+      { actorId: 'u1', globalRole: 'USER', adminMode: false },
+    );
+
+    const entry = auditLogs.find((l) => l.action === 'PROJECT_UPDATE');
+    expect(entry?.payload).toEqual({
+      name: { before: project.name, after: '새 이름' },
+      priority: { before: 0, after: 2 },
+    });
+  });
+
+  it('바뀌지 않은 필드는 담지 않는다', async () => {
+    const { service, project, auditLogs } = buildProjectWithMember('u1', 'MANAGER');
+
+    await service.update(
+      project.id,
+      { priority: 1, expectedUpdatedAt: project.updatedAt.toISOString() },
+      { actorId: 'u1', globalRole: 'USER', adminMode: false },
+    );
+
+    const entry = auditLogs.find((l) => l.action === 'PROJECT_UPDATE');
+    expect(entry?.payload).toEqual({ priority: { before: 0, after: 1 } });
   });
 });

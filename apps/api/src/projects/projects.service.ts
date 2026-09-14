@@ -335,6 +335,20 @@ export class ProjectsService {
         userAgent: ctx.userAgent,
       });
     } else {
+      // 요청에는 "누가 언제 무엇을 바꿨는지" 만 있었지만, 이전 값은 기록하는 이 순간에만
+      // 알 수 있는 정보다. 지금 담지 않으면 나중에 이력 화면에서 "보통에서 높음으로
+      // 올렸다" 를 복원할 방법이 없다. 값이 실제로 달라진 필드만 담는다.
+      const changes: Record<string, { before: unknown; after: unknown }> = {};
+      if (patch.name !== undefined && patch.name !== target.name) {
+        changes.name = { before: target.name, after: patch.name };
+      }
+      if (patch.description !== undefined && patch.description !== target.description) {
+        changes.description = { before: target.description, after: patch.description };
+      }
+      if (patch.priority !== undefined && patch.priority !== target.priority) {
+        changes.priority = { before: target.priority, after: patch.priority };
+      }
+
       await this.audit.log({
         actorId: ctx.actorId,
         action: 'PROJECT_UPDATE',
@@ -342,10 +356,7 @@ export class ProjectsService {
         targetId: id,
         ip: ctx.ip,
         userAgent: ctx.userAgent,
-        payload: {
-          ...(patch.name !== undefined ? { name: patch.name } : {}),
-          ...(patch.description !== undefined ? { description: patch.description } : {}),
-        },
+        payload: changes,
       });
     }
     if (ctx.adminMode) {
