@@ -412,14 +412,14 @@ describe('ProjectsService.update — 변경 이력', () => {
       project.id,
       {
         name: project.name,
-        priority: 5,
+        priority: 3,
         expectedUpdatedAt: project.updatedAt.toISOString(),
       },
       { actorId: 'u1', globalRole: 'USER', adminMode: false },
     );
 
     const entry = auditLogs.find((l) => l.action === 'PROJECT_UPDATE');
-    expect(entry?.payload).toEqual({ priority: { before: 0, after: 5 } });
+    expect(entry?.payload).toEqual({ priority: { before: 0, after: 3 } });
   });
 
   it('description 의 이전 값과 새 값도 함께 남긴다 (null 사이 전환 포함)', async () => {

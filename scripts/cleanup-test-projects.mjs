@@ -27,7 +27,7 @@ async function main() {
     }
     console.log('cleanup:', p.name, p.id);
     if (p.status === 'ACTIVE') {
-      const archiveRes = await fetch(`${BASE}/admin/projects/${p.id}`, {
+      const archiveRes = await fetch(`${BASE}/projects/${p.id}`, {
         method: 'PATCH',
         headers,
         body: JSON.stringify({ status: 'ARCHIVED', expectedUpdatedAt: p.updatedAt }),

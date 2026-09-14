@@ -291,7 +291,7 @@ GROUP 자체에는 `description` 만 직접 입력 가능 (설명·메모 용도
 ### 5.3 프로젝트
 - `GET    /projects` (현재 사용자가 볼 수 있는 것만; 관리자 모드 시 전체)
 - `POST   /admin/projects` (ADMIN) `{name, description, manager_user_ids[]}`
-- `PATCH  /admin/projects/{id}` (ADMIN)
+- `PATCH  /projects/{id}` `{name?, description?, status?, priority?}` — 필드마다 권한이 갈린다: `name`/`description`/`priority` 는 그 프로젝트의 MANAGER 도, `status`(보관/복원)는 관리자 모드를 켠 ADMIN 만 바꿀 수 있다. 권한 밖 필드가 섞이면 요청 전체를 거부한다.
 - `DELETE /admin/projects/{id}` (ADMIN, soft-archive 후 영구삭제 옵션)
 - `POST   /admin/projects/{id}/backup` → 백업파일 생성, 다운로드 URL 반환
 - `POST   /admin/projects/restore` (multipart) → 백업파일 업로드 후 신규 프로젝트로 복원

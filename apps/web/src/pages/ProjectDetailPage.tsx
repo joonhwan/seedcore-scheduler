@@ -1176,7 +1176,7 @@ function ProjectHeader({
               </svg>
             </Link>
           )}
-          {canManage && project.status === 'ACTIVE' && (
+          {isAdmin && adminMode && project.status === 'ACTIVE' && (
             <button
               type="button"
               onClick={() => setStatus('ARCHIVED')}
@@ -1188,7 +1188,7 @@ function ProjectHeader({
               </svg>
             </button>
           )}
-          {canManage && project.status === 'ARCHIVED' && (
+          {isAdmin && adminMode && project.status === 'ARCHIVED' && (
             <button
               type="button"
               onClick={() => setStatus('ACTIVE')}

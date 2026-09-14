@@ -135,7 +135,8 @@ POST   /api/v1/admin/users/:id/unlock          → 204
 GET    /api/v1/projects                      # 가시성 필터
 GET    /api/v1/projects/:id
 POST   /api/v1/admin/projects                {name, description?, managerUserIds[]}
-PATCH  /api/v1/admin/projects/:id            {..., expectedUpdatedAt}
+PATCH  /api/v1/projects/:id                  {name?, description?, status?, priority?, expectedUpdatedAt}
+                                              # name/description/priority 는 MANAGER 도, status(보관/복원)는 관리자 모드 ADMIN 만
 DELETE /api/v1/admin/projects/:id            # ARCHIVED 만 hard delete
 GET    /api/v1/projects/:id/members
 POST   /api/v1/projects/:id/members          {userId, role}

@@ -326,18 +326,22 @@ POST   /api/v1/admin/users/:id/unlock           → 204 (failed_login_count=0, l
 
 ### M2a — 프로젝트 / 멤버 / 관리자 모드 ✓ (2026-04-30)
 - shared: `AuditAction` 에 PROJECT_*/MEMBER_*/NODE_* 추가 + `CreateProjectDto`, `UpdateProjectDto`, `ProjectListItem`, `ProjectDetail`, `AddMemberDto`, `ProjectMemberItem`, `CreateNodeDto`, `UpdateNodeDto`, `MoveNodeDto`, `NodeTreeItem`, `ConflictResponse`
-- `apps/api/src/projects/` — `ProjectsService` 가시성 필터 (ADMIN+adminMode → 전체, 그 외 → 멤버 프로젝트), `ProjectsController` (`GET /projects`, `GET /projects/:id`, `POST/PATCH/DELETE /admin/projects[/...]`)
+- `apps/api/src/projects/` — `ProjectsService` 가시성 필터 (ADMIN+adminMode → 전체, 그 외 → 멤버 프로젝트), `ProjectsController` (`GET /projects`, `GET /projects/:id`, `POST/DELETE /admin/projects[/...]`, `PATCH /projects/:id`)
 - `apps/api/src/members/` — `GET/POST /projects/:id/members`, `DELETE /projects/:id/members/:userId`. 마지막 MANAGER 제거 거부.
 - **AdminMode = 컨텍스트 주입**(차단 X). `AuthGuard` 가 ADMIN 사용자 + `X-Admin-Mode: 1` 헤더일 때만 `req.adminMode=true` 채움. non-ADMIN 의 헤더는 silently 무시.
 - 동시성: `expectedUpdatedAt` body 필드 검사 → 불일치 시 `409 { code:'CONFLICT', currentUpdatedAt }`.
 - DELETE 의미: hard delete 는 `status='ARCHIVED'` 일 때만. ACTIVE 면 `409 NOT_ARCHIVED` ("PATCH status=ARCHIVED 후 삭제하라"). PATCH 로 archive/restore 토글.
+- (2026-09) `PATCH /admin/projects/:id` 는 `PATCH /projects/:id` 로 옮기고 `priority` 필드를 추가했다. 필드마다 권한이 갈린다 —
+  `name`/`description`/`priority` 는 그 프로젝트의 MANAGER 도 고칠 수 있지만, `status`(보관/복원)는 여전히 관리자 모드를 켠 ADMIN 만 가능하다.
+  권한 밖 필드가 하나라도 섞이면 요청 전체를 `403 FORBIDDEN_FIELD` 로 거부한다(`ProjectsService.update`).
 - 모든 state-changing 라우트에 `@UseGuards(OriginGuard)`. ADMIN 모드 변경은 `ADMIN_OVERRIDE_EDIT` 별도 감사.
 - 검증된 엔드포인트:
   ```
   GET    /api/v1/projects                                     # 가시성 필터
   GET    /api/v1/projects/:id
   POST   /api/v1/admin/projects        {name, description?, managerUserIds[]}
-  PATCH  /api/v1/admin/projects/:id    {name?, description?, status?, expectedUpdatedAt}
+  PATCH  /api/v1/projects/:id          {name?, description?, status?, priority?, expectedUpdatedAt}
+                                        # name/description/priority 는 MANAGER 도, status 는 관리자 모드 ADMIN 만
   DELETE /api/v1/admin/projects/:id    # ARCHIVED 만 hard delete
   GET    /api/v1/projects/:id/members
   POST   /api/v1/projects/:id/members  {userId, role}
