@@ -27,6 +27,13 @@ export default function ProjectDescriptionCell({
   const updateProject = useUpdateProject(project.id);
 
   const submit = async () => {
+    // 이미 저장 중이면 다시 부르지 않는다. Ctrl+Enter 로 저장하면 편집을 닫고,
+    // 편집이 닫히면 textarea 가 사라지며 blur 가 뒤따라 발생한다 — 여기서 다시
+    // submit 을 부르면 이미 최신이 된 project.updatedAt 을 모른 채 낡은 값으로
+    // 두 번째 요청을 보내 409 로 실패한다. 그래서 blur 로는 저장하지 않고(아래
+    // textarea 의 onBlur 부재), 혹시 남는 재호출 경로에 대비해 이 가드도 둔다
+    // (이름 편집의 canSubmit/pending 가드와 같은 이유 — useProjectNameEdit.ts).
+    if (updateProject.isPending) return;
     const next = draft.trim();
     const before = project.description ?? '';
     if (next === before) {
@@ -83,11 +90,15 @@ export default function ProjectDescriptionCell({
       value={draft}
       disabled={pending}
       onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => void submit()}
+      // blur 로는 저장하지 않는다(이름 편집과 같은 결). 편집 중 실수로 다른 곳을
+      // 눌러도 방금 쓴 내용이 조용히 사라지거나 저장되지 않는다 — 취소는 Escape 로만.
+      // 저장 성공 후 editing 이 닫히며 textarea 가 사라질 때도 blur 가 뒤따르는데,
+      // 여기서 아무것도 하지 않으므로 두 번째 요청이 나가지 않는다.
       onKeyDown={(e) => {
         // 여러 줄 입력이므로 Enter 는 줄바꿈이다. 저장은 Ctrl+Enter 로 한다.
         if (e.key === 'Escape') {
           e.preventDefault();
+          setDraft(project.description ?? '');
           setEditing(false);
         } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
