@@ -31,6 +31,8 @@ import { collectDeleteTargets, collectCompleteTargets, hasGroupSelected, collect
 import { describeBulkOutcome, emptyOutcome, type BulkOutcome } from '../lib/bulkResult';
 import ExportMenu from '../components/ExportMenu';
 import ProjectNameEditor from '../components/ProjectNameEditor';
+import ProjectPriorityCell from '../components/ProjectPriorityCell';
+import ProjectDescriptionEditor from '../components/ProjectDescriptionEditor';
 import GanttExportDialog from '../components/GanttExportDialog';
 import ExcelExportDialog from '../components/ExcelExportDialog';
 import { useTheme } from '../lib/theme';
@@ -1033,6 +1035,9 @@ function ProjectHeader({
         <div>
           <h1 className="flex items-center gap-2 text-lg font-bold">
             <ProjectNameEditor project={project} canRename={canManage} />
+            {/* 중요도는 이름 바로 우측에 둔다. 목록과 같은 셀을 그대로 쓰므로 두 화면의
+                배지 모양과 편집 동작이 저절로 같아진다. */}
+            <ProjectPriorityCell project={project} canManage={canManage} />
             {projectProgress !== null && (
               <div className="inline-flex items-center gap-1.5">
                 <span
@@ -1083,9 +1088,7 @@ function ProjectHeader({
               </span>
             )}
           </h1>
-          {project.description && (
-            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{project.description}</p>
-          )}
+          <ProjectDescriptionEditor project={project} canManage={canManage} />
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
