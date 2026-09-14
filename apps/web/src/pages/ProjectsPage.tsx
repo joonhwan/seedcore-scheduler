@@ -16,6 +16,7 @@ import {
   type ProjectSortSelection,
 } from '../lib/projectListSort';
 import ProjectNameCell from '../components/ProjectNameCell';
+import ProjectPriorityCell from '../components/ProjectPriorityCell';
 import ProjectArchiveButton from '../components/ProjectArchiveButton';
 import DelayStatusBadge from '../components/DelayStatusBadge';
 import ProgressBarWithExpected from '../components/ProgressBarWithExpected';
@@ -143,6 +144,12 @@ export default function ProjectsPage() {
 
   const canCreate = me.data?.globalRole === 'ADMIN' && adminMode;
   const canRename = me.data?.globalRole === 'ADMIN' && adminMode;
+
+  // 상세 화면(ProjectDetailPage) 의 canManageProject 와 같은 조건이다.
+  // ADMIN 을 "모든 프로젝트의 MANAGER" 로 보는 단순화에 따른다.
+  const isAdmin = me.data?.globalRole === 'ADMIN';
+  const canManageProject = (p: ProjectListItem) =>
+    p.myRole === 'MANAGER' || (isAdmin && adminMode);
 
   // 지연 카운터 집계
   const delayCounts = useMemo(() => {
@@ -531,6 +538,22 @@ export default function ProjectsPage() {
                   </th>
                   <th
                     scope="col"
+                    className="sticky top-0 z-10 relative select-none bg-slate-50 px-3 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
+                    style={{ width: `${renderedWidths.priority}px` }}
+                  >
+                    <div
+                      onClick={() => handleSort('priority')}
+                      className="cursor-pointer flex items-center justify-center gap-1 hover:text-slate-900 dark:hover:text-slate-100 whitespace-nowrap"
+                    >
+                      중요도 {renderSortIcon('priority')}
+                    </div>
+                    <div
+                      onMouseDown={(e) => handleMouseDown(e, 'priority')}
+                      className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-slate-300 dark:bg-slate-700 opacity-0 group-hover/th:opacity-100 hover:!bg-sky-500 hover:opacity-100 active:!bg-sky-600 active:opacity-100 transition-opacity"
+                    />
+                  </th>
+                  <th
+                    scope="col"
                     className="sticky top-0 z-10 relative select-none bg-slate-50 px-4 py-3.5 text-center font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200 group/th"
                     style={{ width: `${renderedWidths.description}px` }}
                   >
@@ -672,6 +695,12 @@ export default function ProjectsPage() {
                         style={{ width: `${renderedWidths.name}px`, maxWidth: `${renderedWidths.name}px` }}
                       >
                         <ProjectNameCell project={p} canRename={canRename} />
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-3 py-3 text-center"
+                        style={{ width: `${renderedWidths.priority}px`, maxWidth: `${renderedWidths.priority}px` }}
+                      >
+                        <ProjectPriorityCell project={p} canManage={canManageProject(p)} />
                       </td>
                       <td
                         className="px-4 py-3 text-slate-600 dark:text-slate-400 truncate"

@@ -10,6 +10,7 @@
 /** 하드코딩 기본 폭. localStorage 에 저장된 값이 없을 때 쓴다. */
 export const DEFAULT_COLUMN_WIDTHS = {
   name: 220,
+  priority: 100,
   description: 320,
   progress: 190,
   status: 85,

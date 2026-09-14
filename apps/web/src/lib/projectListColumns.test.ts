@@ -84,6 +84,11 @@ describe('computeRenderedWidths', () => {
     expect(widths.myRole).toBe(DEFAULT_COLUMN_WIDTHS.myRole);
   });
 
+  it('중요도 컬럼이 기본 폭을 갖는다', () => {
+    // 라벨 중 가장 긴 "다소 높음" 이 잘리지 않아야 한다.
+    expect(DEFAULT_COLUMN_WIDTHS.priority).toBeGreaterThanOrEqual(90);
+  });
+
   it('저장값이 반영된 뒤의 합계를 기준으로 남는 폭을 계산한다', () => {
     // name 을 240 → 340 으로 넓히면 합계가 100 늘어난다
     const stored = { name: DEFAULT_COLUMN_WIDTHS.name + 100 };
