@@ -61,6 +61,8 @@ coverage/
 # .claude/skills/ 는 커밋한다: AGENTS.md §5 가 sam-troubleshooting 스킬을 가리키고 있어서,
 # 스킬 파일이 저장소에 없으면 그 안내가 빈 포인터가 된다.
 .claude/settings.local.json
+# 스킬 예시 중 실제 고객 자료(공수표 원본 등). 저장소가 공개라 커밋하지 않는다.
+.claude/skills/*/examples/local/
 
 # 세션 이관 노트 (개인 작업 메모)
 .remember/

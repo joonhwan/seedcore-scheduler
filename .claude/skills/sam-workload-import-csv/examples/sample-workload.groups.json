@@ -1,0 +1,14 @@
+{
+  "rules": [
+    { "pattern": "메인보드용", "group": "회로카드 조립체 - 메인보드" },
+    { "pattern": "CPU", "group": "회로카드 조립체 - CPU" },
+    { "pattern": "IOB", "group": "회로카드 조립체 - IOB" },
+    { "pattern": "PWR", "group": "회로카드 조립체 - PWR" },
+    { "pattern": "COM", "group": "회로카드 조립체 - COM" },
+    { "pattern": "DRV", "group": "회로카드 조립체 - DRV" },
+    { "pattern": "^하네스", "group": "하네스 입고검사" },
+    { "pattern": "^케이블조립체", "group": "케이블조립체 입고검사" },
+    { "pattern": "^기구물", "process": "검사", "group": "기구물 입고검사" }
+  ],
+  "default": "시험장비 통합 조립·시험"
+}
